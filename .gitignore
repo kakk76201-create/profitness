@@ -13,3 +13,4 @@ progress_photos/
 
 # Временные/пробные файлы БД
 *.db
+backup_prod.db
