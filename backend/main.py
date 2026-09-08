@@ -57,6 +57,9 @@ from backend import (
     payment_providers,
     subscription,
     telegram_bot,
+    trainer,
+    trainer_logic,
+    trainer_seed,
 )
 from backend.ai_service import (
     AIError,
@@ -76,7 +79,7 @@ from backend.ai_service import (
     transcribe_audio,
 )
 from backend.auth import get_current_user
-from backend.database import get_db, init_db
+from backend.database import SessionLocal, get_db, init_db
 from backend.models import (
     CycleLog,
     DiaryEntry,
@@ -89,6 +92,16 @@ from backend.models import (
     Supplement,
     SupplementReminder,
     SupplementReminderItem,
+    TrainerDailyTip,
+    TrainerExerciseState,
+    TrainerProfile,
+    TrainerProgram,
+    TrainerProgramDay,
+    TrainerRecord,
+    TrainerSession,
+    TrainerSessionExercise,
+    TrainerSetLog,
+    TrainerWeeklyReview,
     TrainingReminder,
     User,
     WeightLog,
@@ -250,6 +263,14 @@ def _normalize_time(value: str | None) -> str:
 async def lifespan(app: FastAPI):
     # Создаём/мигрируем БД. Это критично — без таблиц приложение не работает.
     init_db()
+
+    # Библиотека упражнений AI-тренера: идемпотентный upsert по slug.
+    # НЕОБЯЗАТЕЛЬНАЯ часть — сбой seed не должен мешать старту API.
+    try:
+        with SessionLocal() as db:
+            trainer_seed.ensure_exercises(db)
+    except Exception as exc:  # noqa: BLE001 — seed не должен валить старт
+        logger.exception("Не удалось загрузить библиотеку упражнений тренера: %s", exc)
 
     # Планировщик пуш-уведомлений — НЕОБЯЗАТЕЛЬНАЯ часть. Любая его ошибка
     # не должна мешать старту API, поэтому оборачиваем в try/except.
@@ -2924,13 +2945,20 @@ def meal_plan_regenerate_item(
 def food_suggest(
     data: FoodSuggestIn,
     user: User = Depends(subscription.require_premium),
+    db: Session = Depends(get_db),
 ) -> FoodSuggestOut:
     """Умное предложение еды под остаток КБЖУ, приём пищи и/или пожелание.
 
     Если задан meal_type — варианты под этот приём; если задан free_text —
     учитываем пожелание пользователя. Все варианты должны влезать в остаток КБЖУ.
     Цель диеты берём из профиля. При сбое ИИ -> 502.
+
+    Дополнительно (ТЗ AI-тренера §4.6): если на дату есть тренировка (план или
+    факт), её контекст уходит в промпт и возвращается фронту в training_note.
     """
+    training_context = trainer_logic.today_training_context(
+        db, user.telegram_id, data.date or date_cls.today().isoformat(), user.language or "ru"
+    )
     try:
         ratelimit.enforce_ai(user.telegram_id)
         result = suggest_food(
@@ -2942,6 +2970,7 @@ def food_suggest(
             remaining_carbs=data.remaining_carbs,
             diet_goal=getattr(user, "diet_goal", None),
             lang=user.language or "ru",
+            training_context=training_context,
         )
     except AIError as exc:
         logger.warning(
@@ -2970,7 +2999,7 @@ def food_suggest(
         )
         for s in result.get("suggestions", [])
     ]
-    return FoodSuggestOut(suggestions=suggestions)
+    return FoodSuggestOut(suggestions=suggestions, training_note=training_context)
 
 
 @app.get("/food/healthy-snacks", response_model=HealthySnacksOut)
@@ -3399,6 +3428,18 @@ def account_delete_data(
         MealTemplate,
         CycleLog,
         ProgressPhoto,
+        # AI-тренер: все таблицы с telegram_id. TrainerExercise — глобальная
+        # библиотека, она не персональная и не удаляется.
+        TrainerProfile,
+        TrainerProgram,
+        TrainerProgramDay,
+        TrainerSession,
+        TrainerSessionExercise,
+        TrainerSetLog,
+        TrainerRecord,
+        TrainerExerciseState,
+        TrainerWeeklyReview,
+        TrainerDailyTip,
     ):
         db.query(model).filter(model.telegram_id == tid).delete(
             synchronize_session=False
@@ -3409,6 +3450,13 @@ def account_delete_data(
 
     db.commit()
     return {"ok": True, "deleted": True}
+
+
+# --------------------------------------------------------------------------- #
+#  AI-тренер — отдельный роутер (backend/trainer.py), все маршруты премиумные.
+#  Подключаем ВЫШЕ app.mount, иначе статика перехватит пути /trainer/*.
+# --------------------------------------------------------------------------- #
+app.include_router(trainer.router)
 
 
 # --------------------------------------------------------------------------- #

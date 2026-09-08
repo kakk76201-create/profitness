@@ -667,3 +667,248 @@ class ProgressPhoto(Base):
 
     # Дата создания записи (UTC).
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# --------------------------------------------------------------------------- #
+#  AI-тренер (docs/TRAINER_SPEC.md §3): 11 новых таблиц, ALTER'ов нет.
+#  Все таблицы, кроме глобальной библиотеки упражнений, привязаны к пользователю
+#  по telegram_id. Даты — строки ISO, вложенные структуры — JSON в Text.
+# --------------------------------------------------------------------------- #
+
+
+class TrainerExercise(Base):
+    """Библиотека упражнений (глобальная, без telegram_id).
+
+    Источник правды для ИИ: программа собирается только из slug'ов каталога.
+    Техника/ошибки генерируются ИИ один раз на упражнение и язык и кэшируются
+    в technique_json. Незнакомый slug от ИИ → строка с created_by_ai=True.
+    """
+
+    __tablename__ = "trainer_exercises"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    slug = Column(String, unique=True, index=True)          # "db_bench_press"
+    name_ru = Column(String); name_en = Column(String)
+    muscle_group = Column(String, index=True)  # chest|back|shoulders|biceps|triceps|quads|hamstrings|glutes|calves|core|full_body|cardio|mobility
+    secondary_muscles_json = Column(Text, nullable=True)     # ["triceps","shoulders"]
+    equipment = Column(String, index=True)     # barbell|dumbbell|machine|cable|bodyweight|band|kettlebell|pullup_bar|bench|cardio_machine|none
+    category = Column(String)                  # compound|isolation|cardio|mobility|stretch
+    measure_type = Column(String)              # reps_weight|reps|time|distance
+    difficulty = Column(Integer, default=1)    # 1..3
+    is_unilateral = Column(Boolean, default=False)
+    contraindications_json = Column(Text, nullable=True)     # ["knee","lower_back"] — коды ограничений
+    alternatives_json = Column(Text, nullable=True)          # ["slug1","slug2"] ручные альтернативы
+    progression_next_slug = Column(String, nullable=True)    # should: цепочка bodyweight
+    technique_json = Column(Text, nullable=True)  # {"ru": {steps,cues,mistakes,breathing,safety,muscles_text}, "en": {...}}
+    technique_status = Column(String, default="none")        # none|ready|failed
+    created_by_ai = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TrainerProfile(Base):
+    """Анкета тренера (1:1 с пользователем): цель, уровень, оборудование, график.
+
+    Данные тела (вес/рост/пол/возраст), diet_goal и язык берутся из User —
+    здесь не дублируются.
+    """
+
+    __tablename__ = "trainer_profiles"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(BigInteger, ForeignKey("users.telegram_id"), unique=True, index=True)
+    goal = Column(String)                      # loss|muscle|strength|endurance|tone
+    level = Column(String)                     # beginner|intermediate|advanced
+    equipment = Column(String)                 # gym|home_dumbbells|bodyweight
+    equipment_extra_json = Column(Text, nullable=True)       # ["pullup_bar","bands",...]
+    days_per_week = Column(Integer)            # 2..6
+    preferred_weekdays = Column(String)        # CSV "0,2,4" (Пн=0)
+    session_minutes = Column(Integer)          # 20|30|45|60|75|90
+    program_weeks = Column(Integer, default=6) # 4|6|8
+    limitations_json = Column(Text, nullable=True)           # ["knee","lower_back"]
+    limitations_text = Column(Text, nullable=True)
+    focus_json = Column(Text, nullable=True)                 # ["glutes","core"]
+    rest_default_sec = Column(Integer, default=90)
+    reminder_enabled = Column(Boolean, default=False)
+    reminder_time = Column(String, nullable=True)            # "HH:MM"
+    reminder_id = Column(Integer, nullable=True)             # -> training_reminders.id (без FK)
+    onboarding_completed = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TrainerProgram(Base):
+    """Программа тренировок: шаблон недели от ИИ + периодизация (снимок профиля)."""
+
+    __tablename__ = "trainer_programs"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(BigInteger, ForeignKey("users.telegram_id"), index=True)
+    status = Column(String, index=True)        # active|completed|archived
+    title = Column(String)
+    split_type = Column(String)                # full_body|upper_lower|ppl|custom
+    goal = Column(String); level = Column(String); equipment = Column(String)   # снимок профиля
+    weeks = Column(Integer); days_per_week = Column(Integer)
+    start_date = Column(String); end_date = Column(String)   # ISO
+    summary = Column(Text, nullable=True)                    # «почему так» от ИИ
+    periodization_json = Column(Text, nullable=True)         # [{"week":1,"phase":"base","weight_pct":100,"sets_delta":0}, ...]
+    tips_json = Column(Text, nullable=True)                  # советы ИИ по программе
+    ai_model = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TrainerProgramDay(Base):
+    """Раскрытый день программы (неделя × день) — источник правды по плану."""
+
+    __tablename__ = "trainer_program_days"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(BigInteger, ForeignKey("users.telegram_id"), index=True)
+    program_id = Column(Integer, ForeignKey("trainer_programs.id"), index=True)
+    week = Column(Integer); day_index = Column(Integer)      # 1..weeks, 1..days_per_week
+    weekday = Column(Integer, nullable=True)                 # 0..6 из preferred_weekdays
+    scheduled_date = Column(String, nullable=True, index=True)
+    title = Column(String)                     # "Верх тела"
+    session_type = Column(String)              # strength|cardio|mixed|mobility
+    duration_min = Column(Integer)
+    focus_muscles_json = Column(Text, nullable=True)
+    warmup_json = Column(Text)                 # [{"slug","exercise_id","sets","reps","time_sec","note"}]
+    exercises_json = Column(Text)              # [{"slug","exercise_id","sets","reps_min","reps_max","rest_sec","start_weight_kg","rpe","tempo","note","order"}]
+    cooldown_json = Column(Text)
+    adjustments_json = Column(Text, nullable=True)           # правки недельного разбора/отзыва к этому дню
+    status = Column(String, default="planned", index=True)   # planned|done|skipped
+    session_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class TrainerSession(Base):
+    """Тренировочная сессия пользователя (по дню программы или внеплановая).
+
+    Завершённая сессия порождает строку Workout (workout_id) — так дневник
+    учитывает сожжённые калории, ничего не зная о тренере.
+    """
+
+    __tablename__ = "trainer_sessions"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(BigInteger, ForeignKey("users.telegram_id"), index=True)
+    program_id = Column(Integer, nullable=True, index=True)
+    program_day_id = Column(Integer, nullable=True)
+    date = Column(String, index=True)          # ISO дата старта (локальная дата клиента, см. §4)
+    status = Column(String, index=True)        # in_progress|completed|abandoned
+    title = Column(String); session_type = Column(String)
+    week = Column(Integer, nullable=True); day_index = Column(Integer, nullable=True)
+    started_at = Column(DateTime, default=datetime.utcnow)
+    finished_at = Column(DateTime, nullable=True)
+    duration_min = Column(Integer, nullable=True)
+    total_sets = Column(Integer, default=0); total_reps = Column(Integer, default=0)
+    total_volume_kg = Column(Float, default=0.0)
+    calories_burned = Column(Integer, nullable=True)
+    workout_id = Column(Integer, nullable=True)              # -> workouts.id, без FK
+    feedback = Column(String, nullable=True)                 # easy|ok|hard
+    feedback_note = Column(Text, nullable=True)
+    adaptation_json = Column(Text, nullable=True)            # {"changes":[...], "lines":[...]}
+    prs_json = Column(Text, nullable=True)                   # [{"exercise_id","type","value","prev"}]
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TrainerSessionExercise(Base):
+    """Упражнение внутри сессии: план (цели) и статус выполнения."""
+
+    __tablename__ = "trainer_session_exercises"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(BigInteger, ForeignKey("users.telegram_id"), index=True)
+    session_id = Column(Integer, ForeignKey("trainer_sessions.id"), index=True)
+    exercise_id = Column(Integer, ForeignKey("trainer_exercises.id"), index=True)
+    block = Column(String, default="main")     # warmup|main|cooldown
+    order_index = Column(Integer)
+    planned_sets = Column(Integer); planned_reps_min = Column(Integer, nullable=True)
+    planned_reps_max = Column(Integer, nullable=True); planned_weight_kg = Column(Float, nullable=True)
+    planned_time_sec = Column(Integer, nullable=True); planned_rest_sec = Column(Integer, nullable=True)
+    planned_rpe = Column(Integer, nullable=True)
+    superset_group = Column(Integer, nullable=True)          # should
+    status = Column(String, default="pending") # pending|done|skipped|replaced
+    replaced_from_exercise_id = Column(Integer, nullable=True)
+    replace_reason = Column(String, nullable=True)           # busy|no_equipment|pain|other
+    note = Column(Text, nullable=True)         # подсказка ИИ/адаптации для UI
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class TrainerSetLog(Base):
+    """Один подход (сет) в сессии: вес/повторы/время, объём, расчётный 1RM, PR."""
+
+    __tablename__ = "trainer_set_logs"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(BigInteger, ForeignKey("users.telegram_id"), index=True)
+    session_id = Column(Integer, index=True); session_exercise_id = Column(Integer, index=True)
+    exercise_id = Column(Integer, index=True)
+    date = Column(String, index=True)
+    set_index = Column(Integer)                # 1..N
+    set_type = Column(String, default="work")  # warmup|work|drop|failure
+    weight_kg = Column(Float, nullable=True); reps = Column(Integer, nullable=True)
+    time_sec = Column(Integer, nullable=True); rpe = Column(Float, nullable=True)
+    is_done = Column(Boolean, default=False)
+    volume_kg = Column(Float, default=0.0)     # weight*reps для work
+    est_1rm = Column(Float, nullable=True)     # Epley, только reps<=12
+    is_pr = Column(Boolean, default=False)
+    pr_types_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TrainerRecord(Base):
+    """Личный рекорд: одна строка на (пользователь, упражнение, тип) — текущий лучший."""
+
+    __tablename__ = "trainer_records"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(BigInteger, ForeignKey("users.telegram_id"), index=True)
+    exercise_id = Column(Integer, index=True)
+    record_type = Column(String)               # max_weight|est_1rm|max_reps|set_volume|max_time
+    value = Column(Float)
+    weight_kg = Column(Float, nullable=True); reps = Column(Integer, nullable=True)
+    set_log_id = Column(Integer, nullable=True); session_id = Column(Integer, nullable=True)
+    date = Column(String)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TrainerExerciseState(Base):
+    """Состояние прогрессии пользователя по упражнению (рабочий вес, цели, стрики)."""
+
+    __tablename__ = "trainer_exercise_states"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(BigInteger, ForeignKey("users.telegram_id"), index=True)
+    exercise_id = Column(Integer, index=True)
+    working_weight_kg = Column(Float, nullable=True)
+    target_reps_min = Column(Integer, nullable=True); target_reps_max = Column(Integer, nullable=True)
+    target_time_sec = Column(Integer, nullable=True)
+    rest_sec = Column(Integer, nullable=True)
+    last_result = Column(String, nullable=True)   # success|partial|fail
+    success_streak = Column(Integer, default=0); fail_streak = Column(Integer, default=0)
+    last_session_id = Column(Integer, nullable=True); last_date = Column(String, nullable=True)
+    excluded = Column(Boolean, default=False)     # «никогда не предлагать»
+    preferred_alternative_id = Column(Integer, nullable=True)  # запомненная замена
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TrainerWeeklyReview(Base):
+    """Недельный разбор от ИИ: собранный контекст, ответ и флаг применения."""
+
+    __tablename__ = "trainer_weekly_reviews"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(BigInteger, ForeignKey("users.telegram_id"), index=True)
+    program_id = Column(Integer, nullable=True); week = Column(Integer, nullable=True)
+    week_start = Column(String, index=True); week_end = Column(String)
+    stats_json = Column(Text)                  # собранный контекст (sessions, volume, muscles, kcal, protein, weight)
+    review_json = Column(Text)                 # ответ ИИ (нормализованный)
+    applied = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class TrainerDailyTip(Base):
+    """Кэш совета по питанию на день (один на дату, вид дня и язык)."""
+
+    __tablename__ = "trainer_daily_tips"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(BigInteger, ForeignKey("users.telegram_id"), index=True)
+    date = Column(String, index=True); kind = Column(String)  # training|rest
+    lang = Column(String, default="ru")
+    tip_json = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)

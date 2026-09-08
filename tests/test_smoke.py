@@ -102,7 +102,11 @@ def main():
         problems.append(f"проблемы схемы: {D.SCHEMA_ISSUES}")
 
     session = D.SessionLocal()
-    for model in (M.PendingGrant, M.Payment, M.ProGrant, M.ProgressPhoto, M.NotificationLog):
+    for model in (M.PendingGrant, M.Payment, M.ProGrant, M.ProgressPhoto, M.NotificationLog,
+                  # AI-тренер (docs/TRAINER_SPEC.md §3): 11 новых таблиц, create_all без ALTER'ов.
+                  M.TrainerExercise, M.TrainerProfile, M.TrainerProgram, M.TrainerProgramDay,
+                  M.TrainerSession, M.TrainerSessionExercise, M.TrainerSetLog, M.TrainerRecord,
+                  M.TrainerExerciseState, M.TrainerWeeklyReview, M.TrainerDailyTip):
         try:
             session.query(model).count()
         except Exception as exc:  # noqa: BLE001

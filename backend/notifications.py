@@ -645,6 +645,17 @@ def _process_training_reminder(db, reminder: "TrainingReminder",
     # объекта User нет). При ошибке/отсутствии — "ru".
     lang = _user_language(db, tid)
     text = _msg("training_reminder", lang)
+
+    # Дополняем напоминание планом дня из AI-тренера (ТЗ §4.6): «Сегодня по
+    # плану: День 2 — Верх тела, 45 мин». Сбой тренера не должен мешать
+    # отправке обычного напоминания — поэтому широкий except.
+    try:
+        from backend import trainer_notify
+
+        text = trainer_notify.decorate_training_reminder(db, tid, today, lang, text)
+    except Exception:
+        logger.exception("_process_training_reminder: не удалось дополнить текст планом тренера")
+
     if send_telegram(tid, text):
         _mark_sent(db, tid, kind, today)
 

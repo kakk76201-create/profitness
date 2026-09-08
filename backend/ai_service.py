@@ -2199,6 +2199,8 @@ SUGGEST_FOOD_SYSTEM_PROMPT = (
     "- Учитывай цель диеты (loss/maintain/gain), если она указана.\n"
     "- Если остаток калорий маленький или отрицательный — предложи лёгкие "
     "низкокалорийные варианты.\n"
+    "- Если сегодня была или будет тренировка (контекст тренировок) — предпочитай "
+    "белковые варианты и учитывай сожжённые калории.\n"
     "- Числа — реалистичные и положительные."
 )
 
@@ -2223,6 +2225,8 @@ SUGGEST_FOOD_SYSTEM_PROMPT_EN = (
     "- Consider the diet goal (loss/maintain/gain) if provided.\n"
     "- If the remaining calories are small or negative — suggest light "
     "low-calorie options.\n"
+    "- If there was or will be a workout today (training context) — prefer "
+    "protein-rich options and account for the calories burned.\n"
     "- Numbers must be realistic and positive."
 )
 
@@ -2279,6 +2283,7 @@ def suggest_food(
     remaining_carbs: float = 0.0,
     diet_goal: str | None = None,
     lang: str = "ru",
+    training_context: str | None = None,
 ) -> dict:
     """
     Умные предложения еды (2-3 варианта) под остаток КБЖУ на день.
@@ -2289,7 +2294,8 @@ def suggest_food(
         remaining_calories — остаток калорий, ккал;
         remaining_proteins/fats/carbs — остаток БЖУ, г;
         diet_goal          — цель диеты (необязательно);
-        lang               — язык значений ("ru"/"en").
+        lang               — язык значений ("ru"/"en");
+        training_context   — строка о тренировке дня от AI-тренера (необязательно).
 
     Возвращает словарь:
         {"suggestions": [
@@ -2314,6 +2320,8 @@ def suggest_food(
             parts.append(f"User wish: {str(free_text).strip()}.")
         if diet_goal and str(diet_goal).strip():
             parts.append(f"Diet goal: {str(diet_goal).strip()}.")
+        if training_context and str(training_context).strip():
+            parts.append(f"Training context: {str(training_context).strip()}")
         parts.append("Return the result strictly in JSON format following the instructions.")
     else:
         parts = ["Подбери 2-3 умных варианта еды под оставшиеся калории и БЖУ."]
@@ -2327,6 +2335,8 @@ def suggest_food(
             parts.append(f"Пожелание пользователя: {str(free_text).strip()}.")
         if diet_goal and str(diet_goal).strip():
             parts.append(f"Цель диеты: {str(diet_goal).strip()}.")
+        if training_context and str(training_context).strip():
+            parts.append(f"Контекст тренировок: {str(training_context).strip()}")
         parts.append("Верни результат строго в формате JSON по инструкции.")
     user_prompt = "\n".join(parts)
 

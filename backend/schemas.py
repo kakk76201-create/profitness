@@ -873,6 +873,7 @@ class FoodSuggestIn(BaseModel):
 
     meal_type: Optional[str] = None              # breakfast|lunch|dinner|snack|None
     free_text: Optional[str] = None              # произвольное пожелание ("хочу рыбу")
+    date: Optional[str] = None                   # локальная дата клиента (контекст тренировки)
     remaining_calories: int                      # осталось калорий до цели, ккал
     remaining_proteins: float                    # осталось белка, г
     remaining_fats: float                        # осталось жира, г
@@ -883,6 +884,7 @@ class FoodSuggestOut(BaseModel):
     """Набор умных предложений еды (переиспользует RecommendItem)."""
 
     suggestions: List[RecommendItem] = []        # 2-3 варианта с обоснованием
+    training_note: Optional[str] = None          # контекст тренировки дня (AI-тренер)
 
 
 class HealthySnacksOut(BaseModel):
