@@ -51,20 +51,18 @@ PROGRESS_PHOTOS_DIR: str = os.getenv("PROGRESS_PHOTOS_DIR", "./progress_photos")
 PROGRESS_PHOTO_MAX_BYTES: int = int(os.getenv("PROGRESS_PHOTO_MAX_BYTES", str(12 * 1024 * 1024)))
 
 
-# Тарифы подписки. Цены — в Telegram Stars (XTR), берутся из env.
-#   stars — стоимость в звёздах;
-#   days  — на сколько дней продлевается подписка (None = пожизненно).
+# Тарифы подписки. Здесь — ТОЛЬКО сроки; цена у подписки одна и в рублях
+# (см. RUB_PRICES ниже). Оплата Telegram Stars отключена, поэтому поля со
+# стоимостью в звёздах у тарифов больше нет.
+#   days — на сколько дней продлевается подписка (None = пожизненно).
 TARIFFS: dict = {
     "monthly": {
-        "stars": int(os.getenv("PRICE_MONTHLY_STARS", "250")),
         "days": int(os.getenv("SUBSCRIPTION_MONTHLY_DAYS", "30")),
     },
     "yearly": {
-        "stars": int(os.getenv("PRICE_YEARLY_STARS", "2000")),
         "days": int(os.getenv("SUBSCRIPTION_YEARLY_DAYS", "365")),
     },
     "lifetime": {
-        "stars": int(os.getenv("PRICE_LIFETIME_STARS", "4000")),
         "days": None,  # None — пожизненная подписка (без срока окончания).
     },
 }
@@ -79,14 +77,17 @@ def tariff_for(name):
 
 
 # --------------------------------------------------------------------------- #
-#  CloudPayments — ДОПОЛНИТЕЛЬНЫЙ канал оплаты подписки (карты РФ)
+#  Оплата подписки картой в рублях (единственный способ оплаты)
 #
-#  ВАЖНО: основной способ оплаты внутри мини-приложения — Telegram Stars
-#  (этого требуют правила Telegram для цифровых товаров). CloudPayments нужен
-#  для оплаты ВНЕ Telegram (лендинг/сайт), чтобы не нарушать эти правила.
+#  ВАЖНО: оплата Telegram Stars из приложения убрана полностью. Подписка
+#  продаётся за РУБЛИ, а деньги принимает один из провайдеров:
+#    * CloudPayments — переменные CLOUDPAYMENTS_* ниже;
+#    * ЮKassa        — переменные YOOKASSA_* ниже (подключается после модерации).
 #
-#  Пока переменные не заданы, интеграция полностью выключена: маршруты
-#  отвечают 503, виджет на фронте не показывается.
+#  Пока ключи не заданы, приём карт выключен (card_provider() == "none"):
+#  маршруты провайдера отвечают 503, но рублёвая ВИТРИНА (цена и кнопка) всё
+#  равно показывается — её требует модерация платёжного сервиса, которую
+#  проходят ДО получения ключей.
 # --------------------------------------------------------------------------- #
 
 # Public ID сайта из личного кабинета CloudPayments (можно светить на фронте).
@@ -95,7 +96,10 @@ CLOUDPAYMENTS_PUBLIC_ID = os.getenv("CLOUDPAYMENTS_PUBLIC_ID", "").strip()
 # API Secret («пароль для API») — СЕКРЕТ. Им же проверяется подпись вебхуков.
 CLOUDPAYMENTS_API_SECRET = os.getenv("CLOUDPAYMENTS_API_SECRET", "").strip()
 
-# Валюта списания.
+# Валюта списания в виджете CloudPayments. МЕНЯТЬ НЕ НУЖНО: подписка продаётся
+# только за рубли (PRICE_*_RUB), статус подписки отдаёт card_currency="RUB", и
+# вебхук засчитывает платёж только в этой валюте — другое значение разойдётся
+# с ценой на витрине.
 CLOUDPAYMENTS_CURRENCY = os.getenv("CLOUDPAYMENTS_CURRENCY", "RUB").strip() or "RUB"
 
 # Цены тарифов в РУБЛЯХ. Показываются на экране подписки и НЕ зависят от того,
@@ -117,26 +121,107 @@ RUB_PRICES: dict = {
 PAYMENT_PROVIDER = (os.getenv("PAYMENT_PROVIDER", "auto").strip().lower() or "auto")
 
 
+# --- ЮKassa (API v3) ------------------------------------------------------- #
+# Идентификатор магазина и секретный ключ из личного кабинета ЮKassa. Пока оба
+# не заданы, интеграция выключена: /payment/yookassa/create отвечает 503.
+YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID", "").strip()
+YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY", "").strip()
+
+# Секрет в АДРЕСЕ вебхука: уведомления ЮKassa не подписаны, поэтому адрес
+# делаем неугадываемым — в кабинете ЮKassa указывается
+#   https://<домен>/payment/yookassa/webhook/<YOOKASSA_WEBHOOK_SECRET>
+# Любая случайная строка (32+ символов). В проде без секрета вебхук
+# уведомления НЕ обрабатывает (иначе кто угодно мог бы гонять наш сервер
+# в API ЮKassa с боевыми ключами).
+YOOKASSA_WEBHOOK_SECRET = os.getenv("YOOKASSA_WEBHOOK_SECRET", "").strip()
+
+# Куда ЮKassa вернёт пользователя из браузера после оплаты. По умолчанию —
+# адрес мини-приложения, иначе чат бота (лишь бы человек вернулся в Telegram).
+YOOKASSA_RETURN_URL = (
+    os.getenv("YOOKASSA_RETURN_URL", "").strip()
+    or MINI_APP_URL
+    or (f"https://t.me/{BOT_USERNAME}" if BOT_USERNAME else "https://t.me")
+)
+
+
+# --- Реквизиты продавца (нужны для модерации в платёжном сервисе) ---------- #
+# Показываются на странице оплаты: кто продаёт, ИНН, контакт поддержки и
+# ссылки на оферту и политику конфиденциальности. Пустые -> None (не показываем).
+LEGAL_SELLER = os.getenv("LEGAL_SELLER", "").strip()
+LEGAL_INN = os.getenv("LEGAL_INN", "").strip()
+SUPPORT_CONTACT = os.getenv("SUPPORT_CONTACT", "").strip()
+OFFER_URL = os.getenv("OFFER_URL", "").strip()
+PRIVACY_URL = os.getenv("PRIVACY_URL", "").strip()
+
+
 def cloudpayments_enabled() -> bool:
     """Настроен ли приём оплаты картой через CloudPayments."""
     return bool(CLOUDPAYMENTS_PUBLIC_ID and CLOUDPAYMENTS_API_SECRET)
 
 
+def yookassa_enabled() -> bool:
+    """Настроен ли приём оплаты картой через ЮKassa (заданы оба ключа)."""
+    return bool(YOOKASSA_SHOP_ID and YOOKASSA_SECRET_KEY)
+
+
 def card_provider() -> str:
     """Активный провайдер оплаты картой: "cloudpayments" | "yookassa" | "none".
 
-    В режиме "auto" провайдер определяется по наличию ключей. Пока ключей нет —
-    "none", но витрина с рублёвой ценой при этом всё равно работает.
+    Явное значение PAYMENT_PROVIDER имеет приоритет (им можно принудительно
+    выключить приём карт, оставив витрину). В режиме "auto" провайдер
+    определяется по наличию ключей: сначала ЮKassa, затем CloudPayments.
+    Пока ключей нет — "none", но витрина с рублёвой ценой всё равно работает.
     """
     if PAYMENT_PROVIDER in ("cloudpayments", "yookassa", "none"):
         return PAYMENT_PROVIDER
-    return "cloudpayments" if cloudpayments_enabled() else "none"
+    if yookassa_enabled():
+        return "yookassa"
+    if cloudpayments_enabled():
+        return "cloudpayments"
+    return "none"
 
 
 def rub_price_for(tariff: str):
     """Цена тарифа в рублях или None, если рублёвая цена не задана."""
     price = RUB_PRICES.get(tariff)
     return price if price and price > 0 else None
+
+
+def tariff_catalog() -> dict:
+    """Каталог тарифов для фронта: срок + рублёвая цена.
+
+    Формат (контракт с фронтом):
+        {"monthly": {"days": 30, "price": 499.0, "currency": "RUB"}, ...}
+
+    В каталог попадают ТОЛЬКО тарифы с заданной рублёвой ценой: продавать
+    тариф, у которого цены нет, нечем (PRICE_*_RUB=0 убирает его с витрины).
+    """
+    catalog = {}
+    for name, cfg in TARIFFS.items():
+        price = rub_price_for(name)
+        if price is None:
+            continue
+        catalog[name] = {
+            "days": cfg.get("days"),
+            "price": float(price),
+            "currency": "RUB",
+        }
+    return catalog
+
+
+def legal_info() -> dict:
+    """Реквизиты продавца для страницы оплаты (пустые значения -> None).
+
+    Их наличие проверяет модерация платёжного сервиса: покупатель должен
+    видеть, кому платит, и иметь ссылки на оферту и политику.
+    """
+    return {
+        "seller": LEGAL_SELLER or None,
+        "inn": LEGAL_INN or None,
+        "contact": SUPPORT_CONTACT or None,
+        "offer_url": OFFER_URL or None,
+        "privacy_url": PRIVACY_URL or None,
+    }
 
 
 # --------------------------------------------------------------------------- #

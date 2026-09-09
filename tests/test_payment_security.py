@@ -165,19 +165,29 @@ def main():
         check("причина — триал уже использован",
               (detail.get("error") if isinstance(detail, dict) else "") == "trial_used", detail)
 
-    # === 7. Счёт Stars нельзя оплатить с чужого аккаунта ===================
-    stars = int(config.TARIFFS["monthly"]["stars"])
-    ok, _ = telegram_bot._validate_pre_checkout({
-        "invoice_payload": "monthly:555", "total_amount": stars, "from": {"id": 555}})
-    check("свой счёт принимается", ok is True)
+    # === 7. Оплата звёздами отключена: pre_checkout ВСЕГДА отклоняется =====
+    # Новых Stars-счетов приложение не выпускает, поэтому любой запрос на
+    # подтверждение оплаты — либо древний счёт, либо попытка провести платёж
+    # мимо витрины. Отказ на pre-checkout безопасен: деньги ещё не списаны.
+    for label, pcq in [
+        ("обычный счёт", {"invoice_payload": "monthly:555", "total_amount": 250,
+                          "from": {"id": 555}}),
+        ("чужой плательщик", {"invoice_payload": "monthly:555", "total_amount": 250,
+                              "from": {"id": 999}}),
+        ("заниженная сумма", {"invoice_payload": "monthly:555", "total_amount": 1,
+                              "from": {"id": 555}}),
+        ("пустой запрос", {}),
+    ]:
+        ok, reason = telegram_bot._validate_pre_checkout(pcq)
+        check(f"pre_checkout ({label}) отклонён", ok is False, (ok, reason))
+        check(f"pre_checkout ({label}): понятная причина",
+              isinstance(reason, str) and "звёзд" in reason.lower(), reason)
 
-    bad, reason = telegram_bot._validate_pre_checkout({
-        "invoice_payload": "monthly:555", "total_amount": stars, "from": {"id": 999}})
-    check("чужой плательщик отклоняется", bad is False, reason)
-
-    bad_amount, _ = telegram_bot._validate_pre_checkout({
-        "invoice_payload": "monthly:555", "total_amount": 1, "from": {"id": 555}})
-    check("заниженная сумма в звёздах отклоняется", bad_amount is False)
+    check("создание Stars-счетов удалено",
+          not hasattr(telegram_bot, "create_stars_invoice_link"),
+          "функция create_stars_invoice_link всё ещё существует")
+    check("у тарифов нет цен в звёздах",
+          all("stars" not in cfg for cfg in config.TARIFFS.values()), config.TARIFFS)
 
     if problems:
         print("FAIL:")
@@ -188,7 +198,7 @@ def main():
     print("OK: неплатёжные уведомления (Check/Fail/Authorized/Refund) доступ не выдают;")
     print("    чужая валюта и отсутствие TransactionId отклоняются; lifetime не понижается;")
     print("    дата окончания не уходит назад; триал не повторяется после удаления аккаунта;")
-    print("    счёт Telegram Stars нельзя оплатить с чужого аккаунта")
+    print("    оплата звёздами отключена — pre_checkout всегда отклоняется")
     return 0
 
 

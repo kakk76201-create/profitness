@@ -4143,11 +4143,9 @@ select.field__input {
   line-height: 1.4;
 }
 
-/* Цена «N ⭐» — крупная, справа в шапке. */
+/* Цена «499 ₽» — крупная, справа в шапке. */
 .sub-tariff__price {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 3px;
+  display: inline-block;
   flex-shrink: 0;
   font-size: 22px;
   font-weight: 800;
@@ -4155,12 +4153,8 @@ select.field__input {
   white-space: nowrap;
 }
 
-/* Значок звезды в цене. */
-.sub-tariff__star {
-  font-size: 16px;
-}
-
-/* Кнопка «Оплатить N ⭐» — наследует .btn .btn--cta (52px). */
+/* Единственная кнопка карточки — «Выбрать» (наследует .btn .btn--cta, 52px).
+   Ведёт на отдельную страницу оплаты, оплата запускается уже там. */
 .sub-tariff__pay {
   margin-top: 0;
 }
@@ -7859,42 +7853,6 @@ select.onb-field__input {
   box-shadow: 0 8px 24px rgba(125, 155, 118, .28);
 }
 
-/* Бейдж «Выгодно» в углу выделенной карточки. */
-.sub-badge {
-  position: absolute;
-  top: -10px;
-  right: 14px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: var(--cta);
-  color: var(--white);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .04em;
-  box-shadow: 0 4px 12px rgba(125, 155, 118, .3);
-}
-
-/* Строка «≈ N ⭐/мес» — приведённая к месяцу цена. */
-.sub-permonth {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--muted);
-  margin-top: 4px;
-}
-
-/* «Экономия N%» — акцентная зелёная подпись. */
-.sub-savings {
-  display: inline-block;
-  margin-top: 6px;
-  padding: 2px 8px;
-  border-radius: 8px;
-  background: rgba(125, 155, 118, .14);
-  color: var(--cta-press);
-  font-size: 12px;
-  font-weight: 700;
-}
-
 /* Пробный период + «истёкшая» подписка (экран подписки). */
 .sub-status__row {
   display: flex;
@@ -7906,6 +7864,33 @@ select.onb-field__input {
 }
 .sub-trial {
   margin-top: 12px;
+}
+
+/* Экономика годового тарифа под названием: «≈ 333 ₽/мес» + «экономия N%». */
+.sub-tariff__econ {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/* Приведённая к месяцу цена годового тарифа. */
+.sub-tariff__permonth {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* «Экономия N%» — акцентная зелёная плашка. */
+.sub-tariff__save {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: rgba(125, 155, 118, .14);
+  color: var(--cta-press);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 /* Опасная кнопка (удаление данных): контурная, красная. Наследует .btn .btn-block. */
@@ -8178,15 +8163,6 @@ select.onb-field__input {
   margin: 6px 2px 0;
   font-size: 11px;
   color: var(--muted);
-}
-
-/* Вторая кнопка оплаты в карточке тарифа — банковской картой.
-   Наследует .btn .btn--ghost; отделяем её от кнопки оплаты звёздами. */
-.sub-tariff__pay-card {
-  margin-top: 8px;
-  width: 100%;
-  min-height: 46px;
-  font-size: 15px;
 }
 
 /* Заметка AI-тренера над подсказками блюд (тренировочный день). */

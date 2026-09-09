@@ -89,12 +89,21 @@ git push -u origin main
 **Важные (иначе поведение изменится):**
 
 `APP_TZ=Europe/Moscow`, `ENABLE_SCHEDULER=1`, `FREE_SCAN_LIMIT=3`, `TRIAL_DAYS=7`,
-`PRICE_MONTHLY_STARS=250`, `PRICE_YEARLY_STARS=2000`, `PRICE_LIFETIME_STARS=4000`,
 `SUBSCRIPTION_MONTHLY_DAYS=30`, `SUBSCRIPTION_YEARLY_DAYS=365`,
 `PRICE_MONTHLY_RUB=499`, `PRICE_YEARLY_RUB=3990`, `PRICE_LIFETIME_RUB=7990`.
 
-**По желанию:** `DEBUG_AI=0`, `PAYMENT_PROVIDER`, `CLOUDPAYMENTS_*`, `MARKET_CLID`,
-`TRIBUTE_*`, `OPENAI_*`, `RATE_LIMIT_*`, `OFF_*`.
+**Оплата картой** (единственный способ оплаты; цены только в рублях):
+`PAYMENT_PROVIDER` (`auto` / `cloudpayments` / `yookassa` / `none`),
+`CLOUDPAYMENTS_PUBLIC_ID`, `CLOUDPAYMENTS_API_SECRET`, `CLOUDPAYMENTS_CURRENCY`,
+`YOOKASSA_SHOP_ID`, `YOOKASSA_SECRET_KEY`, `YOOKASSA_WEBHOOK_SECRET`, `YOOKASSA_RETURN_URL`.
+Адреса вебхуков в кабинетах после переезда меняются на новый домен:
+`/payment/cloudpayments/webhook` и `/payment/yookassa/webhook`.
+
+**Реквизиты продавца** (показываются на странице оплаты, нужны для модерации):
+`LEGAL_SELLER`, `LEGAL_INN`, `SUPPORT_CONTACT`, `OFFER_URL`, `PRIVACY_URL`.
+
+**По желанию:** `DEBUG_AI=0`, `MARKET_CLID`, `TRIBUTE_*`, `OPENAI_*`,
+`RATE_LIMIT_*`, `OFF_*`.
 
 ---
 

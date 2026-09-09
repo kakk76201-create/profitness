@@ -32,6 +32,12 @@ CALC_PER_DAY_FREE = int(os.getenv("RATE_LIMIT_CALC_PER_DAY", "40"))
 # Тяжёлая генерация (план меню на неделю) — с кулдауном.
 HEAVY_PER_MIN = int(os.getenv("RATE_LIMIT_HEAVY_PER_MIN", "2"))
 HEAVY_PER_DAY = int(os.getenv("RATE_LIMIT_HEAVY_PER_DAY", "30"))
+# Создание платежа у платёжного провайдера. Это обращение к внешнему API и
+# запись в кабинете магазина, поэтому частоту ограничиваем — но заметно мягче
+# «тяжёлых» генераций: человек может передумать, вернуться и нажать «Оплатить»
+# ещё раз, и упереться в лимит на пути к деньгам он не должен.
+PAYMENT_PER_MIN = int(os.getenv("RATE_LIMIT_PAYMENT_PER_MIN", "5"))
+PAYMENT_PER_DAY = int(os.getenv("RATE_LIMIT_PAYMENT_PER_DAY", "40"))
 # Поиск блюд во внешней базе. Лимит щедрее (это строка поиска, человек
 # уточняет запрос), но не безграничен: у внешнего сервиса лимит считается по IP
 # ВСЕГО сервера, поэтому один пользователь не должен его выедать.
@@ -91,6 +97,17 @@ def enforce_calc(telegram_id: int, is_premium: bool) -> None:
 def enforce_heavy(telegram_id: int) -> None:
     """Лимит для тяжёлых генераций (план меню на неделю и т.п.)."""
     ok, _why = check(f"heavy:{telegram_id}", HEAVY_PER_MIN, HEAVY_PER_DAY)
+    if not ok:
+        _raise_429()
+
+
+def enforce_payment(telegram_id: int) -> None:
+    """Лимит на создание платежей у провайдера (ЮKassa и т.п.).
+
+    Отдельная корзина, а не общая «тяжёлая»: генерация меню и попытка оплатить
+    не должны съедать лимит друг у друга.
+    """
+    ok, _why = check(f"pay:{telegram_id}", PAYMENT_PER_MIN, PAYMENT_PER_DAY)
     if not ok:
         _raise_429()
 

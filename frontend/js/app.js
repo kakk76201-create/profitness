@@ -43,7 +43,14 @@
       subscription_type: "free",
       subscription_until: null,
       tariffs: {},
-      tribute_url: null
+      tribute_url: null,
+      // Оплата картой в рублях: до загрузки статуса считаем, что приём карт
+      // не подключён (fail-safe — кнопка честно скажет «оплата подключается»).
+      card_enabled: false,
+      card_currency: "RUB",
+      card_prices: {},
+      card_provider: "none",
+      legal: null
     },
 
     // Реестр зарегистрированных страниц: { name: controller }.
@@ -580,8 +587,9 @@
 
     // Статус подписки пользователя.
     // Ответ: {subscription_type, subscription_until, is_premium, is_owner,
-    //   tariffs:{monthly:{stars,days}, yearly:{stars,days}, lifetime:{stars,days}},
-    //   tribute_url}.
+    //   tariffs:{monthly:{days,price,currency}, yearly:{...}, lifetime:{...}},
+    //   card_enabled, card_currency, card_prices, card_provider,
+    //   legal:{seller, inn, contact, offer_url, privacy_url}, tribute_url}.
     getSubscription: function () {
       return request("/subscription/status");
     },
@@ -612,11 +620,12 @@
       );
     },
 
-    // Создание инвойса Telegram Stars для оплаты подписки.
+    // Создание платежа ЮKassa по выбранному тарифу.
     // Тело: {tariff:"monthly"|"yearly"|"lifetime"}.
-    // Ответ: {invoice_link}.
-    createStarsInvoice: function (tariff) {
-      return request("/payment/stars/invoice", {
+    // Ответ: {payment_id, confirmation_url} — страницу подтверждения открываем
+    // во внешнем браузере; доступ активирует вебхук, а не фронт.
+    createYookassaPayment: function (tariff) {
+      return request("/payment/yookassa/create", {
         method: "POST",
         body: { tariff: tariff }
       });
@@ -1192,61 +1201,44 @@
     return false;
   };
 
+  // Тарифы, для которых существует страница оплаты (совпадают с config.TARIFFS).
+  var PAYMENT_TARIFFS = ["monthly", "yearly", "lifetime"];
+
   /**
-   * Запускает оплату подписки тарифом через Telegram Stars.
-   * Получает invoice_link с бэкенда и открывает нативный инвойс Telegram.
-   * После успешной оплаты обновляет статус и переоткрывает текущую страницу.
+   * Открывает отдельную страницу оплаты для выбранного тарифа.
+   * Тариф кладём в App.state.paymentTariff — страница "payment" читает его
+   * при onShow (навигация в приложении без параметров в URL).
    * @param {string} tariff "monthly"|"yearly"|"lifetime"
-   * @returns {Promise}
    */
-  App.payStars = function (tariff) {
-    return App.api
-      .createStarsInvoice(tariff)
-      .then(function (res) {
-        var link = res && res.invoice_link;
-        if (!link) {
-          App.toast(
-            App.pick(
-              "Не удалось создать счёт на оплату",
-              "Failed to create payment invoice"
-            )
-          );
-          return;
-        }
-        if (App.tg && typeof App.tg.openInvoice === "function") {
-          App.tg.openInvoice(link, function (status) {
-            if (status === "paid") {
-              // 'paid' часто приходит РАНЬШЕ, чем вебхук успел активировать
-              // премиум на бэкенде. Поэтому опрашиваем статус несколько раз,
-              // пока is_premium не станет true (иначе UI покажет «активна» на
-              // ещё бесплатном аккаунте).
-              App.toast(App.pick("Оплата получена, активируем доступ…", "Payment received, activating…"));
-              App._pollPremium(6, 1500);
-            } else if (status === "failed") {
-              App.toast(App.pick("Оплата не прошла", "Payment failed"));
-            }
-            // status === "cancelled" / "pending" — молча игнорируем.
-          });
-        } else {
-          // Вне Telegram оплата недоступна.
-          App.toast(
-            App.pick("Оплата доступна в Telegram", "Payment is available in Telegram")
-          );
-        }
-      })
-      .catch(function (err) {
-        App.toast(
-          err && err.message ? err.message : App.pick("Ошибка оплаты", "Payment error")
-        );
-      });
+  App.goPayment = function (tariff) {
+    if (typeof tariff !== "string" || PAYMENT_TARIFFS.indexOf(tariff) === -1) {
+      App.toast(App.pick("Неизвестный тариф", "Unknown plan"));
+      return;
+    }
+    if (!App._pages || !App._pages.payment) {
+      // Страница оплаты не подключена (старая версия ассетов) — не роняем UI.
+      App.toast(
+        App.pick("Оплата временно недоступна", "Payment is temporarily unavailable")
+      );
+      return;
+    }
+    App.state.paymentTariff = tariff;
+    App.navigate("payment");
   };
 
   /* =====================================================================
-   *  ОПЛАТА КАРТОЙ (CloudPayments) — второй способ рядом с Telegram Stars.
+   *  ОПЛАТА КАРТОЙ В РУБЛЯХ — единственный способ оплаты в приложении.
    *
-   *  Виджет подгружается ЛЕНИВО, только когда пользователь реально нажал
-   *  «Оплатить картой»: сторонний скрипт не должен тормозить запуск приложения
-   *  у тех, кто платит звёздами.
+   *  Куда вести пользователя, решает бэкенд полем card_provider:
+   *    "cloudpayments" — виджет CloudPayments прямо в мини-приложении;
+   *    "yookassa"      — платёж создаётся на бэкенде, страница подтверждения
+   *                      открывается во внешнем браузере;
+   *    "none"          — приём карт ещё не подключён (витрина с ценой видна,
+   *                      это нужно для модерации в платёжном сервисе).
+   *
+   *  Виджет CloudPayments подгружается ЛЕНИВО, только когда пользователь
+   *  реально начал оплату: сторонний скрипт не должен тормозить запуск
+   *  приложения у всех остальных.
    *
    *  ВАЖНО: доступ выдаётся ТОЛЬКО вебхуком с проверенной подписью. Колбэк
    *  onSuccess здесь используется исключительно для UI (показать «активируем…»
@@ -1292,7 +1284,7 @@
    * @param {string} tariff "monthly" | "yearly" | "lifetime"
    * @returns {Promise}
    */
-  App.payCard = function (tariff) {
+  function payCardCloudPayments(tariff) {
     return App.api
       .getCardPaymentConfig(tariff)
       .then(function (cfg) {
@@ -1329,7 +1321,9 @@
                   resolve();
                 },
                 onComplete: function () {
-                  /* вызывается в любом случае — отдельная реакция не нужна */
+                  // Вызывается при любом закрытии виджета (в т.ч. крестиком):
+                  // страховка, чтобы промис не завис и оверлей загрузки снялся.
+                  resolve();
                 }
               }
             );
@@ -1341,6 +1335,79 @@
           err && err.message ? err.message : App.pick("Ошибка оплаты", "Payment error")
         );
       });
+  }
+
+  /**
+   * Оплата подписки банковской картой через ЮKassa.
+   * Бэкенд создаёт платёж и отдаёт confirmation_url — открываем его во внешнем
+   * браузере (в WebView Telegram платёжная форма может не работать) и ждём
+   * активации доступа вебхуком, опрашивая статус подписки.
+   * @param {string} tariff "monthly" | "yearly" | "lifetime"
+   * @returns {Promise}
+   */
+  function payCardYookassa(tariff) {
+    return App.api
+      .createYookassaPayment(tariff)
+      .then(function (res) {
+        var url = res && res.confirmation_url;
+        if (!url) {
+          throw new Error(
+            App.pick("Не удалось создать платёж", "Failed to create payment")
+          );
+        }
+        if (App.tg && typeof App.tg.openLink === "function") {
+          App.tg.openLink(url);
+        } else if (typeof window.open === "function") {
+          window.open(url, "_blank");
+        } else {
+          throw new Error(
+            App.pick("Ссылка для оплаты недоступна", "Payment link is unavailable")
+          );
+        }
+        App.toast(
+          App.pick(
+            "Завершите оплату в браузере — доступ появится автоматически",
+            "Finish the payment in your browser — access will appear automatically"
+          )
+        );
+        // Оплата идёт во внешнем браузере: ждём дольше, чем при виджете.
+        App._pollPremium(20, 3000);
+      })
+      .catch(function (err) {
+        App.toast(
+          err && err.message ? err.message : App.pick("Ошибка оплаты", "Payment error")
+        );
+      });
+  }
+
+  /**
+   * Единая точка входа для оплаты картой: выбирает провайдера по
+   * App.subscription.card_provider и передаёт ему управление.
+   * Промис НИКОГДА не реджектится — об ошибках сообщаем тостом, чтобы вызывающая
+   * страница могла спокойно разблокировать кнопку в .then/.finally.
+   * @param {string} tariff "monthly" | "yearly" | "lifetime"
+   * @returns {Promise}
+   */
+  App.payCard = function (tariff) {
+    var provider =
+      (App.subscription && App.subscription.card_provider) || "none";
+
+    if (provider === "cloudpayments") {
+      return payCardCloudPayments(tariff);
+    }
+    if (provider === "yookassa") {
+      return payCardYookassa(tariff);
+    }
+
+    // Приём карт ещё не подключён: цену и кнопку показываем (витрина с ценой
+    // нужна для модерации в платёжном сервисе), но честно об этом говорим.
+    App.toast(
+      App.pick(
+        "Оплата картой подключается. Попробуйте позже.",
+        "Card payment is being connected. Please try again later."
+      )
+    );
+    return Promise.resolve();
   };
 
   /**

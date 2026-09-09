@@ -601,26 +601,29 @@ class SupplementRecommendOut(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
-#  Подписка и доступ (Этап 1): статус подписки, лимит сканов, оплата Stars
+#  Подписка и доступ (Этап 1): статус подписки, лимит сканов, оплата картой
 # --------------------------------------------------------------------------- #
 class SubscriptionStatusOut(BaseModel):
     """Текущий статус подписки пользователя и доступные тарифы.
 
     is_premium вычисляется ТОЛЬКО на бэкенде (owner / lifetime / активная дата),
     фронт использует его лишь для отображения, но не для контроля доступа.
-    tariffs — словарь тарифов из конфига (цены берутся из env, не хардкодятся).
+    tariffs — каталог тарифов (config.tariff_catalog): срок и РУБЛЁВАЯ цена.
+    Оплата Telegram Stars убрана, поэтому цен в звёздах здесь больше нет.
     """
 
     subscription_type: str                       # "free" | "monthly" | "yearly" | "lifetime" | "trial"
     subscription_until: Optional[str] = None     # ISO-дата окончания подписки (или None)
     is_premium: bool                             # есть ли активный премиум-доступ
     is_owner: bool                               # является ли пользователь владельцем
-    tariffs: Dict[str, Any]                      # доступные тарифы (config.TARIFFS)
+    # Каталог тарифов: {"monthly": {"days": 30, "price": 499.0, "currency": "RUB"}, ...}
+    # Только тарифы с заданной рублёвой ценой (PRICE_*_RUB=0 убирает тариф).
+    tariffs: Dict[str, Any]
     tribute_url: Optional[str] = None            # ссылка оплаты через Tribute (или None)
     # Триал и «истёкшее» состояние (для UX экрана подписки).
     is_trial_available: bool = False             # можно ли активировать пробный период
     trial_days: int = 0                          # длительность пробного периода (дней)
-    # Оплата картой (CloudPayments) как ВТОРОЙ способ рядом с Telegram Stars.
+    # Оплата картой в рублях — ЕДИНСТВЕННЫЙ способ оплаты внутри приложения.
     card_enabled: bool = False                   # показывать ли рублёвую цену и кнопку
     card_currency: str = "RUB"                   # валюта списания
     card_prices: Dict[str, float] = {}           # цены тарифов в рублях (только заданные)
@@ -628,6 +631,9 @@ class SubscriptionStatusOut(BaseModel):
     # "none" — витрина показывается, но приём карт ещё не подключён.
     card_provider: str = "none"
     is_expired: bool = False                     # подписка была, но истекла (не free)
+    # Реквизиты продавца для страницы оплаты (см. config.legal_info):
+    # seller / inn / contact / offer_url / privacy_url; незаданные — None.
+    legal: Dict[str, Optional[str]] = {}
 
 
 class ScansRemainingOut(BaseModel):
@@ -642,16 +648,21 @@ class ScansRemainingOut(BaseModel):
     is_premium: bool                             # активен ли премиум (безлимит)
 
 
-class StarsInvoiceIn(BaseModel):
-    """Запрос на создание счёта Telegram Stars для выбранного тарифа."""
+class YookassaCreateIn(BaseModel):
+    """Запрос на создание платежа ЮKassa для выбранного тарифа."""
 
     tariff: str                                  # "monthly" | "yearly" | "lifetime"
 
 
-class StarsInvoiceOut(BaseModel):
-    """Ссылка-счёт Telegram Stars, которую фронт открывает для оплаты."""
+class YookassaCreateOut(BaseModel):
+    """Созданный платёж ЮKassa: id и адрес страницы оплаты.
 
-    invoice_link: str                            # invoice link от Bot API
+    Фронт открывает confirmation_url во внешнем браузере; доступ выдаётся не по
+    возврату из браузера, а по вебхуку с последующей сверкой платежа по API.
+    """
+
+    payment_id: str                              # идентификатор платежа в ЮKassa
+    confirmation_url: str                        # страница оплаты (redirect)
 
 
 # --------------------------------------------------------------------------- #

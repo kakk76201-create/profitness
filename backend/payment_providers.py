@@ -1,8 +1,8 @@
 """
 Единый слой активации подписки (расширяемый под разных провайдеров).
 
-Любой провайдер оплаты (Telegram Stars, Tribute, ручная выдача владельцем
-и т.д.) в итоге вызывает один и тот же ``activate_premium``. Это держит
+Любой провайдер оплаты (CloudPayments, ЮKassa, Tribute, ручная выдача
+владельцем и т.д.) в итоге вызывает один и тот же ``activate_premium``. Это держит
 логику начисления доступа в одном месте: тип подписки, продление срока,
 запись платежа. Так новый провайдер не дублирует бизнес-логику, а лишь
 парсит свой формат и передаёт сюда нормализованные данные.
@@ -44,9 +44,10 @@ def activate_premium(
       - telegram_id — Telegram ID пользователя (если записи нет — создаём
                       минимального пользователя, чтобы не потерять оплату);
       - tariff      — имя тарифа ("monthly" | "yearly" | "lifetime"), из config;
-      - provider    — источник оплаты ("stars" | "tribute" | "owner" и т.п.);
+      - provider    — источник оплаты ("cloudpayments" | "yookassa" |
+                      "tribute" | "trial" | "owner" и т.п.);
       - amount      — сумма платежа (как пришла от провайдера; может быть None/0);
-      - currency    — валюта платежа ("XTR" для Stars и т.д.).
+      - currency    — валюта платежа ("RUB" для оплаты картой и т.д.).
 
     Логика срока:
       - если у тарифа days is None ("lifetime") — ставим subscription_type
@@ -240,7 +241,7 @@ def apply_pending_grants(db: Session, telegram_id: int, username: str | None) ->
                 if row.days and int(row.days) > 0:
                     grant_days(db, telegram_id, int(row.days), "owner", subscription_type="monthly")
                 else:
-                    activate_premium(db, telegram_id, "lifetime", "owner", 0, "XTR")
+                    activate_premium(db, telegram_id, "lifetime", "owner", 0, "RUB")
                 row.applied_at = datetime.utcnow()
                 row.applied_to = telegram_id
                 db.commit()

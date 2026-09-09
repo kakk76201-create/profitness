@@ -27,6 +27,7 @@ os.environ["ALLOW_INSECURE_AUTH"] = "1"
 def build_app(**env):
     """Пересобрать приложение с заданным окружением."""
     for key in ("CLOUDPAYMENTS_PUBLIC_ID", "CLOUDPAYMENTS_API_SECRET",
+                "YOOKASSA_SHOP_ID", "YOOKASSA_SECRET_KEY",
                 "PRICE_MONTHLY_RUB", "PRICE_YEARLY_RUB", "PRICE_LIFETIME_RUB",
                 "PAYMENT_PROVIDER"):
         os.environ.pop(key, None)
@@ -36,6 +37,8 @@ def build_app(**env):
     importlib.reload(backend.config)
     import backend.cloudpayments
     importlib.reload(backend.cloudpayments)
+    import backend.yookassa
+    importlib.reload(backend.yookassa)
     import backend.main
     importlib.reload(backend.main)
 
@@ -66,9 +69,13 @@ def main():
     check("цена месячного есть", prices.get("monthly", 0) > 0, prices)
     check("цена годового есть", prices.get("yearly", 0) > 0, prices)
     check("цена вечного есть", prices.get("lifetime", 0) > 0, prices)
-    check("звёзды никуда не делись",
+    check("все три тарифа в каталоге",
           set(status.get("tariffs", {})) == {"monthly", "yearly", "lifetime"},
           sorted(status.get("tariffs", {})))
+    check("в каталоге только рубли (цен в звёздах нет)",
+          all(set(cfg) == {"days", "price", "currency"} and cfg["currency"] == "RUB"
+              for cfg in status.get("tariffs", {}).values()),
+          status.get("tariffs"))
 
     # Оплатить картой пока нельзя — ключей нет.
     resp = client.get("/payment/cloudpayments/config", params={"tariff": "monthly"})
@@ -81,6 +88,9 @@ def main():
     check("своя цена месячного", prices.get("monthly") == 349, prices)
     check("своя цена годового", prices.get("yearly") == 2990, prices)
     check("нулевая цена скрывает тариф из витрины", "lifetime" not in prices, prices)
+    check("тариф без цены исчезает и из каталога",
+          "lifetime" not in (client.get("/subscription/status").json().get("tariffs") or {}),
+          client.get("/subscription/status").json().get("tariffs"))
 
     # --- 3. Подключение CloudPayments переключает провайдера ---------------
     client = build_app(CLOUDPAYMENTS_PUBLIC_ID="pk", CLOUDPAYMENTS_API_SECRET="sec")
@@ -89,7 +99,13 @@ def main():
           status.get("card_provider"))
     check("витрина осталась", status.get("card_enabled") is True, status.get("card_enabled"))
 
-    # --- 4. Провайдера можно задать явно (сценарий ЮKassa) -----------------
+    # --- 4. Ключи ЮKassa переключают провайдера ----------------------------
+    client = build_app(YOOKASSA_SHOP_ID="123456", YOOKASSA_SECRET_KEY="live_secret")
+    status = client.get("/subscription/status").json()
+    check("провайдер = yookassa по ключам", status.get("card_provider") == "yookassa",
+          status.get("card_provider"))
+
+    # Провайдера можно задать и явно — это перебивает автоопределение.
     client = build_app(PAYMENT_PROVIDER="yookassa")
     status = client.get("/subscription/status").json()
     check("явный провайдер уважается", status.get("card_provider") == "yookassa",

@@ -3,9 +3,8 @@
 
 Здесь сосредоточена вся «бот-сторона» подписки:
   * _bot_api(method, payload)        — низкоуровневый вызов Telegram Bot API;
-  * create_stars_invoice_link(...)   — создание ссылки на счёт в Telegram Stars;
   * handle_update(db, update)        — обработка входящего апдейта (webhook):
-        - pre_checkout_query     -> подтверждаем оплату (answerPreCheckoutQuery);
+        - pre_checkout_query     -> ВСЕГДА отказ (оплата звёздами отключена);
         - successful_payment     -> активируем premium (payment_providers);
         - /givepro | /revokepro  -> ручная выдача/отзыв доступа ВЛАДЕЛЬЦЕМ;
         - /start                 -> приветственное сообщение.
@@ -44,7 +43,7 @@ from datetime import datetime
 
 from sqlalchemy import func
 
-from backend.config import OWNER_ID, TARIFFS, BOT_USERNAME, MINI_APP_URL
+from backend.config import OWNER_ID, BOT_USERNAME, MINI_APP_URL
 from backend.models import User, ProGrant, DiaryEntry, Payment
 from backend import payment_providers
 from backend import subscription
@@ -162,43 +161,13 @@ def _alert_owner_payment(text: str) -> None:
 def _validate_pre_checkout(pcq: dict) -> tuple[bool, str | None]:
     """Проверить pre_checkout_query перед подтверждением оплаты.
 
-    Валидны: payload вида "{tariff}:{telegram_id}", известный тариф, сумма счёта
-    (total_amount, в звёздах) совпадает с ценой тарифа. Иначе — отказ.
+    ОПЛАТА ЗВЁЗДАМИ ОТКЛЮЧЕНА: приложение продаёт подписку только за рубли и
+    новых Stars-счетов не выпускает. Значит любой pre_checkout_query сейчас —
+    либо очень старый счёт, либо чужая попытка провести платёж мимо витрины,
+    поэтому ВСЕГДА отвечаем отказом. Отказ именно на этом шаге безопасен:
+    деньги ещё не списаны, пользователь ничего не теряет.
     """
-    try:
-        payload = pcq.get("invoice_payload", "") or ""
-        tariff, tid_raw = payload.split(":", 1)
-        target_id = int(tid_raw)  # кому предназначен счёт
-        t = TARIFFS.get(tariff)
-        if not t:
-            return False, "Неизвестный тариф."
-        expected = int(t.get("stars") or 0)
-        total = pcq.get("total_amount")
-        if expected and total is not None and int(total) != expected:
-            logger.warning(
-                "pre_checkout: сумма %s != ожидаемой %s (tariff=%s)", total, expected, tariff
-            )
-            return False, "Сумма счёта не совпадает."
-
-        # ПЛАТЕЛЬЩИК должен совпадать с получателем доступа. Ссылку на счёт
-        # можно переслать кому угодно: без этой проверки звёзды списались бы у
-        # постороннего, а подписка продлилась бы тому, кто создал счёт.
-        # Отказ именно на pre-checkout важен: деньги ещё не списаны.
-        payer_id = None
-        try:
-            payer_id = int((pcq.get("from") or {}).get("id"))
-        except (TypeError, ValueError):
-            payer_id = None
-        if payer_id is not None and payer_id != target_id:
-            logger.warning(
-                "pre_checkout: плательщик %s != получателя %s — отказ", payer_id, target_id
-            )
-            return False, "Счёт выписан на другого пользователя."
-
-        return True, None
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("pre_checkout: невалидный payload: %s", exc)
-        return False, "Счёт недействителен."
+    return False, "Оплата звёздами отключена"
 
 
 # --------------------------------------------------------------------------- #
@@ -374,66 +343,6 @@ def _download_file(file_path: str) -> bytes | None:
     except Exception as exc:
         logger.warning("_download_file: ошибка скачивания файла: %s", exc)
         return None
-
-
-# --------------------------------------------------------------------------- #
-#  Создание ссылки на счёт в Telegram Stars
-# --------------------------------------------------------------------------- #
-def create_stars_invoice_link(tariff: str, telegram_id: int) -> str:
-    """
-    Создать ссылку на оплату подписки через Telegram Stars (метод createInvoiceLink).
-
-    Цена берётся из config.TARIFFS[tariff]["stars"] (в звёздах, валюта XTR).
-    В payload счёта кодируем "{tariff}:{telegram_id}" — это вернётся обратно
-    в successful_payment, и по нему мы поймём, кому и какую подписку активировать.
-
-    Возвращает строку-ссылку. При любой ошибке (неизвестный тариф, сбой Bot API)
-    бросает RuntimeError("Не удалось создать счёт") — вызывающий код в main.py
-    превратит это в HTTP 502.
-    """
-    t = TARIFFS.get(tariff)
-    if not t:
-        # Неизвестный тариф — счёт создать нельзя.
-        logger.warning("create_stars_invoice_link: неизвестный тариф %r", tariff)
-        raise RuntimeError("Не удалось создать счёт")
-
-    # Цена в звёздах. Для XTR amount задаётся в самих звёздах (не в копейках).
-    stars = int(t.get("stars") or 0)
-
-    # Человекочитаемое название тарифа для счёта.
-    titles = {
-        "monthly": "Подписка на месяц",
-        "yearly": "Подписка на год",
-        "lifetime": "Пожизненная подписка",
-    }
-    title = titles.get(tariff, "Подписка")
-    description = "Доступ к премиум-функциям приложения «Калории»."
-
-    # payload вернётся в successful_payment — по нему активируем нужного юзера.
-    payload = f"{tariff}:{telegram_id}"
-
-    result = _bot_api(
-        "createInvoiceLink",
-        {
-            "title": title,
-            "description": description,
-            "payload": payload,
-            # Платёж в Telegram Stars — валюта XTR без провайдер-токена.
-            "currency": "XTR",
-            "prices": [{"label": "Подписка", "amount": stars}],
-        },
-    )
-
-    # Telegram возвращает строку-ссылку прямо в result.
-    if isinstance(result, str) and result:
-        return result
-
-    # Не получили ссылку — сигнализируем наверх ошибкой.
-    logger.warning(
-        "create_stars_invoice_link: Bot API не вернул ссылку (tariff=%s, tid=%s)",
-        tariff, telegram_id,
-    )
-    raise RuntimeError("Не удалось создать счёт")
 
 
 # --------------------------------------------------------------------------- #
@@ -922,7 +831,7 @@ def _handle_owner_command(db, message: dict, text: str) -> None:
                 payment_providers.grant_days(db, int(target_id), days, "owner", subscription_type="monthly")
                 result_text = f"Готово: @{uname_display} получил доступ на {days} дн."
             else:
-                payment_providers.activate_premium(db, int(target_id), "lifetime", "owner", 0, "XTR")
+                payment_providers.activate_premium(db, int(target_id), "lifetime", "owner", 0, "RUB")
                 result_text = f"Готово: @{uname_display} получил пожизненный доступ."
         else:
             payment_providers.revoke_premium(db, int(target_id))
@@ -1137,8 +1046,9 @@ def handle_update(db, update: dict) -> None:
     Обработать один входящий апдейт Telegram (приходит на /telegram/webhook).
 
     Поддерживаемые виды апдейтов:
-      * pre_checkout_query        — подтверждаем готовность принять оплату;
-      * message.successful_payment — оплата прошла, активируем premium;
+      * pre_checkout_query        — ВСЕГДА отказ (оплата звёздами отключена);
+      * message.successful_payment — оплата прошла, активируем premium
+        (оставлено для старых, ещё не оплаченных Stars-счетов);
       * message.voice|audio       — голосовой ввод еды (премиум, Этап 2);
       * message.text /givepro|/revokepro — команды владельца (см. выше);
       * message.text /start       — приветствие.
@@ -1154,9 +1064,9 @@ def handle_update(db, update: dict) -> None:
         if isinstance(pre_checkout, dict):
             pcq_id = pre_checkout.get("id")
             if pcq_id is not None:
-                # Валидируем счёт ПЕРЕД подтверждением: payload "{tariff}:{tid}",
-                # тариф из TARIFFS, сумма совпадает с ценой тарифа. Иначе — отказ,
-                # чтобы не принять оплату по поддельному/несогласованному счёту.
+                # Оплата звёздами отключена — счета больше не выпускаются,
+                # поэтому _validate_pre_checkout всегда возвращает отказ, и мы
+                # отвечаем ok=false. Деньги на этом шаге ещё не списаны.
                 ok, err = _validate_pre_checkout(pre_checkout)
                 payload = {"pre_checkout_query_id": pcq_id, "ok": ok}
                 if not ok:
@@ -1179,9 +1089,12 @@ def handle_update(db, update: dict) -> None:
         _touch_user(db, message.get("from") or {})
 
         # --- 2) Успешная оплата -> активируем premium ------------------------- #
+        # LEGACY: новых Stars-счетов приложение не выпускает (оплата только
+        # картой в рублях), но обработчик оставлен — если где-то остался старый
+        # неоплаченный счёт и деньги всё же спишутся, доступ нужно выдать.
         successful_payment = message.get("successful_payment")
         if isinstance(successful_payment, dict):
-            # payload мы задали при создании счёта: "{tariff}:{telegram_id}".
+            # payload мы задавали при создании счёта: "{tariff}:{telegram_id}".
             payload = successful_payment.get("invoice_payload", "") or ""
             charge_id = successful_payment.get("telegram_payment_charge_id") or None
             chat_id = message.get("chat", {}).get("id")

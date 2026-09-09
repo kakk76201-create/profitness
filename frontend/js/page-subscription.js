@@ -12,14 +12,16 @@
  *        - премиум  -> «Подписка активна» + «до <дата>» (или «Навсегда»
  *          для lifetime/owner);
  *        - free     -> «Бесплатный доступ».
- *   2. КАРТОЧКИ ТАРИФОВ из App.subscription.tariffs:
+ *   2. КАРТОЧКИ ТАРИФОВ из App.subscription.tariffs ({days, price, currency}):
  *        Месячный (monthly), Годовой (yearly), Вечный (lifetime).
- *        У каждого — цена «N ⭐» и кнопка «Оплатить N ⭐» -> App.payStars(tariff).
+ *        У каждого — цена в рублях и кнопка «Выбрать» -> App.goPayment(tariff),
+ *        которая открывает отдельную страницу оплаты ("payment"). Сама оплата
+ *        здесь НЕ запускается: страница подписки — это витрина.
  *   3. Если задан App.subscription.tribute_url — кнопка «Оплатить через Tribute»
  *        -> (App.tg.openLink || window.open)(tribute_url).
  *
  * Контроль доступа — на сервере (платные роуты отдают 402). Эта страница лишь
- * показывает варианты оплаты и текущий статус. При показе и после оплаты статус
+ * показывает тарифы и текущий статус. При показе и после оплаты статус
  * обновляется через App.refreshSubscription().
  *
  * Локализация RU/EN: все пользовательские строки обёрнуты в App.pick(ru, en)
@@ -126,12 +128,28 @@
       is_trial_available: !!s.is_trial_available,
       trial_days: Number(s.trial_days) || 0,
       is_expired: !!s.is_expired,
-      // Оплата картой (второй способ рядом с Telegram Stars).
+      // Оплата картой в рублях — единственный способ оплаты в приложении.
       card_enabled: !!s.card_enabled,
       card_currency: s.card_currency || "RUB",
       card_prices: s.card_prices || {},
       card_provider: s.card_provider || "none"
     };
+  }
+
+  /**
+   * Склонение слова «день» по числу (для русского текста):
+   * 1 день, 2–4 дня, 5–20 дней, 21 день и т. д.
+   * @param {number} n
+   * @returns {string}
+   */
+  function daysWordRu(n) {
+    var num = Math.abs(Number(n)) || 0;
+    var tail100 = num % 100;
+    if (tail100 >= 11 && tail100 <= 14) return "дней";
+    var tail10 = num % 10;
+    if (tail10 === 1) return "день";
+    if (tail10 >= 2 && tail10 <= 4) return "дня";
+    return "дней";
   }
 
   /**
@@ -179,35 +197,64 @@
   }
 
   /**
-   * Безопасно достаёт цену в звёздах для тарифа (или null, если не задано).
+   * Безопасно достаёт цену тарифа: {price:number, currency:string} или null,
+   * если рублёвой цены нет (такой тариф на витрине не показываем).
+   * Основной источник — s.tariffs[key] ({days, price, currency}); фолбэк —
+   * s.card_prices[key] (та же рублёвая витрина в плоском виде).
+   * @param {object} s результат sub()
+   * @param {string} key "monthly" | "yearly" | "lifetime"
    */
-  function tariffStars(tariffs, key) {
-    var t = tariffs && tariffs[key];
-    if (!t) return null;
-    var stars = Number(t.stars);
-    return isFinite(stars) ? stars : null;
+  function tariffPrice(s, key) {
+    var t = s.tariffs && s.tariffs[key];
+    var price = t ? Number(t.price) : NaN;
+    var currency = (t && t.currency) || s.card_currency || "RUB";
+
+    if (!isFinite(price) || price <= 0) {
+      price = Number(s.card_prices && s.card_prices[key]);
+      currency = s.card_currency || "RUB";
+    }
+    if (!isFinite(price) || price <= 0) return null;
+    return { price: price, currency: currency };
+  }
+
+  /**
+   * Форматирует сумму для показа: целые — без дробной части («499 ₽»),
+   * иначе два знака («499.50 ₽»). Для RUB — символ ₽, иначе код валюты.
+   * @param {number} price
+   * @param {string} currency
+   * @returns {string}
+   */
+  function formatPrice(price, currency) {
+    var n = Number(price);
+    if (!isFinite(n)) return "";
+    var shown = n % 1 === 0 ? String(n) : n.toFixed(2);
+    var cur = currency || "RUB";
+    return shown + " " + (cur === "RUB" ? "₽" : cur);
   }
 
   /**
    * Считает «экономику» годового тарифа относительно месячного:
-   *   - perMonth — сколько ⭐/мес выходит по годовому (yearly.stars / 12);
+   *   - perMonth — во сколько за месяц обходится годовой (yearly.price / 12);
    *   - savePct  — процент экономии против 12× месячных.
    * Возвращает null, если данных недостаточно или экономии нет
    * (тогда никакой рекламной подписи не показываем — честно).
+   * @param {object} s результат sub()
    */
-  function yearlyEconomy(tariffs) {
-    var yearly = tariffStars(tariffs, "yearly");
-    var monthly = tariffStars(tariffs, "monthly");
-    if (yearly == null || yearly <= 0) return null;
+  function yearlyEconomy(s) {
+    var yearly = tariffPrice(s, "yearly");
+    var monthly = tariffPrice(s, "monthly");
+    if (!yearly) return null;
 
-    var perMonth = Math.round(yearly / 12);
+    var perMonth = Math.round(yearly.price / 12);
     var savePct = null;
-    if (monthly != null && monthly > 0) {
-      var fullYear = monthly * 12;
-      savePct = Math.round((1 - yearly / fullYear) * 100);
-      if (savePct <= 0) savePct = null; // экономии нет — не завышаем
+    if (monthly) {
+      var fullYear = monthly.price * 12;
+      if (fullYear > 0) {
+        savePct = Math.round((1 - yearly.price / fullYear) * 100);
+        if (savePct <= 0) savePct = null; // экономии нет — не завышаем
+      }
     }
-    return { perMonth: perMonth, savePct: savePct };
+    return { perMonth: perMonth, currency: yearly.currency, savePct: savePct };
   }
 
   /* =====================================================================
@@ -283,8 +330,8 @@
       '<p class="sub-foot">' +
       esc(
         pick(
-          "Оплата проходит через Telegram. Доступ открывается сразу после оплаты.",
-          "Payment goes through Telegram. Access opens right after payment."
+          "Оплата банковской картой в рублях. Разовый платёж без автопродления, доступ открывается сразу после оплаты.",
+          "Payment by bank card in rubles. One-time payment without auto-renewal, access opens right after payment."
         )
       ) +
       "</p>" +
@@ -344,8 +391,8 @@
         trialHtml =
           '<button type="button" class="btn btn--cta btn-block sub-trial" id="subTrial">' +
           esc(pick(
-            "🎁 Попробовать " + s.trial_days + " дней бесплатно",
-            "🎁 Try " + s.trial_days + " days free"
+            "🎁 Попробовать " + s.trial_days + " " + daysWordRu(s.trial_days) + " бесплатно",
+            "🎁 Try " + s.trial_days + (s.trial_days === 1 ? " day" : " days") + " free"
           )) +
           "</button>";
       }
@@ -405,17 +452,16 @@
     if (!box) return;
 
     var s = sub();
-    var tariffs = s.tariffs || {};
 
-    // «Экономика» годового тарифа (⭐/мес и процент экономии) — для рекламных
+    // «Экономика» годового тарифа (₽/мес и процент экономии) — для рекламных
     // подписей и подсветки самой выгодной карточки.
-    var economy = yearlyEconomy(tariffs);
+    var economy = yearlyEconomy(s);
 
-    // Собираем только те тарифы, для которых сервер вернул цену.
+    // Собираем только те тарифы, для которых сервер вернул рублёвую цену.
     var cards = [];
     TARIFF_META.forEach(function (meta) {
-      var stars = tariffStars(tariffs, meta.key);
-      if (stars == null) return; // тариф недоступен — пропускаем
+      var priceInfo = tariffPrice(s, meta.key);
+      if (!priceInfo) return; // цены нет — тариф не показываем
 
       var isYearly = meta.key === "yearly";
       // Подсвечиваем годовой как «самый выгодный» вариант.
@@ -431,16 +477,14 @@
         ? '<span class="sub-tariff__badge">' + esc(badgeText) + "</span>"
         : "";
 
-      // Для годового тарифа — подпись «≈ N⭐/мес» и «экономия M%».
+      // Для годового тарифа — подпись «≈ N ₽/мес» и «экономия M%».
       var econHtml = "";
       if (isYearly && economy) {
+        var perMonthShown = formatPrice(economy.perMonth, economy.currency);
         var perMonthLine =
           '<span class="sub-tariff__permonth">' +
           esc(
-            pick(
-              "≈ " + economy.perMonth + " ⭐/мес",
-              "≈ " + economy.perMonth + " ⭐/mo"
-            )
+            pick("≈ " + perMonthShown + "/мес", "≈ " + perMonthShown + "/mo")
           ) +
           "</span>";
         var saveLine =
@@ -479,17 +523,14 @@
           econHtml +
           "</div>" +
           '<div class="sub-tariff__price">' +
-          esc(String(stars)) +
-          " <span class=\"sub-tariff__star\" aria-hidden=\"true\">⭐</span>" +
+          esc(formatPrice(priceInfo.price, priceInfo.currency)) +
           "</div>" +
           "</div>" +
           '<button type="button" class="btn btn--cta sub-tariff__pay" data-tariff="' +
           esc(meta.key) +
           '">' +
-          esc(pick("Оплатить ", "Pay ")) +
-          esc(String(stars)) +
-          " ⭐</button>" +
-          cardPayButtonHtml(meta.key) +
+          esc(pick("Выбрать", "Choose")) +
+          "</button>" +
           "</article>"
       );
     });
@@ -514,92 +555,22 @@
       return;
     }
 
+    // Для премиум-пользователя это уже не «выбор», а продление: дни складываются.
+    var sectionTitle = s.is_premium
+      ? pick("Продлить", "Extend")
+      : pick("Тарифы", "Plans");
+
     box.innerHTML =
       '<h2 class="sub-section-title">' +
-      esc(pick("Тарифы", "Plans")) +
+      esc(sectionTitle) +
       "</h2>" +
       cards.join("");
 
-    // Навешиваем обработчики оплаты на кнопки тарифов.
+    // Кнопка «Выбрать» ведёт на отдельную страницу оплаты.
     var payBtns = box.querySelectorAll(".sub-tariff__pay");
     for (var i = 0; i < payBtns.length; i++) {
-      payBtns[i].addEventListener("click", onPay);
+      payBtns[i].addEventListener("click", onChoose);
     }
-
-    // Оплата картой — второй способ рядом со звёздами.
-    var cardBtns = box.querySelectorAll(".sub-tariff__pay-card");
-    for (var c = 0; c < cardBtns.length; c++) {
-      cardBtns[c].addEventListener("click", onPayCard);
-    }
-  }
-
-  /**
-   * Разметка кнопки «Оплатить картой» для тарифа.
-   * Показывается по наличию РУБЛЁВОЙ ЦЕНЫ и не зависит от того, подключена ли
-   * платёжная система: витрина с ценой в рублях нужна в том числе для
-   * модерации в платёжном сервисе. Пустая строка — только если у тарифа нет
-   * рублёвой цены (тогда остаётся оплата звёздами).
-   * @param {string} tariffKey
-   * @returns {string}
-   */
-  function cardPayButtonHtml(tariffKey) {
-    var s = sub();
-    if (!s.card_enabled) return "";
-
-    var price = s.card_prices && s.card_prices[tariffKey];
-    if (!price) return "";
-
-    // Целые суммы показываем без дробной части («499 ₽», а не «499.0 ₽»).
-    var shown = Number(price);
-    shown = shown % 1 === 0 ? String(shown) : shown.toFixed(2);
-    var symbol = s.card_currency === "RUB" ? "₽" : esc(s.card_currency);
-
-    return (
-      '<button type="button" class="btn btn--ghost sub-tariff__pay-card" data-tariff="' +
-      esc(tariffKey) +
-      '">' +
-      esc(pick("💳 Оплатить ", "💳 Pay ")) +
-      esc(shown) +
-      " " + symbol +
-      "</button>"
-    );
-  }
-
-  /**
-   * Обработчик оплаты банковской картой.
-   * Куда вести — решает бэкенд полем card_provider; доступ в любом случае
-   * активирует вебхук, фронт деньги не начисляет.
-   */
-  function onPayCard(e) {
-    var btn = e && e.currentTarget;
-    var tariff = btn && btn.getAttribute("data-tariff");
-    if (!tariff) return;
-
-    haptic("light");
-
-    // Приём карт ещё не подключён: цену и кнопку показываем (они нужны для
-    // модерации в платёжном сервисе), но честно говорим, что оплата скоро.
-    if (sub().card_provider === "none") {
-      toast(pick(
-        "Оплата картой скоро будет доступна. Сейчас можно оплатить звёздами.",
-        "Card payment is coming soon. For now you can pay with Stars."
-      ));
-      return;
-    }
-
-    if (typeof App.payCard !== "function") {
-      toast(pick("Оплата картой недоступна", "Card payment unavailable"));
-      return;
-    }
-
-    if (btn) btn.disabled = true;
-    Promise.resolve(App.payCard(tariff))
-      .then(function () {
-        renderAll();
-      })
-      .finally(function () {
-        if (btn) btn.disabled = false;
-      });
   }
 
   /**
@@ -652,44 +623,22 @@
    * ===================================================================== */
 
   /**
-   * Обработчик кнопки «Оплатить N ⭐» — запускает оплату звёздами Telegram
-   * через единый App.payStars. После успешной оплаты статус обновляется
-   * внутри App.payStars; здесь дополнительно перерисовываем UI.
+   * Обработчик кнопки «Выбрать» — открывает отдельную страницу оплаты
+   * ("payment") для выбранного тарифа. Сама оплата запускается уже там.
    */
-  function onPay(e) {
+  function onChoose(e) {
     var btn = e && e.currentTarget;
     var tariff = btn && btn.getAttribute("data-tariff");
     if (!tariff) return;
 
     haptic("light");
 
-    if (!App.payStars) {
-      // Контракт гарантирует наличие App.payStars; на всякий случай — фолбэк.
+    if (typeof App.goPayment !== "function") {
+      // Контракт гарантирует наличие App.goPayment; на всякий случай — фолбэк.
       toast(pick("Оплата временно недоступна", "Payment is temporarily unavailable"));
       return;
     }
-
-    // Блокируем кнопку на время запроса invoice.
-    btn.disabled = true;
-    App.showLoading();
-
-    Promise.resolve(App.payStars(tariff))
-      .then(function () {
-        // После оплаты App.payStars сам обновит App.subscription и покажет toast.
-        // Перерисовываем UI, чтобы отразить возможный новый статус.
-        renderAll();
-      })
-      .catch(function (err) {
-        toast(
-          pick("Не удалось начать оплату: ", "Could not start payment: ") +
-            (err && err.message ? err.message : pick("ошибка", "error"))
-        );
-        haptic("error");
-      })
-      .finally(function () {
-        btn.disabled = false;
-        App.hideLoading();
-      });
+    App.goPayment(tariff);
   }
 
   /**

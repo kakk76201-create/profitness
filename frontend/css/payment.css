@@ -1,0 +1,446 @@
+/* ============================================================
+   payment.css — экран «Оплата» (page-payment.js, классы pay-*).
+
+   Отдельная страница оплаты выбранного тарифа: открывается со страницы
+   «Подписка» кнопкой «Выбрать». Единственная валюта — рубли.
+
+   Переиспользуются классы style.css: .page .sub-page .sub-head .sub-back
+   .sub-back__arrow .page-title .sub-title .page-subtitle .sub-subtitle
+   .card .btn .btn--cta .btn--ghost .btn-block .skeleton .skeleton--block.
+
+   Цвета — ТОЛЬКО через токены палитры (--bg --card --accent --cta
+   --cta-press --text --muted --danger --white --radius --radius-sm
+   --shadow); полупрозрачные тона — rgba поверх тех же цветов (как в
+   style.css). Mobile-first: 360–430px без горизонтального переполнения.
+   ============================================================ */
+
+/* Корневая обёртка страницы (= .page.sub-page).
+   Отступ под таббар и безопасную зону уже задан у #view в style.css
+   (tabbar + safe-bottom + 44px), поэтому здесь добавляем лишь небольшой
+   воздух под юридическим подвалом — иначе внизу висит пустая полоса. */
+.pay-page {
+  display: block;
+  padding-bottom: 8px;
+}
+
+/* Атрибут hidden должен побеждать display у карточек и списков. */
+.pay-page [hidden] {
+  display: none !important;
+}
+
+/* Шапка страницы (наследует .sub-head). */
+.pay-head {
+  margin-bottom: 18px;
+}
+
+/* Тело страницы — перерисовывается при обновлении статуса. */
+.pay-body {
+  display: block;
+}
+
+/* Заголовок секции («Что входит», «Способ оплаты»). */
+.pay-section-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+/* ---------- Карточка выбранного плана ---------- */
+.pay-plan {
+  background: var(--white);
+  border-left: 4px solid var(--cta);
+}
+
+/* Верхняя строка: иконка + название и срок. */
+.pay-plan__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* Иконка тарифа (📅 / 🗓️ / ♾️) в кружке. */
+.pay-plan__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--bg);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.pay-plan__info {
+  min-width: 0;
+}
+
+.pay-plan__title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.3;
+}
+
+/* Срок действия («30 дней доступа» / «Навсегда»). */
+.pay-plan__term {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+/* Цена крупно — главный элемент карточки. */
+.pay-plan__price {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+  margin-top: 14px;
+  /* Длинные суммы переносим, а не растягиваем карточку. */
+  overflow-wrap: anywhere;
+}
+
+/* «≈ 333 ₽/мес · экономия 33%» — только для годового тарифа. */
+.pay-plan__econ {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cta);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+/* «Разовый платёж, без автопродления». */
+.pay-plan__once {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 6px;
+  line-height: 1.45;
+}
+
+/* Заметка про текущую подписку («Дни добавятся…»). */
+.pay-plan__note {
+  font-size: 13px;
+  color: var(--text);
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(125, 155, 118, .12);
+  line-height: 1.45;
+}
+
+/* ---------- Что входит ---------- */
+.pay-includes {
+  display: block;
+}
+
+.pay-includes__list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Один пункт: галочка в кружке + текст. */
+.pay-include {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.pay-include__check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: rgba(125, 155, 118, .16);
+  color: var(--cta);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.pay-include__text {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.45;
+  min-width: 0;
+}
+
+/* ---------- Способ оплаты ---------- */
+.pay-method {
+  display: block;
+}
+
+/* Опция способа оплаты: контурная карточка внутри карточки. */
+.pay-method__option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: transparent;
+}
+
+/* Выбранная опция (сейчас единственная) — акцент цветом CTA. */
+.pay-method__option--active {
+  border-color: var(--cta);
+  background: rgba(125, 155, 118, .12);
+}
+
+/* Радио-метка слева. */
+.pay-method__mark {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: transparent;
+}
+
+/* У выбранной опции — точка внутри метки. */
+.pay-method__option--active .pay-method__mark {
+  border-color: var(--cta);
+  box-shadow: inset 0 0 0 3px var(--white), inset 0 0 0 10px var(--cta);
+}
+
+/* Иконка карты. */
+.pay-method__icon {
+  flex-shrink: 0;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.pay-method__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pay-method__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+/* «Visa, Mastercard, МИР». */
+.pay-method__hint {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* «Безопасная оплата через …» — подпись провайдера. */
+.pay-method__provider {
+  font-size: 12px;
+  color: var(--cta);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+/* Честная заметка, когда приём карт ещё подключается. */
+.pay-notice {
+  margin-top: 12px;
+  padding: 12px;
+  border-left: 3px solid var(--cta);
+  border-radius: var(--radius-sm);
+  /* Родительская карточка бежевая — плашка должна быть контрастной. */
+  background: var(--white);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* ---------- Итог и кнопка оплаты ---------- */
+.pay-total {
+  background: var(--white);
+}
+
+/* Строка «Итого … сумма». */
+.pay-total__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.pay-total__label {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.pay-total__sum {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* Строка про оферту над кнопкой оплаты. */
+.pay-total__offer {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+
+/* Сообщение для владельцев вечного доступа (кнопки оплаты нет). */
+.pay-total__lifetime {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+/* Кнопка «Оплатить N ₽» — наследует .btn .btn--cta .btn-block (52px). */
+.pay-submit {
+  margin-top: 0;
+}
+
+/* «Вернуться» — есть на экране успеха и у владельца вечного доступа.
+   Наследует .btn .btn--cta/.btn--ghost .btn-block; тут лишь отступ сверху. */
+.pay-return {
+  margin-top: 0;
+}
+
+/* ---------- Юридический подвал ---------- */
+.pay-legal {
+  display: block;
+  margin-top: 4px;
+  padding: 0 4px;
+}
+
+.pay-legal__line {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+/* Строка со ссылками «Оферта · Политика конфиденциальности». */
+.pay-legal__links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* Разделитель между ссылками. */
+.pay-legal__sep {
+  color: var(--muted);
+}
+
+/* Ссылки подвала (оферта, политика, телеграм-контакт, e-mail). */
+.pay-legal__link,
+.pay-legal__mail {
+  color: var(--cta);
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(125, 155, 118, .45);
+  overflow-wrap: anywhere;
+}
+
+.pay-legal__link:active,
+.pay-legal__mail:active {
+  color: var(--cta-press);
+}
+
+/* Строка про возврат — показывается всегда. */
+.pay-refund {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.55;
+  margin-top: 10px;
+  padding: 0 4px;
+}
+
+/* ---------- Экран успеха ---------- */
+.pay-success {
+  background: var(--white);
+  border-left: 4px solid var(--cta);
+  text-align: center;
+}
+
+.pay-success__icon {
+  font-size: 40px;
+  line-height: 1;
+  margin-bottom: 10px;
+}
+
+.pay-success__title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.pay-success__until {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cta);
+  margin-top: 4px;
+  margin-bottom: 16px;
+  line-height: 1.45;
+}
+
+/* ---------- Пустое состояние (цена не загрузилась / тариф не выбран) ---------- */
+.pay-empty {
+  background: var(--white);
+  text-align: center;
+}
+
+.pay-empty p {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+
+/* «Повторить» — перезапрашивает статус подписки.
+   Наследует .btn .btn--ghost .btn-block. */
+.pay-retry {
+  margin-top: 0;
+}
+
+/* «К тарифам» — возврат на страницу подписки. Между двумя блочными кнопками
+   отступ даёт правило .btn-block + .btn-block из style.css (10px). */
+.pay-back-plans {
+  margin-top: 0;
+}
+
+/* ---------- Узкие экраны (≤360px) ---------- */
+@media (max-width: 360px) {
+  .pay-plan__price {
+    font-size: 25px;
+  }
+
+  .pay-plan__icon {
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
+  }
+
+  .pay-total__sum {
+    font-size: 20px;
+  }
+
+  .pay-method__option {
+    padding: 10px;
+  }
+}
