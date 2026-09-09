@@ -422,6 +422,41 @@
   }
 
   /**
+   * Карточка-вход в раздел «AI-тренер» (ТЗ §2.1). Подзаголовок берётся из
+   * App.state.trainerBrief (заполняет page-trainer.js после overview);
+   * при отсутствии — статичный текст «Персональная программа за 2 минуты».
+   */
+  function coachCardHtml() {
+    var brief = (App.state && App.state.trainerBrief) || null;
+    var sub;
+    if (!brief || !brief.has_profile) {
+      sub = pick("Персональная программа за 2 минуты", "A personal program in 2 minutes");
+    } else if (brief.in_progress) {
+      sub = pick("Тренировка в процессе — продолжить", "Workout in progress — continue");
+    } else if (brief.kind === "planned" && brief.title) {
+      sub =
+        pick("Сегодня: ", "Today: ") + brief.title +
+        (brief.duration_min ? " · " + brief.duration_min + " " + pick("мин", "min") : "");
+    } else if (brief.kind === "rest") {
+      sub = pick("День отдыха", "Rest day");
+    } else if (brief.kind === "week_done") {
+      sub = pick("Неделя закрыта 🎉", "Week complete 🎉");
+    } else {
+      sub = pick("Собрать программу", "Build a program");
+    }
+    return (
+      '<button type="button" class="card tr-coach-card" id="wkCoachCard">' +
+      '<span class="tr-coach-card__icon" aria-hidden="true">🧑‍🏫</span>' +
+      '<span class="tr-coach-card__body">' +
+      '<span class="tr-coach-card__title">' + esc(pick("AI-тренер", "AI Coach")) + "</span>" +
+      '<span class="tr-coach-card__sub">' + esc(sub) + "</span>" +
+      "</span>" +
+      '<span class="tr-coach-card__arrow" aria-hidden="true">›</span>' +
+      "</button>"
+    );
+  }
+
+  /**
    * Полный каркас страницы. Динамические части (список тренировок, итог,
    * список напоминаний) наполняются отдельными функциями после монтирования.
    */
@@ -429,6 +464,9 @@
     return (
       '<section class="page page-workouts">' +
       '<h1 class="page__title">' + esc(pick("Тренировки", "Workouts")) + "</h1>" +
+
+      // Карточка-вход в раздел «AI-тренер» (над баром даты).
+      coachCardHtml() +
 
       dateBarHtml() +
 
@@ -1248,6 +1286,16 @@
    * Навешивает все обработчики событий после монтирования разметки.
    */
   function bindEvents() {
+    // Карточка-вход в раздел «AI-тренер»: запоминаем источник для «Назад».
+    var coachCard = byId("wkCoachCard");
+    if (coachCard) {
+      coachCard.addEventListener("click", function () {
+        haptic("light");
+        App.state.trainerOrigin = "workouts";
+        App.navigate("trainer");
+      });
+    }
+
     // Навигация по датам (◀ / ▶).
     var navButtons = state.viewEl.querySelectorAll(".wk-datebar__nav");
     for (var i = 0; i < navButtons.length; i++) {

@@ -1,0 +1,1155 @@
+/* ============================================================
+   trainer.css — раздел «AI-тренер» (ТЗ §6.2): общие стили, онбординг,
+   экран «Сегодня» и база для «Программы».
+
+   Владелец — этап F1. Экран сессии — trainer-session.css (F2),
+   прогресс/упражнения — trainer-progress.css (F3).
+
+   Переиспользуются существующие классы style.css: .page .sub-page
+   .sub-head .sub-back .sub-title .sub-subtitle .card .btn .btn-cta
+   .btn-ghost .btn-danger .btn-block .field .field__input .chip
+   .chip--active .wk-rem-days .wk-rem-day .skeleton .skeleton-line
+   .wk-empty .wk-error .rec-disclaimer .acc-fold.
+   Цвета — ТОЛЬКО через токены палитры (--bg --card --accent --cta --text
+   --muted --danger --white --radius --shadow); полупрозрачные тона —
+   rgba тех же цветов (как в style.css).
+   ============================================================ */
+
+/* ===== trainer: common ===== */
+
+/* Корневая обёртка страниц тренера (= .page.sub-page). */
+.tr-page {
+  display: block;
+  animation: fadeIn .28s ease;
+}
+
+/* Атрибут hidden должен побеждать display у .field/.card и т.п. */
+.tr-page [hidden] {
+  display: none !important;
+}
+
+/* Шапка: наследует .sub-head; заголовок с эмодзи не должен переноситься. */
+.tr-head .sub-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Небольшой заголовок секции («Питание сегодня», «Неделя»). */
+.tr-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--muted);
+  margin: 4px 4px 8px;
+}
+
+/* Карточка-вход на «Тренировках» (кнопка, стилизованная под .card). */
+.tr-coach-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  border: 1.5px solid var(--cta);
+  background: var(--white);
+  color: var(--text);
+  cursor: pointer;
+  transition: transform .08s ease, box-shadow .18s ease;
+}
+
+.tr-coach-card:active {
+  transform: scale(.985);
+}
+
+.tr-coach-card__icon {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(125, 155, 118, .16);
+  font-size: 26px;
+  line-height: 1;
+}
+
+.tr-coach-card__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.tr-coach-card__title {
+  display: block;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.tr-coach-card__sub {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tr-coach-card__arrow {
+  flex-shrink: 0;
+  font-size: 24px;
+  line-height: 1;
+  color: var(--muted);
+}
+
+/* Жёлтая плашка-предупреждение (на --accent). */
+.tr-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+  margin-bottom: 14px;
+}
+
+.tr-warn__icon {
+  flex-shrink: 0;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+/* Скелетон и ошибка (обёртки над .skeleton-line / .wk-error). */
+.tr-skeleton {
+  display: block;
+}
+
+.tr-error {
+  display: block;
+}
+
+/* Экран ожидания генерации (.tr-gen-wait). */
+.tr-gen-wait {
+  text-align: center;
+  padding: 36px 20px 30px;
+  background: var(--white);
+}
+
+.tr-gen-wait__spinner {
+  width: 46px;
+  height: 46px;
+  margin: 0 auto 18px;
+  border: 4px solid rgba(201, 184, 168, .55);
+  border-top-color: var(--cta);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+
+.tr-gen-wait__title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.tr-gen-wait__line {
+  font-size: 15px;
+  color: var(--text);
+  min-height: 22px;
+  animation: fadeIn .4s ease;
+}
+
+.tr-gen-wait__hint {
+  margin-top: 12px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* Нижний лист (.tr-sheet*) — копия паттерна .diary-sheet. */
+.tr-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+}
+
+.tr-sheet__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(58, 53, 47, .38);
+  opacity: 0;
+  transition: opacity .22s ease;
+  touch-action: none;
+}
+
+.tr-sheet--open .tr-sheet__backdrop {
+  opacity: 1;
+}
+
+.tr-sheet__panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-width: 480px;
+  margin: 0 auto;
+  background: var(--bg);
+  border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: 0 -8px 28px rgba(122, 107, 90, .18);
+  padding: 8px 16px calc(var(--safe-bottom) + 20px);
+  transform: translateY(100%);
+  transition: transform .24s cubic-bezier(.22, .61, .36, 1);
+  max-height: 88vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.tr-sheet--open .tr-sheet__panel {
+  transform: translateY(0);
+}
+
+.tr-sheet__handle {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--accent);
+  margin: 6px auto 14px;
+}
+
+.tr-sheet__title {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 4px 10px;
+}
+
+.tr-sheet__item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 14px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background .15s ease, transform .08s ease;
+}
+
+.tr-sheet__item + .tr-sheet__item {
+  margin-top: 8px;
+}
+
+.tr-sheet__item:active {
+  transform: scale(.99);
+  background: var(--card);
+}
+
+.tr-sheet__item--danger {
+  color: var(--danger);
+}
+
+.tr-sheet__item.is-disabled,
+.tr-sheet__item:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.tr-sheet__icon {
+  flex-shrink: 0;
+  width: 28px;
+  text-align: center;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.tr-sheet__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tr-sheet__label {
+  display: block;
+}
+
+.tr-sheet__desc {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.tr-sheet__cancel {
+  margin-top: 12px;
+}
+
+/* Тумблер-карточка (напоминание в онбординге). */
+.tr-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--white);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
+}
+
+.tr-toggle--on {
+  border-color: var(--cta);
+  background: rgba(125, 155, 118, .12);
+  box-shadow: 0 0 0 3px rgba(125, 155, 118, .16);
+}
+
+.tr-toggle__emoji {
+  flex-shrink: 0;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.tr-toggle__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.tr-toggle__title {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.tr-toggle__hint {
+  display: block;
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.tr-toggle__mark {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.tr-toggle--on .tr-toggle__mark {
+  background: var(--cta);
+  border-color: var(--cta);
+  color: var(--white);
+}
+
+/* ===== trainer: onboarding ===== */
+
+.tr-onb {
+  display: block;
+}
+
+/* Полоса прогресса из N сегментов. */
+.tr-onb-progress {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 16px;
+}
+
+.tr-onb-progress__seg {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: background .2s ease;
+}
+
+.tr-onb-progress__seg.is-done {
+  background: var(--cta);
+}
+
+.tr-onb-progress__seg.is-current {
+  background: var(--cta);
+  opacity: .55;
+}
+
+/* Карточка шага. */
+.tr-onb-step {
+  display: block;
+}
+
+.tr-onb-step__title {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.tr-onb-step__hint {
+  font-size: 13.5px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+
+/* Поясняющая «квип»-подсказка внутри шага. */
+.tr-onb-quip {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 253, 250, .6);
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+/* Сетка опций. */
+.tr-option-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.tr-option-grid--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.tr-option-grid--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* Карточка-опция (крупная, тапабельная). */
+.tr-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 12px 14px;
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--white);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .18s ease, background .18s ease, box-shadow .18s ease,
+    transform .08s ease;
+}
+
+.tr-option:active {
+  transform: scale(.98);
+}
+
+.tr-option.is-active {
+  border-color: var(--cta);
+  background: rgba(125, 155, 118, .12);
+  box-shadow: 0 0 0 3px rgba(125, 155, 118, .16);
+}
+
+.tr-option__icon {
+  flex-shrink: 0;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.tr-option__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.tr-option__title {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.tr-option__desc {
+  display: block;
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+.tr-option__mark {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.tr-option.is-active .tr-option__mark {
+  background: var(--cta);
+  border-color: var(--cta);
+  color: var(--white);
+}
+
+/* Компактная опция в сетках 2/3 колонки (вертикальная раскладка). */
+.tr-option--compact {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 6px;
+  padding: 12px 8px;
+}
+
+.tr-option--compact .tr-option__body {
+  width: 100%;
+}
+
+.tr-option--compact .tr-option__title {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.tr-option--compact .tr-option__desc {
+  font-size: 11.5px;
+}
+
+.tr-option--compact .tr-option__mark {
+  display: none;
+}
+
+/* Ряд чипов (дни/минуты/доп. оборудование). */
+.tr-onb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+/* Крупные чипы-числа одинаковой ширины (2/3/4/5/6, 20/30/45…). */
+.tr-onb-chips--even .chip {
+  flex: 1 1 0;
+  justify-content: center;
+  min-width: 48px;
+  min-height: 46px;
+  padding: 0 8px;
+}
+
+/* Подпись между блоками одного шага. */
+.tr-onb-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 14px 0 8px;
+}
+
+/* Счётчик символов у текстового поля. */
+.tr-onb-count {
+  display: block;
+  text-align: right;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* Текстовое поле «Опишите подробнее». */
+.tr-onb-textarea {
+  min-height: 84px;
+  padding: 12px 14px;
+  resize: vertical;
+  line-height: 1.4;
+}
+
+/* Навигация шага: «Назад» + «Далее». */
+.tr-onb-nav {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.tr-onb-nav .btn {
+  min-height: 50px;
+}
+
+.tr-onb-nav__back {
+  flex: 0 0 38%;
+}
+
+.tr-onb-nav__next {
+  flex: 1;
+}
+
+/* Сводка ответов на последнем шаге. */
+.tr-onb-summary {
+  margin: 14px 0 4px;
+  padding: 4px 0 0;
+  border-top: 1px solid rgba(201, 184, 168, .6);
+}
+
+.tr-onb-summary__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(201, 184, 168, .45);
+  font-size: 13.5px;
+}
+
+.tr-onb-summary__row:last-child {
+  border-bottom: none;
+}
+
+.tr-onb-summary__key {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.tr-onb-summary__val {
+  text-align: right;
+  font-weight: 600;
+  min-width: 0;
+  word-break: break-word;
+}
+
+/* ===== trainer: today/program ===== */
+
+.tr-today {
+  display: block;
+}
+
+/* Карточка дня. */
+.tr-today-card {
+  display: block;
+  background: var(--white);
+}
+
+.tr-today-card--rest {
+  background: var(--card);
+}
+
+.tr-today-card__title {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 8px 0 4px;
+  line-height: 1.25;
+}
+
+.tr-today-card__meta {
+  font-size: 13.5px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.tr-today-card__sub {
+  font-size: 14px;
+  color: var(--text);
+  margin-top: 6px;
+  line-height: 1.45;
+}
+
+.tr-today-card__actions {
+  margin-top: 14px;
+}
+
+.tr-today-card__link {
+  display: inline-block;
+  margin-top: 12px;
+  border: none;
+  background: transparent;
+  color: var(--cta);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+/* Бейдж состояния дня. */
+.tr-day-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  background: var(--accent);
+  color: var(--text);
+}
+
+.tr-day-badge--today {
+  background: rgba(125, 155, 118, .18);
+  color: var(--cta);
+}
+
+.tr-day-badge--rest {
+  background: rgba(138, 129, 120, .16);
+  color: var(--muted);
+}
+
+.tr-day-badge--progress {
+  background: var(--cta);
+  color: var(--white);
+}
+
+/* Превью первых упражнений дня. */
+.tr-ex-preview {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(201, 184, 168, .5);
+}
+
+.tr-ex-preview__item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 0;
+  font-size: 14px;
+}
+
+.tr-ex-preview__name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tr-ex-preview__meta {
+  flex-shrink: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.tr-ex-preview__more {
+  font-size: 12.5px;
+  color: var(--muted);
+  padding-top: 4px;
+}
+
+/* Лента недели Пн–Вс. */
+.tr-week-strip {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.tr-week-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 0;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.tr-week-day__label {
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* Кружок с числом дня; статус меняет заливку/рамку. */
+.tr-week-day__dot {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1.5px solid var(--accent);
+  background: var(--white);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.tr-week-day--rest .tr-week-day__dot {
+  border-style: dashed;
+  color: var(--muted);
+}
+
+.tr-week-day--planned .tr-week-day__dot {
+  border-color: var(--cta);
+}
+
+.tr-week-day--done .tr-week-day__dot {
+  background: var(--cta);
+  border-color: var(--cta);
+  color: var(--white);
+}
+
+.tr-week-day--skipped .tr-week-day__dot {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.tr-week-day--today {
+  background: rgba(125, 155, 118, .12);
+  color: var(--text);
+}
+
+.tr-week-day--today .tr-week-day__label {
+  color: var(--cta);
+}
+
+.tr-week-day--today .tr-week-day__dot {
+  box-shadow: 0 0 0 2px rgba(125, 155, 118, .35);
+}
+
+/* Стрик. */
+.tr-streak {
+  display: block;
+}
+
+.tr-streak__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.tr-streak__icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.tr-streak__text {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.tr-streak__sub {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.tr-streak__bar {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(201, 184, 168, .55);
+  overflow: hidden;
+  margin-top: 10px;
+}
+
+.tr-streak__fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--cta);
+  transition: width .35s ease;
+}
+
+/* Карточка «Питание сегодня» (ленивая загрузка). */
+.tr-nutrition-card {
+  display: block;
+}
+
+.tr-nutrition-card__title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.tr-nutrition-card__headline {
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  margin-bottom: 8px;
+}
+
+.tr-nutrition-card__row {
+  font-size: 13.5px;
+  line-height: 1.5;
+  padding: 5px 0;
+  border-top: 1px solid rgba(201, 184, 168, .5);
+}
+
+.tr-nutrition-card__label {
+  font-weight: 700;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  display: block;
+}
+
+.tr-nutrition-card__numbers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.tr-nutrition-card__numbers b {
+  color: var(--text);
+}
+
+.tr-nutrition-card .btn {
+  margin-top: 12px;
+}
+
+.tr-nutrition-card__muted {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.tr-nutrition-card__retry {
+  margin-top: 8px;
+  width: auto;
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+
+/* Баннер «Недельный разбор готов». */
+.tr-review-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: var(--accent);
+  color: var(--text);
+  cursor: pointer;
+  transition: transform .08s ease;
+}
+
+.tr-review-banner:active {
+  transform: scale(.985);
+}
+
+.tr-review-banner__icon {
+  flex-shrink: 0;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.tr-review-banner__text {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.tr-review-banner__arrow {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+}
+
+/* Быстрые ссылки: Программа · Прогресс · Упражнения · Настройки. */
+.tr-links {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.tr-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 72px;
+  padding: 10px 4px;
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--white);
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  transition: background .15s ease, transform .08s ease;
+}
+
+.tr-link:active {
+  transform: scale(.96);
+  background: var(--card);
+}
+
+.tr-link__icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.tr-link__label {
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* Пустое состояние «Программа не создана». */
+.tr-empty {
+  background: var(--white);
+}
+
+.tr-empty .btn {
+  margin-top: 8px;
+}
+
+/* --- База для страницы «Программа» (детали дорисовывает F3) --- */
+
+.tr-program-head {
+  display: block;
+}
+
+.tr-program-head__title {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.tr-program-head__meta {
+  font-size: 13.5px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.tr-program-head__summary {
+  margin-top: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Чип фазы периодизации. */
+.tr-phase-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  background: var(--accent);
+  color: var(--text);
+}
+
+.tr-phase-chip--base {
+  background: rgba(201, 184, 168, .6);
+}
+
+.tr-phase-chip--build {
+  background: rgba(125, 155, 118, .18);
+  color: var(--cta);
+}
+
+.tr-phase-chip--peak {
+  background: var(--cta);
+  color: var(--white);
+}
+
+.tr-phase-chip--deload {
+  background: rgba(138, 129, 120, .16);
+  color: var(--muted);
+}
+
+/* День плана — аккордеон на .acc-fold. */
+.tr-plan-day {
+  display: block;
+}
+
+.tr-plan-day__meta {
+  font-size: 12.5px;
+  color: var(--muted);
+  font-weight: 500;
+  display: block;
+  margin-top: 2px;
+}
+
+.tr-plan-day--done .acc-fold__title {
+  color: var(--cta);
+}
+
+.tr-plan-day--skipped .acc-fold__title {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+/* Строка упражнения в плане: «Жим гантелей лёжа · 3×8–12 · 14 кг · отдых 90 с». */
+.tr-plan-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(201, 184, 168, .5);
+  font-size: 14px;
+}
+
+.tr-plan-item:first-child {
+  border-top: none;
+}
+
+.tr-plan-item__name {
+  font-weight: 600;
+}
+
+.tr-plan-item__meta {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.tr-plan-item--aux .tr-plan-item__name {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* Узкие экраны: ссылки в 2 ряда по 2, компактнее чипы. */
+@media (max-width: 340px) {
+  .tr-links {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tr-option-grid--3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Карточка «Сегодня сделано» — зелёная кромка, как у выполненного дня. */
+.tr-today-card--done {
+  border-left: 4px solid var(--cta);
+}

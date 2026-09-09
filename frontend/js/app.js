@@ -746,6 +746,240 @@
     // Удалить фото прогресса по id.
     deleteProgress: function (id) {
       return request("/progress/" + encodeURIComponent(id), { method: "DELETE" });
+    },
+
+    /* -------------------------------------------------------------------
+     *  AI-ТРЕНЕР (ПРЕМИУМ, префикс /trainer — backend/trainer.py, ТЗ §4)
+     *  Все роуты платные: для free бэкенд отдаёт 402 (paywall).
+     *  Ошибки ИИ → 502 с русским detail, лимиты → 429.
+     * ------------------------------------------------------------------- */
+
+    // Обзор для экрана «Сегодня»: {profile, program, today, streak, week[7],
+    //   active_session_id, pending_review}.
+    trainerOverview: function () {
+      return request("/trainer/overview");
+    },
+
+    // Профиль тренера (404, если анкета не заполнялась). Ответ: TrainerProfileOut.
+    trainerProfile: function () {
+      return request("/trainer/profile");
+    },
+
+    // Сохранение анкеты (TrainerProfileIn: goal, level, equipment, equipment_extra,
+    //   days_per_week, preferred_weekdays, session_minutes, program_weeks,
+    //   limitations, limitations_text, focus, reminder_enabled, reminder_time).
+    // Побочный эффект: создаёт/обновляет TrainingReminder. Ответ: TrainerProfileOut.
+    trainerSaveProfile: function (data) {
+      return request("/trainer/profile", { method: "POST", body: data });
+    },
+
+    // Генерация программы (ИИ, heavy-лимит). Тело: {regenerate_note?}.
+    // Ответ: TrainerProgramOut (с раскрытыми днями). Предыдущая активная → archived.
+    trainerGenerateProgram: function (payload) {
+      return request("/trainer/program/generate", {
+        method: "POST",
+        body: payload || {}
+      });
+    },
+
+    // Активная (или указанная) программа. Ответ: TrainerProgramOut; 404 если нет.
+    trainerProgram: function (programId) {
+      return request(
+        "/trainer/program" +
+          (programId != null ? "?program_id=" + encodeURIComponent(programId) : "")
+      );
+    },
+
+    // Архивировать программу. Ответ: {ok}.
+    trainerArchiveProgram: function (programId) {
+      return request("/trainer/program/" + encodeURIComponent(programId) + "/archive", {
+        method: "POST"
+      });
+    },
+
+    // План на дату. Ответ: TrainerTodayOut {date, is_training_day, kind, day,
+    //   next_date, active_session}.
+    trainerToday: function (dateStr) {
+      return request(
+        "/trainer/today" + (dateStr ? "?date=" + encodeURIComponent(dateStr) : "")
+      );
+    },
+
+    // Старт сессии. Тело: {program_day_id: int|null, date}. Ответ: TrainerSessionOut;
+    // 409 — уже есть активная сессия.
+    trainerStartSession: function (payload) {
+      return request("/trainer/session/start", { method: "POST", body: payload });
+    },
+
+    // Активная сессия. Ответ: TrainerSessionOut | null.
+    trainerActiveSession: function () {
+      return request("/trainer/session/active");
+    },
+
+    // Сессия по id. Ответ: TrainerSessionOut.
+    trainerSession: function (sessionId) {
+      return request("/trainer/session/" + encodeURIComponent(sessionId));
+    },
+
+    // Сохранить подход (upsert по session_exercise_id + set_index).
+    // Тело: {session_exercise_id, set_index, set_type, weight_kg, reps, time_sec,
+    //   rpe, is_done}. Ответ: {set, prs[], rest_sec, exercise_status}.
+    trainerSaveSet: function (sessionId, payload) {
+      return request("/trainer/session/" + encodeURIComponent(sessionId) + "/set", {
+        method: "POST",
+        body: payload
+      });
+    },
+
+    // Удалить подход. Ответ: {ok}.
+    trainerDeleteSet: function (sessionId, setId) {
+      return request(
+        "/trainer/session/" + encodeURIComponent(sessionId) +
+          "/set/" + encodeURIComponent(setId),
+        { method: "DELETE" }
+      );
+    },
+
+    // Альтернативы упражнению. reason: busy|no_equipment|pain|other.
+    // Ответ: {items: [TrainerExerciseBriefOut], reason}.
+    trainerAlternatives: function (exerciseId, reason, sessionId) {
+      var q = "?reason=" + encodeURIComponent(reason || "other");
+      if (sessionId != null) q += "&session_id=" + encodeURIComponent(sessionId);
+      return request("/trainer/exercises/" + encodeURIComponent(exerciseId) + "/alternatives" + q);
+    },
+
+    // Заменить упражнение в сессии. Тело: {new_exercise_id, reason, remember}.
+    // Ответ: TrainerSessionExerciseOut (новая строка).
+    trainerReplaceExercise: function (sessionId, sexId, payload) {
+      return request(
+        "/trainer/session/" + encodeURIComponent(sessionId) +
+          "/exercise/" + encodeURIComponent(sexId) + "/replace",
+        { method: "POST", body: payload }
+      );
+    },
+
+    // Пропустить упражнение. Ответ: {ok, status:"skipped"}.
+    trainerSkipExercise: function (sessionId, sexId) {
+      return request(
+        "/trainer/session/" + encodeURIComponent(sessionId) +
+          "/exercise/" + encodeURIComponent(sexId) + "/skip",
+        { method: "POST" }
+      );
+    },
+
+    // Добавить упражнение в сессию. Тело: {exercise_id, sets, reps_min, reps_max}.
+    // Ответ: TrainerSessionExerciseOut.
+    trainerAddExercise: function (sessionId, payload) {
+      return request(
+        "/trainer/session/" + encodeURIComponent(sessionId) + "/exercise/add",
+        { method: "POST", body: payload }
+      );
+    },
+
+    // Завершить сессию (создаёт Workout). Тело: {duration_min?, note?}.
+    // Ответ: {session, summary, prs, workout_id}; 400 — нет ни одного сета.
+    trainerFinishSession: function (sessionId, payload) {
+      return request(
+        "/trainer/session/" + encodeURIComponent(sessionId) + "/finish",
+        { method: "POST", body: payload || {} }
+      );
+    },
+
+    // Отзыв после тренировки. Тело: {feedback: easy|ok|hard, note?, rpe?}.
+    // Ответ: TrainerAdaptationOut {changes, lines, message}.
+    trainerFeedback: function (sessionId, payload) {
+      return request(
+        "/trainer/session/" + encodeURIComponent(sessionId) + "/feedback",
+        { method: "POST", body: payload }
+      );
+    },
+
+    // Отменить сессию (Workout не создаётся). Ответ: {ok}.
+    trainerAbandonSession: function (sessionId) {
+      return request(
+        "/trainer/session/" + encodeURIComponent(sessionId) + "/abandon",
+        { method: "POST" }
+      );
+    },
+
+    // История сессий. Ответ: {items: [TrainerSessionBriefOut], total}.
+    trainerSessions: function (limit, offset) {
+      return request(
+        "/trainer/sessions?limit=" + encodeURIComponent(limit || 20) +
+          "&offset=" + encodeURIComponent(offset || 0)
+      );
+    },
+
+    // Прогресс. params: {exercise_id?, period?: "4w"|"3m"|"all"}.
+    // Ответ: TrainerProgressOut {streak, totals_4w, week_compare, muscle_volume_7d,
+    //   records, top_exercises, chart}.
+    trainerProgress: function (params) {
+      params = params || {};
+      var q = [];
+      if (params.exercise_id != null) q.push("exercise_id=" + encodeURIComponent(params.exercise_id));
+      if (params.period) q.push("period=" + encodeURIComponent(params.period));
+      return request("/trainer/progress" + (q.length ? "?" + q.join("&") : ""));
+    },
+
+    // Библиотека упражнений. params: {muscle?, equipment?, q?, limit?}.
+    // Ответ: {items: [Brief + difficulty, category, technique_status, excluded]}.
+    trainerExercises: function (params) {
+      params = params || {};
+      var q = [];
+      if (params.muscle) q.push("muscle=" + encodeURIComponent(params.muscle));
+      if (params.equipment) q.push("equipment=" + encodeURIComponent(params.equipment));
+      if (params.q) q.push("q=" + encodeURIComponent(params.q));
+      if (params.limit) q.push("limit=" + encodeURIComponent(params.limit));
+      return request("/trainer/exercises" + (q.length ? "?" + q.join("&") : ""));
+    },
+
+    // Карточка упражнения; withTechnique=true — с генерацией/кэшем техники (ИИ).
+    // Ответ: TrainerExerciseOut {…, technique|null, technique_status, excluded}.
+    trainerExercise: function (exerciseId, withTechnique) {
+      return request(
+        "/trainer/exercises/" + encodeURIComponent(exerciseId) +
+          (withTechnique ? "?technique=1" : "")
+      );
+    },
+
+    // История по упражнению. Ответ: {records, sessions, points}.
+    trainerExerciseHistory: function (exerciseId) {
+      return request("/trainer/exercises/" + encodeURIComponent(exerciseId) + "/history");
+    },
+
+    // Исключить/вернуть упражнение. Ответ: {ok, excluded}.
+    trainerExcludeExercise: function (exerciseId, excluded) {
+      return request(
+        "/trainer/exercises/" + encodeURIComponent(exerciseId) + "/exclude",
+        { method: "POST", body: { excluded: !!excluded } }
+      );
+    },
+
+    // Недельный разбор (ИИ, heavy-лимит). Тело: {week_start?}.
+    // Ответ: TrainerWeeklyReviewOut; 409 — за неделю 0 сессий.
+    trainerWeeklyReview: function (payload) {
+      return request("/trainer/review/weekly", { method: "POST", body: payload || {} });
+    },
+
+    // Последний сохранённый разбор. Ответ: TrainerWeeklyReviewOut | null.
+    trainerLatestReview: function () {
+      return request("/trainer/review/latest");
+    },
+
+    // Применить выбранные правки разбора к следующей неделе.
+    // Ответ: {applied: [int], lines: [str]}.
+    trainerApplyReview: function (reviewId, changeIds) {
+      return request(
+        "/trainer/review/" + encodeURIComponent(reviewId) + "/apply",
+        { method: "POST", body: { change_ids: changeIds || [] } }
+      );
+    },
+
+    // Совет по питанию на день (ИИ при промахе кэша). Ответ: TrainerNutritionTipOut.
+    trainerNutritionToday: function (dateStr) {
+      return request(
+        "/trainer/nutrition/today" + (dateStr ? "?date=" + encodeURIComponent(dateStr) : "")
+      );
     }
   };
 

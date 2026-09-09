@@ -618,9 +618,10 @@ class TrainerTodayOut(BaseModel):
 
     date: str
     is_training_day: bool = False
-    kind: str = "no_program"                    # planned|rest|week_done|no_program
-    day: Optional[TrainerProgramDayOut] = None
+    kind: str = "no_program"                    # planned|done|rest|week_done|no_program
+    day: Optional[TrainerProgramDayOut] = None  # planned/done — день на дату; rest — ближайший
     next_date: Optional[str] = None
+    next_title: Optional[str] = None            # done — название ближайшей тренировки
     active_session: Optional[TrainerSessionOut] = None
 
 

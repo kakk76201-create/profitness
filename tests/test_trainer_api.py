@@ -338,6 +338,13 @@ db.query(M.TrainerProgramDay).filter(
     M.TrainerProgramDay.scheduled_date <= D(6),
 ).update({"status": "done"}, synchronize_session=False)
 db.commit(); db.close()
+# Понедельник теперь закрыт → kind=done, показана следующая тренировка (следующая неделя).
+t = c.get(f"/trainer/today?date={D(0)}").json()
+chk("сделанный день -> done", t["kind"] == "done" and t["is_training_day"] is True, t["kind"])
+chk("done: отдан сам день", (t.get("day") or {}).get("title") == "Верх тела", (t.get("day") or {}).get("title"))
+chk("done: следующая дата", t.get("next_date") == D(7), t.get("next_date"))
+chk("done: название следующей", t.get("next_title") == "Верх тела", t.get("next_title"))
+
 t = c.get(f"/trainer/today?date={D(5)}").json()
 chk("неделя закрыта -> week_done", t["kind"] == "week_done", t["kind"])
 chk("week_done: следующая — на той неделе", t.get("next_date") == D(7), t.get("next_date"))

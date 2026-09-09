@@ -674,7 +674,7 @@ def session_out(db: Session, session) -> Optional[TrainerSessionOut]:
 #  Хелперы «Сегодня»: план дня, лента недели, стрик, готовность разбора
 # --------------------------------------------------------------------------- #
 def today_payload(db: Session, tid: int, program, days: list, date_value: str) -> TrainerTodayOut:
-    """План на дату (ТЗ §4.3): planned / rest / week_done / no_program."""
+    """План на дату (ТЗ §4.3): planned / done / rest / week_done / no_program."""
     active = get_active_session(db, tid)
     session = session_out(db, active) if active is not None else None
     if program is None:
@@ -706,6 +706,24 @@ def today_payload(db: Session, tid: int, program, days: list, date_value: str) -
         key=lambda d: (d.scheduled_date or "", d.week or 0, d.day_index or 0),
     )
     upcoming = future[0] if future else trainer_logic.next_planned_day(planned)
+
+    # Тренировка на эту дату уже закрыта (сделана или пропущена) — показываем
+    # итог дня и ближайшую следующую, а не «день отдыха».
+    done_today = next(
+        (d for d in days if d.scheduled_date == date_value and (d.status or "") in ("done", "skipped")),
+        None,
+    )
+    if done_today is not None:
+        return TrainerTodayOut(
+            date=date_value,
+            is_training_day=True,
+            kind="done",
+            day=serialize(done_today),
+            next_date=upcoming.scheduled_date if upcoming is not None else None,
+            next_title=upcoming.title if upcoming is not None else None,
+            active_session=session,
+        )
+
     if upcoming is None:
         # Плановых дней не осталось — программа пройдена целиком.
         return TrainerTodayOut(date=date_value, kind="week_done", active_session=session)

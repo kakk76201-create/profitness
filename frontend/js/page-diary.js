@@ -642,6 +642,12 @@
           App.state.diaryByDate[state.date] = day;
         }
         renderDay(day);
+        // Переход из AI-тренера «Что съесть?»: сразу открываем панель
+        // подбора блюд (флаг одноразовый, ставит page-trainer.js).
+        if (App.state && App.state.diaryOpenSuggest) {
+          App.state.diaryOpenSuggest = false;
+          onSheetAction("recommend");
+        }
       })
       .catch(function (err) {
         renderError(
@@ -2363,12 +2369,14 @@
       };
       if (mealType) payload.meal_type = mealType;
       if (freeText) payload.free_text = freeText;
+      // Дата нужна AI-тренеру: в тренировочный день подсказки учитывают нагрузку.
+      payload.date = state.date;
 
       App.api
         .suggestFood(payload)
         .then(function (res) {
           var suggestions = (res && res.suggestions) || [];
-          renderRecommendations(suggestions, rem.remainingCalories);
+          renderRecommendations(suggestions, rem.remainingCalories, res && res.training_note);
         })
         .catch(function (err) {
           renderRecommendError(
@@ -2465,9 +2473,14 @@
    * @param {Array} suggestions [{dish_name,calories,proteins,fats,carbs,reason}]
    * @param {number} remainingCalories остаток калорий (для подсказки)
    */
-  function renderRecommendations(suggestions, remainingCalories) {
+  function renderRecommendations(suggestions, remainingCalories, trainingNote) {
     var body = document.getElementById("diary-recommend-body");
     if (!body) return;
+
+    // Заметка AI-тренера («сегодня силовая — добавьте белка»), если есть.
+    var noteHtml = trainingNote
+      ? '<p class="diary-recommend__note">🏋️ ' + App.escapeHtml(trainingNote) + "</p>"
+      : "";
 
     if (!suggestions.length) {
       body.innerHTML =
@@ -2518,6 +2531,7 @@
     }
 
     body.innerHTML =
+      noteHtml +
       '<div class="diary-recommend__meal">' +
       '<span class="field__label">' + App.escapeHtml(pick("Добавить как", "Add as")) + "</span>" +
       mealChipsHtml(recMeal, "rec-meal") +

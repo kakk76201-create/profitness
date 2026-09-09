@@ -1,0 +1,819 @@
+/* ============================================================
+   AI-ТРЕНЕР — ПРОГРАММА / ПРОГРЕСС / БИБЛИОТЕКА УПРАЖНЕНИЙ
+   (page-trainer-program.js, page-trainer-progress.js,
+    page-trainer-exercise.js)
+   ------------------------------------------------------------
+   Лента недель с фазами, блоки плана дня, сводка прогресса,
+   полосы объёма по мышцам, график (SVG из Trainer.lineChart),
+   рекорды, история с раскрывающимися сессиями, недельный разбор
+   с чекбоксами правок, карточка упражнения и библиотека с фильтрами.
+   Общие классы (tr-page, tr-section-title, tr-plan-day, tr-plan-item,
+   tr-phase-chip, tr-program-head, tr-streak__bar) — в trainer.css.
+   Цвета — только через токены палитры.
+   ============================================================ */
+
+/* ---------- Общее ---------- */
+.tr-muted {
+  margin: 4px 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* ============================================================
+   ПРОГРАММА
+   ============================================================ */
+.tr-program-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 8px 0 12px;
+}
+
+/* «Неделя 2 из 8 · 1 из 3 сделано» + тонкая полоса. */
+.tr-program-progress {
+  margin: 10px 0 6px;
+}
+
+.tr-program-progress__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* Советы тренера внутри шапки программы. */
+.tr-program-tips {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(125, 155, 118, .12);
+}
+
+.tr-program-tips__title {
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cta);
+}
+
+.tr-program-tips__list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.tr-program-tips__item + .tr-program-tips__item {
+  margin-top: 2px;
+}
+
+/* Лента недель: горизонтальный скролл, каждая — кнопка с фазой. */
+.tr-program-weeks {
+  overflow: hidden;
+}
+
+.tr-week-strip--weeks {
+  display: flex;
+  gap: 8px;
+  margin: 0 -14px;
+  padding: 2px 14px 6px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.tr-week-strip--weeks::-webkit-scrollbar {
+  display: none;
+}
+
+.tr-week-item {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 78px;
+  padding: 10px 10px 8px;
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  color: var(--text);
+  cursor: pointer;
+  scroll-snap-align: start;
+  transition: background .16s ease, border-color .16s ease, color .16s ease;
+}
+
+.tr-week-item__num {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.tr-week-item.is-active {
+  border-color: var(--cta);
+  background: rgba(125, 155, 118, .14);
+}
+
+/* Текущая неделя — точка-маркер над номером. */
+.tr-week-item--current {
+  position: relative;
+}
+
+.tr-week-item--current::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--cta);
+}
+
+/* Блоки плана дня: разминка / основная / заминка. */
+.tr-plan-block {
+  margin-bottom: 12px;
+}
+
+.tr-plan-block:last-child {
+  margin-bottom: 0;
+}
+
+.tr-plan-block__title {
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--muted);
+}
+
+.tr-plan-block__empty {
+  margin: 4px 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.tr-plan-item__note {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* ============================================================
+   ПРОГРЕСС
+   ============================================================ */
+.tr-progress-summary .rep-stats {
+  margin-top: 8px;
+}
+
+/* ---------- Полосы объёма по мышцам ---------- */
+.tr-muscle-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.tr-muscle-bar {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 8px;
+}
+
+.tr-muscle-bar__label {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tr-muscle-bar__track {
+  position: relative;
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--card);
+  overflow: hidden;
+}
+
+/* Рекомендуемая зона 10–20 подходов — светлая подложка под полосой. */
+.tr-muscle-bar__zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(125, 155, 118, .22);
+}
+
+.tr-muscle-bar__fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  transition: width .3s ease;
+}
+
+.tr-muscle-bar--ok .tr-muscle-bar__fill {
+  background: var(--cta);
+}
+
+.tr-muscle-bar--low .tr-muscle-bar__fill {
+  background: var(--accent);
+}
+
+.tr-muscle-bar--high .tr-muscle-bar__fill {
+  background: var(--danger);
+}
+
+.tr-muscle-bar__val {
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.tr-muscle-bars__hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* ---------- График ---------- */
+.tr-chart-card {
+  overflow: hidden;
+}
+
+.tr-chart-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.tr-chart-controls .chip {
+  font-size: 12px;
+}
+
+.tr-chart {
+  margin-top: 10px;
+  padding: 6px 0 0;
+}
+
+.tr-chart__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.tr-chart__caption {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* ---------- Рекорды ---------- */
+.tr-record-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+}
+
+.tr-record-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(58, 53, 47, .08);
+}
+
+.tr-record-row:first-child {
+  border-top: none;
+}
+
+.tr-record-row[data-ex-id] {
+  cursor: pointer;
+}
+
+.tr-record-row__name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.tr-record-row__type {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: var(--muted);
+}
+
+.tr-record-row__value {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tr-record-row__meta {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* ---------- История сессий (раскрывающиеся строки) ---------- */
+.tr-history {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+}
+
+.tr-history-item {
+  border-top: 1px solid rgba(58, 53, 47, .08);
+}
+
+.tr-history-item:first-child {
+  border-top: none;
+}
+
+.tr-history-item__head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "title chevron"
+    "meta  chevron";
+  align-items: center;
+  column-gap: 8px;
+  width: 100%;
+  padding: 10px 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.tr-history-item__title {
+  grid-area: title;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tr-history-item__meta {
+  grid-area: meta;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.tr-history-item__chevron {
+  grid-area: chevron;
+  font-size: 14px;
+  color: var(--muted);
+  transition: transform .18s ease;
+}
+
+.tr-history-item.is-open .tr-history-item__chevron {
+  transform: rotate(180deg);
+}
+
+.tr-history-item__body {
+  padding: 0 0 12px;
+}
+
+.tr-history__more {
+  margin: 8px 0 0;
+  text-align: center;
+}
+
+/* Строка «упражнение — подходы» в раскрытой сессии и на карточке упражнения. */
+.tr-history-set {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 0;
+}
+
+.tr-history-set__name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tr-history-set__vals {
+  font-size: 13px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.tr-history-feedback {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.tr-history-adapt {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(125, 155, 118, .12);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.tr-history-adapt__title {
+  margin-bottom: 2px;
+  font-weight: 700;
+  color: var(--cta);
+}
+
+/* ---------- Недельный разбор ---------- */
+.tr-review-card__period {
+  margin: -4px 0 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.tr-review-card__summary {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.tr-review-card__section {
+  margin-top: 12px;
+}
+
+.tr-review-card__subtitle {
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.tr-review-card__list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.tr-review-card__list li + li {
+  margin-top: 3px;
+}
+
+/* Правка на следующую неделю: чекбокс + текст + причина. */
+.tr-review-card__change {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  cursor: pointer;
+}
+
+.tr-review-card__change.is-applied {
+  border-color: rgba(125, 155, 118, .45);
+  background: rgba(125, 155, 118, .10);
+  cursor: default;
+}
+
+.tr-review-card__check {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin: 1px 0 0;
+  accent-color: var(--cta);
+}
+
+.tr-review-card__change-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tr-review-card__change-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.tr-review-card__change-why {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.tr-review-card__badge {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--cta);
+  color: var(--white);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.tr-review-card__done {
+  margin: 6px 0 0;
+}
+
+.tr-review-card__error {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--danger);
+}
+
+.tr-review-card__focus {
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(125, 155, 118, .12);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.tr-review-card__motivation {
+  margin: 8px 0 0;
+  font-size: 13px;
+  font-style: italic;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.tr-review-card .btn {
+  margin-top: 12px;
+}
+
+/* ============================================================
+   БИБЛИОТЕКА УПРАЖНЕНИЙ
+   ============================================================ */
+.tr-lib-filters {
+  padding-bottom: 10px;
+}
+
+.tr-lib-search {
+  margin-bottom: 8px;
+}
+
+.tr-lib-filters__row {
+  display: flex;
+  gap: 6px;
+  margin: 0 -14px;
+  padding: 2px 14px 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.tr-lib-filters__row::-webkit-scrollbar {
+  display: none;
+}
+
+.tr-lib-filters__row .chip {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.tr-lib-list {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.tr-lib-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 0;
+  border: none;
+  border-top: 1px solid rgba(58, 53, 47, .08);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.tr-lib-item:first-child {
+  border-top: none;
+}
+
+.tr-lib-item:active {
+  background: var(--card);
+}
+
+.tr-lib-item__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tr-lib-item__name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.tr-lib-item__meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.tr-lib-item__badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(125, 155, 118, .18);
+  color: var(--cta);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.tr-lib-item__badge--excluded {
+  background: rgba(194, 102, 77, .14);
+  color: var(--danger);
+}
+
+/* Сложность — точки «●●○». */
+.tr-lib-item__diff {
+  flex: 0 0 auto;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+
+.tr-lib-more {
+  margin: 8px 0 0;
+  text-align: center;
+}
+
+.tr-lib-empty {
+  text-align: center;
+}
+
+/* ---------- Карточка упражнения ---------- */
+.tr-ex-head__name {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.tr-ex-head__meta {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.tr-ex-head__diff {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.tr-ex-head__diff span {
+  letter-spacing: 1px;
+  color: var(--text);
+}
+
+.tr-ex-head__secondary {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.tr-ex-head__contra {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(194, 102, 77, .10);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--danger);
+}
+
+/* Вкладки «Техника» / «История» — сегментированный переключатель. */
+.tr-ex-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+
+.tr-ex-tab {
+  padding: 9px 8px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .16s ease, color .16s ease;
+}
+
+.tr-ex-tab.is-active {
+  background: var(--white);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.tr-ex-section {
+  margin-bottom: 12px;
+}
+
+.tr-ex-section:last-child {
+  margin-bottom: 0;
+}
+
+.tr-ex-hint {
+  margin-top: 8px;
+}
+
+.tr-ex-history {
+  display: flex;
+  flex-direction: column;
+}
+
+.tr-ex-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.tr-ex-exclude {
+  color: var(--danger);
+}
+
+/* Техника на странице упражнения (в листе — см. trainer-session.css). */
+.tr-technique__item + .tr-technique__item {
+  margin-top: 3px;
+}
+
+.tr-technique__text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* ---------- Узкие экраны ---------- */
+@media (max-width: 360px) {
+  .tr-muscle-bar {
+    grid-template-columns: 72px minmax(0, 1fr) 26px;
+    gap: 6px;
+  }
+
+  .tr-week-item {
+    min-width: 70px;
+    padding: 8px 8px 6px;
+  }
+
+  .tr-ex-head__name {
+    font-size: 18px;
+  }
+}
