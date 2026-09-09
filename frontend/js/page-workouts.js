@@ -437,6 +437,8 @@
       sub =
         pick("Сегодня: ", "Today: ") + brief.title +
         (brief.duration_min ? " · " + brief.duration_min + " " + pick("мин", "min") : "");
+    } else if (brief.kind === "done") {
+      sub = pick("Сегодня сделано ✓", "Done today ✓") + (brief.title ? " · " + brief.title : "");
     } else if (brief.kind === "rest") {
       sub = pick("День отдыха", "Rest day");
     } else if (brief.kind === "week_done") {
