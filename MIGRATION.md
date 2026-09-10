@@ -90,7 +90,7 @@ git push -u origin main
 
 `APP_TZ=Europe/Moscow`, `ENABLE_SCHEDULER=1`, `FREE_SCAN_LIMIT=3`, `TRIAL_DAYS=7`,
 `SUBSCRIPTION_MONTHLY_DAYS=30`, `SUBSCRIPTION_YEARLY_DAYS=365`,
-`PRICE_MONTHLY_RUB=499`, `PRICE_YEARLY_RUB=3990`, `PRICE_LIFETIME_RUB=7990`.
+`PRICE_MONTHLY_RUB=699`, `PRICE_YEARLY_RUB=5590`, `PRICE_LIFETIME_RUB=0` (0 — вечный тариф не продаётся).
 
 **Оплата картой** (единственный способ оплаты; цены только в рублях):
 `PAYMENT_PROVIDER` (`auto` / `cloudpayments` / `yookassa` / `none`),

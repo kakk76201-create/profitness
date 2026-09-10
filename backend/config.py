@@ -107,9 +107,9 @@ CLOUDPAYMENTS_CURRENCY = os.getenv("CLOUDPAYMENTS_CURRENCY", "RUB").strip() or "
 # для модерации в платёжном сервисе (ЮKassa и т.п.) — её проходят ДО выдачи
 # ключей. Значения перекрываются переменными PRICE_*_RUB без правки кода.
 RUB_PRICES: dict = {
-    "monthly": float(os.getenv("PRICE_MONTHLY_RUB", "499") or 0),
-    "yearly": float(os.getenv("PRICE_YEARLY_RUB", "3990") or 0),
-    "lifetime": float(os.getenv("PRICE_LIFETIME_RUB", "7990") or 0),
+    "monthly": float(os.getenv("PRICE_MONTHLY_RUB", "699") or 0),
+    "yearly": float(os.getenv("PRICE_YEARLY_RUB", "5590") or 0),
+    "lifetime": float(os.getenv("PRICE_LIFETIME_RUB", "0") or 0),  # 0 — вечный тариф не продаётся (только ручная выдача владельцем)
 }
 
 # Какая платёжная система обрабатывает оплату картой:
@@ -191,7 +191,7 @@ def tariff_catalog() -> dict:
     """Каталог тарифов для фронта: срок + рублёвая цена.
 
     Формат (контракт с фронтом):
-        {"monthly": {"days": 30, "price": 499.0, "currency": "RUB"}, ...}
+        {"monthly": {"days": 30, "price": 699.0, "currency": "RUB"}, ...}
 
     В каталог попадают ТОЛЬКО тарифы с заданной рублёвой ценой: продавать
     тариф, у которого цены нет, нечем (PRICE_*_RUB=0 убирает его с витрины).

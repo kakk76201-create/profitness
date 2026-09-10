@@ -86,13 +86,16 @@ def main():
     check("рублёвые цены есть", bool(status.get("card_prices")), status.get("card_prices"))
 
     tariffs = status.get("tariffs") or {}
-    check("три тарифа на месте", set(tariffs) == {"monthly", "yearly", "lifetime"},
+    # По умолчанию продаются только месяц и год: у вечного тарифа цена 0,
+    # он остаётся лишь для ручной выдачи владельцем.
+    check("по умолчанию два тарифа: месяц и год", set(tariffs) == {"monthly", "yearly"},
           sorted(tariffs))
     check("каталог месячного тарифа по контракту",
-          tariffs.get("monthly") == {"days": 30, "price": 499.0, "currency": "RUB"},
+          tariffs.get("monthly") == {"days": 30, "price": 699.0, "currency": "RUB"},
           tariffs.get("monthly"))
-    check("вечный тариф без срока",
-          (tariffs.get("lifetime") or {}).get("days") is None, tariffs.get("lifetime"))
+    check("годовой по умолчанию 5590 ₽",
+          (tariffs.get("yearly") or {}).get("price") == 5590.0, tariffs.get("yearly"))
+    check("вечный тариф не продаётся", "lifetime" not in tariffs, sorted(tariffs))
     for name, cfg in tariffs.items():
         check(f"у тарифа {name} нет поля stars", "stars" not in (cfg or {}), cfg)
         check(f"у тарифа {name} валюта RUB", (cfg or {}).get("currency") == "RUB", cfg)

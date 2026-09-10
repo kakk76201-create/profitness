@@ -23,7 +23,6 @@ os.environ["ENABLE_SCHEDULER"] = "0"
 os.environ["OWNER_ID"] = "0"
 os.environ["ALLOW_INSECURE_AUTH"] = "1"
 
-
 def build_app(**env):
     """Пересобрать приложение с заданным окружением."""
     for key in ("CLOUDPAYMENTS_PUBLIC_ID", "CLOUDPAYMENTS_API_SECRET",
@@ -47,7 +46,6 @@ def build_app(**env):
     init_db()
     return TestClient(backend.main.app)
 
-
 def main():
     problems = []
 
@@ -68,10 +66,11 @@ def main():
     prices = status.get("card_prices") or {}
     check("цена месячного есть", prices.get("monthly", 0) > 0, prices)
     check("цена годового есть", prices.get("yearly", 0) > 0, prices)
-    check("цена вечного есть", prices.get("lifetime", 0) > 0, prices)
-    check("все три тарифа в каталоге",
-          set(status.get("tariffs", {})) == {"monthly", "yearly", "lifetime"},
+    check("вечный тариф по умолчанию не продаётся", "lifetime" not in prices, prices)
+    check("по умолчанию в каталоге месяц и год",
+          set(status.get("tariffs", {})) == {"monthly", "yearly"},
           sorted(status.get("tariffs", {})))
+
     check("в каталоге только рубли (цен в звёздах нет)",
           all(set(cfg) == {"days", "price", "currency"} and cfg["currency"] == "RUB"
               for cfg in status.get("tariffs", {}).values()),
@@ -134,7 +133,6 @@ def main():
     print("    провайдер определяется автоматически и задаётся явно (yookassa/none);")
     print("    сама витрина премиум не выдаёт")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())
