@@ -4,50 +4,69 @@
   <meta charset="UTF-8">
   <!-- Вьюпорт: мобильный, поддержка безопасных зон (вырезы/«чёлки») -->
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <title>Трекер калорий</title>
+  <title>Fitness Up</title>
 
   <!-- Шрифт Inter из Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
+  <!-- Дизайн-токены — ПЕРВЫМИ: остальные файлы читают их через var() -->
+  <link rel="stylesheet" href="css/tokens.css?v=s33">
   <!-- Основные стили приложения -->
-  <link rel="stylesheet" href="css/style.css?v=s32">
+  <link rel="stylesheet" href="css/style.css?v=s33">
+  <!-- Экран «Сегодня» -->
+  <link rel="stylesheet" href="css/today.css?v=s33">
   <!-- Стили отдельной страницы оплаты -->
-  <link rel="stylesheet" href="css/payment.css?v=s32">
-  <!-- Стили раздела «AI-тренер»: общие/онбординг/сегодня, сессия, прогресс -->
-  <link rel="stylesheet" href="css/trainer.css?v=s32">
-  <link rel="stylesheet" href="css/trainer-session.css?v=s32">
-  <link rel="stylesheet" href="css/trainer-progress.css?v=s32">
+  <link rel="stylesheet" href="css/payment.css?v=s33">
+  <!-- Стили раздела «Тренировка»: общие/онбординг/сегодня, сессия, прогресс -->
+  <link rel="stylesheet" href="css/trainer.css?v=s33">
+  <link rel="stylesheet" href="css/trainer-session.css?v=s33">
+  <link rel="stylesheet" href="css/trainer-progress.css?v=s33">
 </head>
 <body>
   <!-- Контейнер активной страницы: App очищает и наполняет его -->
   <main id="view"></main>
 
-  <!-- Нижняя панель навигации: пять пунктов (центральная кнопка-камера приподнята) -->
+  <!-- Нижняя навигация: четыре раздела + приподнятая кнопка камеры по центру.
+       Иконки встроены как SVG (не эмодзи): они наследуют цвет активного
+       состояния через currentColor и одинаково выглядят на всех устройствах.
+       Геометрия совпадает с набором в js/icons.js. -->
   <nav id="tabbar">
-    <button class="tab" type="button" data-page="workouts">
-      <span class="tab-emoji" aria-hidden="true">🏋️</span>
-      <span class="tab-label">Тренировки</span>
+    <button class="tab" type="button" data-page="today">
+      <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3.5 10.5L12 3.5l8.5 7"/>
+        <path d="M5.5 9.5v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-9"/>
+      </svg>
+      <span class="tab-label">Сегодня</span>
     </button>
-    <button class="tab" type="button" data-page="supplements">
-      <span class="tab-emoji" aria-hidden="true">💊</span>
-      <span class="tab-label">Добавки</span>
+    <button class="tab" type="button" data-page="trainer">
+      <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M6.5 8.5h2v7h-2zM15.5 8.5h2v7h-2z"/>
+        <path d="M3.5 10.5v3M20.5 10.5v3M8.5 12h7"/>
+      </svg>
+      <span class="tab-label">Тренировка</span>
     </button>
-    <!-- Центральная кнопка «Определение»: только иконка камеры в кружке, без подписи -->
-    <button class="tab tab-camera" type="button" data-page="scan" aria-label="Определение">
-      <svg class="tab-camera__icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#FFFDFA" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-        <circle cx="12" cy="13" r="4"></circle>
+    <!-- Центральная кнопка «Снять еду»: только иконка, без подписи -->
+    <button class="tab tab-camera" type="button" data-page="scan" aria-label="Снять еду">
+      <svg class="tab-camera__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21.5 18.5a2 2 0 0 1-2 2h-15a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2h3l1.7-2.5h6.6L17.5 7.5h2a2 2 0 0 1 2 2z"/>
+        <circle cx="12" cy="13.5" r="3.5"/>
       </svg>
     </button>
     <button class="tab" type="button" data-page="diary">
-      <span class="tab-emoji" aria-hidden="true">🥗</span>
-      <span class="tab-label">Рацион</span>
+      <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M6 3v7a2.5 2.5 0 0 0 5 0V3M8.5 12.5V21"/>
+        <path d="M17 3c-1.7 1-2.5 3-2.5 5.5S15.3 12 17 12.5V21"/>
+      </svg>
+      <span class="tab-label">Питание</span>
     </button>
     <button class="tab" type="button" data-page="account">
-      <span class="tab-emoji" aria-hidden="true">👤</span>
-      <span class="tab-label">Аккаунт</span>
+      <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="8" r="3.8"/>
+        <path d="M4.5 20.5c0-3.9 3.4-6.5 7.5-6.5s7.5 2.6 7.5 6.5"/>
+      </svg>
+      <span class="tab-label">Профиль</span>
     </button>
   </nav>
 
@@ -63,25 +82,27 @@
   <!-- 1) Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <!-- 2) Ядро приложения: window.App, хелперы, API-клиент, роутер -->
-  <script src="js/app.js?v=s32"></script>
-  <!-- 3-7) Контроллеры страниц (каждый вызывает App.registerPage при загрузке) -->
-  <script src="js/page-scan.js?v=s32"></script>
-  <script src="js/page-diary.js?v=s32"></script>
-  <script src="js/page-workouts.js?v=s32"></script>
-  <!-- Раздел «AI-тренер»: общий модуль window.Trainer ПЕРВЫМ, затем страницы -->
-  <script src="js/trainer-common.js?v=s32"></script>
-  <script src="js/page-trainer.js?v=s32"></script>
-  <script src="js/page-trainer-onboarding.js?v=s32"></script>
-  <script src="js/page-trainer-program.js?v=s32"></script>
-  <script src="js/page-trainer-session.js?v=s32"></script>
-  <script src="js/page-trainer-progress.js?v=s32"></script>
-  <script src="js/page-trainer-exercise.js?v=s32"></script>
-  <script src="js/page-supplements.js?v=s32"></script>
-  <script src="js/page-subscription.js?v=s32"></script>
-  <script src="js/page-payment.js?v=s32"></script>
-  <script src="js/page-account.js?v=s32"></script>
-  <script src="js/page-onboarding.js?v=s32"></script>
-  <!-- 6) Запуск приложения после регистрации всех страниц -->
+  <script src="js/app.js?v=s33"></script>
+  <!-- 3) Набор иконок: App.icon(name) — сразу после ядра, до страниц -->
+  <script src="js/icons.js?v=s33"></script>
+  <!-- 4) Контроллеры страниц (каждый вызывает App.registerPage при загрузке) -->
+  <script src="js/page-today.js?v=s33"></script>
+  <script src="js/page-scan.js?v=s33"></script>
+  <script src="js/page-diary.js?v=s33"></script>
+  <!-- Раздел «Тренировка»: общий модуль window.Trainer ПЕРВЫМ, затем страницы -->
+  <script src="js/trainer-common.js?v=s33"></script>
+  <script src="js/page-trainer.js?v=s33"></script>
+  <script src="js/page-trainer-onboarding.js?v=s33"></script>
+  <script src="js/page-trainer-program.js?v=s33"></script>
+  <script src="js/page-trainer-session.js?v=s33"></script>
+  <script src="js/page-trainer-progress.js?v=s33"></script>
+  <script src="js/page-trainer-exercise.js?v=s33"></script>
+  <script src="js/page-supplements.js?v=s33"></script>
+  <script src="js/page-subscription.js?v=s33"></script>
+  <script src="js/page-payment.js?v=s33"></script>
+  <script src="js/page-account.js?v=s33"></script>
+  <script src="js/page-onboarding.js?v=s33"></script>
+  <!-- 5) Запуск приложения после регистрации всех страниц -->
   <script>App.init();</script>
 </body>
 </html>

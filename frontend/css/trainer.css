@@ -72,7 +72,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: rgba(125, 155, 118, .16);
+  background: rgba(47, 111, 78, .16);
   font-size: 26px;
   line-height: 1;
 }
@@ -145,7 +145,7 @@
   width: 46px;
   height: 46px;
   margin: 0 auto 18px;
-  border: 4px solid rgba(201, 184, 168, .55);
+  border: 4px solid rgba(220, 224, 214, .55);
   border-top-color: var(--cta);
   border-radius: 50%;
   animation: spin .8s linear infinite;
@@ -180,7 +180,7 @@
 .tr-sheet__backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(58, 53, 47, .38);
+  background: rgba(23, 26, 22, .38);
   opacity: 0;
   transition: opacity .22s ease;
   touch-action: none;
@@ -199,7 +199,7 @@
   margin: 0 auto;
   background: var(--bg);
   border-radius: var(--radius) var(--radius) 0 0;
-  box-shadow: 0 -8px 28px rgba(122, 107, 90, .18);
+  box-shadow: 0 -8px 28px rgba(23, 26, 22, .18);
   padding: 8px 16px calc(var(--safe-bottom) + 20px);
   transform: translateY(100%);
   transition: transform .24s cubic-bezier(.22, .61, .36, 1);
@@ -313,8 +313,8 @@
 
 .tr-toggle--on {
   border-color: var(--cta);
-  background: rgba(125, 155, 118, .12);
-  box-shadow: 0 0 0 3px rgba(125, 155, 118, .16);
+  background: rgba(47, 111, 78, .12);
+  box-shadow: 0 0 0 3px rgba(47, 111, 78, .16);
 }
 
 .tr-toggle__emoji {
@@ -417,7 +417,7 @@
   margin: 12px 0 0;
   padding: 10px 12px;
   border-radius: var(--radius-sm);
-  background: rgba(255, 253, 250, .6);
+  background: rgba(255, 255, 255, .6);
   font-size: 12.5px;
   color: var(--muted);
   line-height: 1.45;
@@ -462,8 +462,8 @@
 
 .tr-option.is-active {
   border-color: var(--cta);
-  background: rgba(125, 155, 118, .12);
-  box-shadow: 0 0 0 3px rgba(125, 155, 118, .16);
+  background: rgba(47, 111, 78, .12);
+  box-shadow: 0 0 0 3px rgba(47, 111, 78, .16);
 }
 
 .tr-option__icon {
@@ -604,7 +604,7 @@
 .tr-onb-summary {
   margin: 14px 0 4px;
   padding: 4px 0 0;
-  border-top: 1px solid rgba(201, 184, 168, .6);
+  border-top: 1px solid rgba(220, 224, 214, .6);
 }
 
 .tr-onb-summary__row {
@@ -613,7 +613,7 @@
   align-items: flex-start;
   gap: 12px;
   padding: 9px 0;
-  border-bottom: 1px solid rgba(201, 184, 168, .45);
+  border-bottom: 1px solid rgba(220, 224, 214, .45);
   font-size: 13.5px;
 }
 
@@ -702,12 +702,12 @@
 }
 
 .tr-day-badge--today {
-  background: rgba(125, 155, 118, .18);
+  background: rgba(47, 111, 78, .18);
   color: var(--cta);
 }
 
 .tr-day-badge--rest {
-  background: rgba(138, 129, 120, .16);
+  background: rgba(91, 97, 87, .16);
   color: var(--muted);
 }
 
@@ -720,7 +720,7 @@
 .tr-ex-preview {
   margin-top: 12px;
   padding-top: 10px;
-  border-top: 1px solid rgba(201, 184, 168, .5);
+  border-top: 1px solid rgba(220, 224, 214, .5);
 }
 
 .tr-ex-preview__item {
@@ -815,7 +815,7 @@
 }
 
 .tr-week-day--today {
-  background: rgba(125, 155, 118, .12);
+  background: rgba(47, 111, 78, .12);
   color: var(--text);
 }
 
@@ -824,7 +824,7 @@
 }
 
 .tr-week-day--today .tr-week-day__dot {
-  box-shadow: 0 0 0 2px rgba(125, 155, 118, .35);
+  box-shadow: 0 0 0 2px rgba(47, 111, 78, .35);
 }
 
 /* Стрик. */
@@ -861,7 +861,7 @@
 .tr-streak__bar {
   height: 8px;
   border-radius: 4px;
-  background: rgba(201, 184, 168, .55);
+  background: rgba(220, 224, 214, .55);
   overflow: hidden;
   margin-top: 10px;
 }
@@ -895,7 +895,7 @@
   font-size: 13.5px;
   line-height: 1.5;
   padding: 5px 0;
-  border-top: 1px solid rgba(201, 184, 168, .5);
+  border-top: 1px solid rgba(220, 224, 214, .5);
 }
 
 .tr-nutrition-card__label {
@@ -1070,11 +1070,11 @@
 }
 
 .tr-phase-chip--base {
-  background: rgba(201, 184, 168, .6);
+  background: rgba(220, 224, 214, .6);
 }
 
 .tr-phase-chip--build {
-  background: rgba(125, 155, 118, .18);
+  background: rgba(47, 111, 78, .18);
   color: var(--cta);
 }
 
@@ -1084,7 +1084,7 @@
 }
 
 .tr-phase-chip--deload {
-  background: rgba(138, 129, 120, .16);
+  background: rgba(91, 97, 87, .16);
   color: var(--muted);
 }
 
@@ -1116,7 +1116,7 @@
   flex-direction: column;
   gap: 2px;
   padding: 8px 0;
-  border-top: 1px solid rgba(201, 184, 168, .5);
+  border-top: 1px solid rgba(220, 224, 214, .5);
   font-size: 14px;
 }
 

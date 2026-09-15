@@ -50,7 +50,7 @@
   margin-top: 12px;
   padding: 10px 12px;
   border-radius: var(--radius-sm);
-  background: rgba(125, 155, 118, .12);
+  background: rgba(47, 111, 78, .12);
 }
 
 .tr-program-tips__title {
@@ -117,7 +117,7 @@
 
 .tr-week-item.is-active {
   border-color: var(--cta);
-  background: rgba(125, 155, 118, .14);
+  background: rgba(47, 111, 78, .14);
 }
 
 /* Текущая неделя — точка-маркер над номером. */
@@ -212,7 +212,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  background: rgba(125, 155, 118, .22);
+  background: rgba(47, 111, 78, .22);
 }
 
 .tr-muscle-bar__fill {
@@ -299,7 +299,7 @@
   justify-content: space-between;
   gap: 10px;
   padding: 10px 0;
-  border-top: 1px solid rgba(58, 53, 47, .08);
+  border-top: 1px solid rgba(23, 26, 22, .08);
 }
 
 .tr-record-row:first-child {
@@ -353,7 +353,7 @@
 }
 
 .tr-history-item {
-  border-top: 1px solid rgba(58, 53, 47, .08);
+  border-top: 1px solid rgba(23, 26, 22, .08);
 }
 
 .tr-history-item:first-child {
@@ -446,7 +446,7 @@
   margin: 8px 0 0;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
-  background: rgba(125, 155, 118, .12);
+  background: rgba(47, 111, 78, .12);
   font-size: 13px;
   line-height: 1.45;
 }
@@ -505,8 +505,8 @@
 }
 
 .tr-review-card__change.is-applied {
-  border-color: rgba(125, 155, 118, .45);
-  background: rgba(125, 155, 118, .10);
+  border-color: rgba(47, 111, 78, .45);
+  background: rgba(47, 111, 78, .10);
   cursor: default;
 }
 
@@ -563,7 +563,7 @@
   margin: 12px 0 0;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
-  background: rgba(125, 155, 118, .12);
+  background: rgba(47, 111, 78, .12);
   font-size: 13px;
   font-weight: 600;
   line-height: 1.45;
@@ -623,7 +623,7 @@
   width: 100%;
   padding: 10px 0;
   border: none;
-  border-top: 1px solid rgba(58, 53, 47, .08);
+  border-top: 1px solid rgba(23, 26, 22, .08);
   background: transparent;
   color: var(--text);
   text-align: left;
@@ -664,14 +664,14 @@
   display: inline-block;
   padding: 2px 8px;
   border-radius: 999px;
-  background: rgba(125, 155, 118, .18);
+  background: rgba(47, 111, 78, .18);
   color: var(--cta);
   font-size: 11px;
   font-weight: 700;
 }
 
 .tr-lib-item__badge--excluded {
-  background: rgba(194, 102, 77, .14);
+  background: rgba(192, 57, 43, .14);
   color: var(--danger);
 }
 
@@ -727,7 +727,7 @@
   margin: 6px 0 0;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
-  background: rgba(194, 102, 77, .10);
+  background: rgba(192, 57, 43, .10);
   font-size: 13px;
   line-height: 1.45;
   color: var(--danger);

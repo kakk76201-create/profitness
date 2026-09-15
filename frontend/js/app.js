@@ -85,17 +85,17 @@
   function applyTabLabels() {
     // Локализуем заголовок документа и атрибут lang (видны в части клиентов).
     try {
-      document.title = App.pick("Трекер калорий", "Calorie Tracker");
+      document.title = "Fitness Up";
       document.documentElement.lang = App.lang;
     } catch (e) {
       /* не критично */
     }
 
     var map = {
-      workouts: App.pick("Тренировки", "Workouts"),
-      supplements: App.pick("Добавки", "Supplements"),
-      diary: App.pick("Рацион", "Diary"),
-      account: App.pick("Аккаунт", "Account")
+      today: App.pick("Сегодня", "Today"),
+      trainer: App.pick("Тренировка", "Workout"),
+      diary: App.pick("Питание", "Nutrition"),
+      account: App.pick("Профиль", "Profile")
     };
     var tabs = document.querySelectorAll("#tabbar .tab");
     for (var i = 0; i < tabs.length; i++) {
@@ -1011,6 +1011,36 @@
    * и вызывает onShow целевой страницы.
    * @param {string} name
    */
+  /**
+   * Экраны-задачи: пользователь занят одним делом, и нижняя навигация только
+   * мешает. Главное — тренировка: с видимым таббаром из неё выходишь случайным
+   * тапом, теряя незавершённую сессию без всякого подтверждения.
+   * Возврат с таких экранов — только их собственной кнопкой «Назад»/«Закрыть».
+   */
+  var TASK_PAGES = {
+    "trainer-session": true,
+    "trainer-onboarding": true,
+    onboarding: true,
+    payment: true
+  };
+
+  /**
+   * Вкладка, которую подсвечивать для экрана вне таббара. Без этого при
+   * переходе вглубь раздела навигация «гасла» — ни один пункт не активен,
+   * и пользователь терял понимание, где находится.
+   */
+  var TAB_OF_PAGE = {
+    trainer: "trainer",
+    "trainer-program": "trainer",
+    "trainer-progress": "trainer",
+    "trainer-exercise": "trainer",
+    "trainer-session": "trainer",
+    "trainer-onboarding": "trainer",
+    supplements: "account",
+    subscription: "account",
+    payment: "account"
+  };
+
   App.navigate = function (name) {
     var target = App._pages[name];
     if (!target) {
@@ -1037,11 +1067,16 @@
       viewEl.innerHTML = "";
     }
 
-    // Обновляем активный таб в нижней навигации.
+    // Режим экрана-задачи: прячем нижнюю навигацию (класс на <body>).
+    document.body.classList.toggle("is-task-screen", !!TASK_PAGES[name]);
+
+    // Обновляем активный таб. Для экранов вне таббара подсвечиваем вкладку
+    // раздела, которому экран принадлежит.
+    var activeTab = TAB_OF_PAGE[name] || name;
     var tabs = document.querySelectorAll("#tabbar .tab");
     for (var i = 0; i < tabs.length; i++) {
       var t = tabs[i];
-      if (t.getAttribute("data-page") === name) {
+      if (t.getAttribute("data-page") === activeTab) {
         t.classList.add("active");
       } else {
         t.classList.remove("active");
@@ -1659,16 +1694,18 @@
         return App.refreshSubscription();
       })
       .then(function () {
-        // Стартовая страница. Первый запуск (нет цели по калориям в профиле) —
-        // мастер онбординга; иначе сразу дневник. Так мы НЕ открываем камеру
-        // на старте (иначе Telegram сразу спрашивает разрешение камеры).
+        // Стартовая страница — «Сегодня»: один экран отвечает на вопрос
+        // «что у меня сейчас» (калории, тренировка дня, вес, серия) и ведёт
+        // в нужный раздел. Первый запуск без цели по калориям — мастер
+        // онбординга. Камеру на старте не открываем: иначе Telegram сразу
+        // спрашивает разрешение, ещё до того как человек понял, что это.
         if (
           !App.state.profile ||
           App.state.profile.daily_goal_kcal == null
         ) {
           App.navigate("onboarding");
         } else {
-          App.navigate("diary");
+          App.navigate("today");
         }
       });
   };

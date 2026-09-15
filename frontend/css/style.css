@@ -12,28 +12,9 @@
    Поэтому ниже все варианты определены вместе как алиасы.
    ============================================================ */
 
-/* ---------- Дизайн-токены (CSS-переменные) ---------- */
-:root {
-  /* Цветовая палитра (пастельная) */
-  --bg: #FAF7F2;          /* Фон приложения */
-  --card: #E8D5C4;        /* Фон карточек */
-  --accent: #C9B8A8;      /* Акцентный (нейтральный бежевый) */
-  --cta: #7D9B76;         /* Основная кнопка действия (зелёный) */
-  --cta-press: #6b885f;   /* Цвет CTA при нажатии */
-  --text: #3A352F;        /* Основной текст */
-  --muted: #8A8178;       /* Приглушённый текст */
-  --danger: #C2664D;      /* Опасные действия / ошибки */
-  --white: #FFFDFA;       /* Светлый «белый» */
-
-  /* Скругления и тени */
-  --radius: 16px;         /* Радиус карточек */
-  --radius-sm: 12px;      /* Малый радиус */
-  --shadow: 0 6px 20px rgba(122, 107, 90, .12);
-
-  /* Высота нижней навигации и безопасная зона устройства */
-  --tabbar-height: 64px;
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
-}
+/* ---------- Дизайн-токены ----------
+   Живут в css/tokens.css, который подключается ПЕРВЫМ.
+   Здесь их объявлять нельзя: один источник правды. */
 
 /* ---------- Базовый сброс ---------- */
 *,
@@ -163,12 +144,22 @@ h1, h2, h3 {
    КАРТОЧКИ (.card)
    ============================================================ */
 .card {
-  background: var(--card);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--s4);
+  margin-bottom: var(--s3);
+}
+
+/* Вложенный блок внутри карточки: без собственной границы и тени,
+   отделяется только заливкой. Карточка в карточке с двойной тенью —
+   главный источник визуального шума в прежней версии. */
+.card .card,
+.card-inner {
+  background: var(--surface-2);
+  border: none;
+  box-shadow: none;
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 16px;
-  margin-bottom: 16px;
-  animation: fadeIn .28s ease;
 }
 
 /* ============================================================
@@ -181,14 +172,14 @@ h1, h2, h3 {
   justify-content: center;
   gap: 8px;
   width: 100%;
-  min-height: 52px;
-  padding: 0 18px;
+  min-height: 48px;
+  padding: 0 var(--s4);
   border: none;
-  border-radius: 14px;
-  background: var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface-2);
   color: var(--text);
-  font-weight: 600;
-  font-size: 16px;
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-h3);
   cursor: pointer;
   user-select: none;
   transition: background .18s ease, transform .08s ease, opacity .18s ease,
@@ -220,9 +211,9 @@ h1, h2, h3 {
    Алиасы btn-cta (page-scan) и btn--cta (page-diary, page-account). */
 .btn-cta,
 .btn--cta {
-  background: var(--cta);
-  color: var(--white);
-  box-shadow: 0 6px 16px rgba(125, 155, 118, .28);
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: none;
 }
 
 .btn-cta:active,
@@ -234,15 +225,15 @@ h1, h2, h3 {
    Алиасы btn-ghost (page-scan) и btn--ghost (page-diary, page-account). */
 .btn-ghost,
 .btn--ghost {
-  background: transparent;
+  background: var(--surface);
   color: var(--text);
-  border: 1.5px solid var(--accent);
+  border: 1px solid var(--border-strong);
   box-shadow: none;
 }
 
 .btn-ghost:active,
 .btn--ghost:active {
-  background: rgba(201, 184, 168, .25);
+  background: rgba(220, 224, 214, .25);
 }
 
 /* Опасная кнопка (на будущее / удаление) */
@@ -268,8 +259,8 @@ h1, h2, h3 {
   max-width: 480px;
   margin: 0 auto;
   background: var(--white);
-  border-top: 1px solid rgba(58, 53, 47, .08);
-  box-shadow: 0 -4px 20px rgba(122, 107, 90, .1);
+  border-top: 1px solid rgba(23, 26, 22, .08);
+  box-shadow: 0 -4px 20px rgba(23, 26, 22, .1);
   /* Учитываем безопасную нижнюю область устройства */
   padding-bottom: var(--safe-bottom);
 }
@@ -289,33 +280,41 @@ h1, h2, h3 {
   transition: color .18s ease;
 }
 
-.tab-emoji {
-  font-size: 22px;
-  line-height: 1;
-  /* Неактивные иконки слегка приглушены */
-  filter: grayscale(40%);
-  opacity: .7;
-  transition: filter .18s ease, opacity .18s ease, transform .12s ease;
+.tab-icon {
+  width: 24px;
+  height: 24px;
+  transition: transform var(--dur-fast) var(--ease);
 }
 
 .tab-label {
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-medium);
+  letter-spacing: .01em;
 }
 
-/* Активная вкладка: акцентный цвет + яркая иконка (#tabbar .tab.active) */
+/* Активная вкладка: цвет действия и более плотная подпись.
+   Иконка не «подпрыгивает» и не меняет размер — прыжок при переключении
+   вкладок читается как дефект отрисовки. */
 .tab.active {
-  color: var(--cta);
+  color: var(--accent);
 }
 
-.tab.active .tab-emoji {
-  filter: grayscale(0%);
-  opacity: 1;
-  transform: translateY(-1px);
+.tab.active .tab-label {
+  font-weight: var(--fw-semibold);
 }
 
-.tab:active .tab-emoji {
-  transform: scale(.9);
+.tab:active .tab-icon {
+  transform: scale(.92);
+}
+
+/* Экраны-задачи (тренировка, камера, оплата, онбординг) прячут навигацию:
+   из активной тренировки нельзя выйти случайным тапом. */
+body.is-task-screen #tabbar {
+  display: none;
+}
+
+body.is-task-screen #view {
+  padding-bottom: calc(var(--safe-bottom) + var(--s5));
 }
 
 /* ============================================================
@@ -673,7 +672,7 @@ h1, h2, h3 {
   align-items: center;
   gap: 10px;
   padding: 10px 0;
-  border-top: 1px solid rgba(58, 53, 47, .08);
+  border-top: 1px solid rgba(23, 26, 22, .08);
 }
 
 .diary-entry:first-child {
@@ -727,7 +726,7 @@ h1, h2, h3 {
 }
 
 .diary-entry__del:active {
-  background: rgba(194, 102, 77, .15);
+  background: rgba(192, 57, 43, .15);
   transform: scale(.92);
 }
 
@@ -980,7 +979,7 @@ h1, h2, h3 {
 
 .field__input:focus {
   border-color: var(--cta);
-  box-shadow: 0 0 0 3px rgba(125, 155, 118, .18);
+  box-shadow: 0 0 0 3px rgba(47, 111, 78, .18);
 }
 
 /* Стилизованная стрелка для select-полей */
@@ -1131,7 +1130,7 @@ select.field__input {
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(255, 253, 250, .45),
+    rgba(255, 255, 255, .45),
     transparent
   );
   animation: shimmer 1.3s infinite;
@@ -1200,7 +1199,7 @@ select.field__input {
   display: none;
   align-items: center;
   justify-content: center;
-  background: rgba(58, 53, 47, .35);
+  background: rgba(23, 26, 22, .35);
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
 }
@@ -1215,7 +1214,7 @@ select.field__input {
 .spinner {
   width: 48px;
   height: 48px;
-  border: 4px solid rgba(255, 253, 250, .5);
+  border: 4px solid rgba(255, 255, 255, .5);
   border-top-color: var(--cta);
   border-radius: 50%;
   animation: spin .8s linear infinite;
@@ -1230,7 +1229,7 @@ select.field__input {
   display: inline-block;
   width: 18px;
   height: 18px;
-  border: 2.5px solid rgba(255, 253, 250, .5);
+  border: 2.5px solid rgba(255, 255, 255, .5);
   border-top-color: var(--white);
   border-radius: 50%;
   animation: spin .8s linear infinite;
@@ -1340,12 +1339,14 @@ select.field__input {
   min-width: 64px;
   padding: 0;
   border-radius: 50%;
-  /* Серый по умолчанию (когда вкладка не активна). */
-  background: #C9B8A8;
+  /* Всегда залита цветом действия: это главная кнопка приложения,
+     а не пятый равноправный пункт навигации. */
+  background: var(--accent);
+  color: var(--on-accent);
   /* Приподнимаем кружок над панелью (паттерн Instagram/TikTok). */
-  transform: translateY(-18px);
-  box-shadow: 0 8px 20px rgba(122, 107, 90, .28);
-  border: 4px solid var(--white);
+  transform: translateY(-16px);
+  box-shadow: var(--shadow-2);
+  border: 4px solid var(--surface);
   /* Внутри только иконка — центрируем её. */
   justify-content: center;
   transition: background .18s ease, transform .12s ease, box-shadow .18s ease;
@@ -1362,15 +1363,15 @@ select.field__input {
    Префикс #tabbar повышает специфичность (1-2-0), чтобы красный гарантированно
    перебивал серый базовый фон при любом порядке/каскаде. */
 #tabbar .tab-camera.active {
-  background: #E07A5F;
-  /* Перебиваем .tab.active { color: var(--cta) } — у камеры нет подписи,
-     но цвет всё равно не должен зеленить иконку. */
-  color: var(--white);
+  background: var(--accent-press);
+  /* Перебиваем .tab.active { color: var(--accent) } — иконка внутри
+     залитого кружка всегда белая. */
+  color: var(--on-accent);
 }
 
 /* Лёгкое «утопление» при нажатии (сохраняя подъём). */
 .tab-camera:active {
-  transform: translateY(-18px) scale(.94);
+  transform: translateY(-16px) scale(.94);
 }
 
 /* У активной камеры иконка не должна сдвигаться вверх как у обычных вкладок. */
@@ -1546,7 +1547,7 @@ select.field__input {
   align-items: center;
   gap: 10px;
   padding: 12px 0;
-  border-top: 1px solid rgba(58, 53, 47, .08);
+  border-top: 1px solid rgba(23, 26, 22, .08);
 }
 
 .wk-item:first-child {
@@ -1609,7 +1610,7 @@ select.field__input {
 }
 
 .wk-item__del:active {
-  background: rgba(194, 102, 77, .15);
+  background: rgba(192, 57, 43, .15);
   transform: scale(.92);
 }
 
@@ -1718,7 +1719,7 @@ select.field__input {
   align-items: center;
   gap: 10px;
   padding: 12px 0;
-  border-top: 1px solid rgba(58, 53, 47, .08);
+  border-top: 1px solid rgba(23, 26, 22, .08);
 }
 
 .sup-item:first-child {
@@ -1764,7 +1765,7 @@ select.field__input {
   font-size: 11px;
   font-weight: 600;
   color: var(--cta);
-  background: rgba(125, 155, 118, .14);
+  background: rgba(47, 111, 78, .14);
   border-radius: 999px;
   padding: 2px 8px;
   white-space: nowrap;
@@ -1791,7 +1792,7 @@ select.field__input {
 }
 
 .sup-item__del:active {
-  background: rgba(194, 102, 77, .15);
+  background: rgba(192, 57, 43, .15);
   transform: scale(.92);
 }
 
@@ -1855,7 +1856,7 @@ select.field__input {
   display: block;
   margin-top: 6px;
   padding-top: 16px;
-  border-top: 1px solid rgba(58, 53, 47, .08);
+  border-top: 1px solid rgba(23, 26, 22, .08);
 }
 
 .sup-form__title {
@@ -1979,7 +1980,7 @@ select.field__input {
   background: var(--white);
   border-radius: var(--radius-sm);
   padding: 12px 14px;
-  box-shadow: 0 2px 8px rgba(122, 107, 90, .08);
+  box-shadow: 0 2px 8px rgba(23, 26, 22, .08);
 }
 
 .sup-suggest-card__head {
@@ -2021,7 +2022,7 @@ select.field__input {
   padding: 10px 14px;
   border-radius: var(--radius-sm);
   border-left: 3px solid var(--danger);
-  background: rgba(194, 102, 77, .1);
+  background: rgba(192, 57, 43, .1);
   color: var(--text);
   font-size: 12px;
   line-height: 1.5;
@@ -2155,7 +2156,7 @@ select.field__input {
   display: block;
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid rgba(58, 53, 47, .08);
+  border-top: 1px solid rgba(23, 26, 22, .08);
 }
 
 .recent__title {
@@ -2211,7 +2212,7 @@ select.field__input {
 
 .recent__item:active {
   transform: scale(.99);
-  background: rgba(201, 184, 168, .25);
+  background: rgba(220, 224, 214, .25);
 }
 
 .recent__item:disabled {
@@ -2491,7 +2492,7 @@ select.field__input {
 /* Одна строка: тумблер + (опционально) поля времени. */
 .notif-row {
   padding: 12px 0;
-  border-top: 1px solid rgba(58, 53, 47, .08);
+  border-top: 1px solid rgba(23, 26, 22, .08);
 }
 
 .notif-row:first-child {
@@ -2604,7 +2605,7 @@ select.field__input {
   font-size: 13px;
   font-weight: 600;
   /* База — нейтральная; модификаторами задаём цвет по уровню. */
-  background: rgba(138, 129, 120, .15);
+  background: rgba(91, 97, 87, .15);
   color: var(--muted);
 }
 
@@ -2619,19 +2620,19 @@ select.field__input {
 
 /* Низкая уверенность — тёплый персиковый (тревожный, но мягкий). */
 .scan-edit-confidence--low {
-  background: rgba(194, 102, 77, .15);
+  background: rgba(192, 57, 43, .15);
   color: var(--danger);
 }
 
 /* Средняя уверенность — нейтральный бежевый акцент. */
 .scan-edit-confidence--medium {
-  background: rgba(201, 184, 168, .35);
+  background: rgba(220, 224, 214, .35);
   color: var(--text);
 }
 
 /* Высокая уверенность — зелёный акцент. */
 .scan-edit-confidence--high {
-  background: rgba(125, 155, 118, .18);
+  background: rgba(47, 111, 78, .18);
   color: var(--cta);
 }
 
@@ -2803,7 +2804,7 @@ select.field__input {
   align-items: center;
   gap: 10px;
   padding: 12px 0;
-  border-top: 1px solid rgba(58, 53, 47, .08);
+  border-top: 1px solid rgba(23, 26, 22, .08);
 }
 
 .wk-rem-item:first-child {
@@ -2848,13 +2849,13 @@ select.field__input {
 /* Включено — зелёный акцент. */
 .wk-rem-item__badge--on {
   color: var(--cta);
-  background: rgba(125, 155, 118, .14);
+  background: rgba(47, 111, 78, .14);
 }
 
 /* Выключено — приглушённый бежевый. */
 .wk-rem-item__badge--off {
   color: var(--muted);
-  background: rgba(138, 129, 120, .15);
+  background: rgba(91, 97, 87, .15);
 }
 
 /* Кнопка удаления напоминания ✕. */
@@ -2878,7 +2879,7 @@ select.field__input {
 }
 
 .wk-rem-item__del:active {
-  background: rgba(194, 102, 77, .15);
+  background: rgba(192, 57, 43, .15);
   transform: scale(.92);
 }
 
@@ -2942,7 +2943,7 @@ select.field__input {
   display: block;
   margin-top: 6px;
   padding-top: 16px;
-  border-top: 1px solid rgba(58, 53, 47, .08);
+  border-top: 1px solid rgba(23, 26, 22, .08);
 }
 
 .wk-rem-form__title {
@@ -3079,7 +3080,7 @@ select.field__input {
   align-items: center;
   gap: 10px;
   padding: 12px 0;
-  border-top: 1px solid rgba(58, 53, 47, .08);
+  border-top: 1px solid rgba(23, 26, 22, .08);
 }
 
 .sup-rem-item:first-child {
@@ -3135,12 +3136,12 @@ select.field__input {
 
 .sup-rem-item__badge--on {
   color: var(--cta);
-  background: rgba(125, 155, 118, .14);
+  background: rgba(47, 111, 78, .14);
 }
 
 .sup-rem-item__badge--off {
   color: var(--muted);
-  background: rgba(138, 129, 120, .15);
+  background: rgba(91, 97, 87, .15);
 }
 
 /* Кнопка удаления напоминания ✕. */
@@ -3164,7 +3165,7 @@ select.field__input {
 }
 
 .sup-rem-item__del:active {
-  background: rgba(194, 102, 77, .15);
+  background: rgba(192, 57, 43, .15);
   transform: scale(.92);
 }
 
@@ -3228,7 +3229,7 @@ select.field__input {
   display: block;
   margin-top: 6px;
   padding-top: 16px;
-  border-top: 1px solid rgba(58, 53, 47, .08);
+  border-top: 1px solid rgba(23, 26, 22, .08);
 }
 
 .sup-rem-form__title {
@@ -3313,7 +3314,7 @@ select.field__input {
 }
 
 .sup-rem-pick:active {
-  background: rgba(201, 184, 168, .2);
+  background: rgba(220, 224, 214, .2);
 }
 
 .sup-rem-pick__input {
@@ -3473,7 +3474,7 @@ select.field__input {
   background: var(--white);
   border-radius: var(--radius-sm);
   padding: 12px 14px;
-  box-shadow: 0 2px 8px rgba(122, 107, 90, .08);
+  box-shadow: 0 2px 8px rgba(23, 26, 22, .08);
 }
 
 .sup-ai-suggest__head {
@@ -3515,7 +3516,7 @@ select.field__input {
   padding: 10px 14px;
   border-radius: var(--radius-sm);
   border-left: 3px solid var(--danger);
-  background: rgba(194, 102, 77, .1);
+  background: rgba(192, 57, 43, .1);
   color: var(--text);
   font-size: 12px;
   line-height: 1.5;
@@ -3801,7 +3802,7 @@ select.field__input {
   background: var(--bg);
   font-size: 40px;
   line-height: 1;
-  box-shadow: inset 0 0 0 1px rgba(58, 53, 47, .06);
+  box-shadow: inset 0 0 0 1px rgba(23, 26, 22, .06);
 }
 
 .paywall-title {
@@ -3845,7 +3846,7 @@ select.field__input {
   height: 22px;
   margin-top: 1px;
   border-radius: 50%;
-  background: rgba(125, 155, 118, .16);
+  background: rgba(47, 111, 78, .16);
   color: var(--cta);
   font-size: 13px;
   font-weight: 700;
@@ -3868,8 +3869,8 @@ select.field__input {
   margin-bottom: 14px;
   padding: 12px 14px;
   border-radius: var(--radius-sm);
-  border: 1px solid rgba(194, 102, 77, .25);
-  background: rgba(194, 102, 77, .1);
+  border: 1px solid rgba(192, 57, 43, .25);
+  background: rgba(192, 57, 43, .1);
 }
 
 .paywall-lock-icon {
@@ -3920,7 +3921,7 @@ select.field__input {
 }
 
 .sub-back:active {
-  background: rgba(201, 184, 168, .25);
+  background: rgba(220, 224, 214, .25);
   color: var(--text);
   transform: scale(.98);
 }
@@ -4034,7 +4035,7 @@ select.field__input {
   height: 22px;
   margin-top: 1px;
   border-radius: 50%;
-  background: rgba(125, 155, 118, .16);
+  background: rgba(47, 111, 78, .16);
   color: var(--cta);
   font-size: 13px;
   font-weight: 700;
@@ -4080,7 +4081,7 @@ select.field__input {
 /* Рекомендованный тариф (есть бейдж) — выделяем зелёной рамкой и подложкой. */
 .sub-tariff[data-tariff="yearly"] {
   border: 1.5px solid var(--cta);
-  box-shadow: 0 6px 18px rgba(125, 155, 118, .2);
+  box-shadow: 0 6px 18px rgba(47, 111, 78, .2);
 }
 
 /* Шапка тарифа: иконка | название+примечание | цена. */
@@ -4205,7 +4206,7 @@ select.field__input {
 .scan-counter--premium {
   color: var(--cta);
   font-weight: 600;
-  background: rgba(125, 155, 118, .12);
+  background: rgba(47, 111, 78, .12);
 }
 
 /* Бесплатно: остаток сканирований — нейтральный приглушённый. */
@@ -4218,7 +4219,7 @@ select.field__input {
 .scan-counter--empty {
   color: var(--danger);
   font-weight: 600;
-  background: rgba(194, 102, 77, .1);
+  background: rgba(192, 57, 43, .1);
 }
 
 /* ============================================================
@@ -4356,7 +4357,7 @@ select.field__input {
   display: flex;
   gap: 8px;
   margin-top: 10px;
-  background: rgba(201, 184, 168, .18);
+  background: rgba(220, 224, 214, .18);
   border-radius: 14px;
   padding: 4px;
 }
@@ -4382,7 +4383,7 @@ select.field__input {
 .acc-lang__btn--active {
   background: var(--cta);
   color: var(--white);
-  box-shadow: 0 4px 12px rgba(125, 155, 118, .28);
+  box-shadow: 0 4px 12px rgba(47, 111, 78, .28);
 }
 
 /* ============================================================
@@ -4436,7 +4437,7 @@ select.field__input {
   margin: 0 auto 16px;
   border-radius: 50%;
   /* Мягкая персиковая подложка — «горит» во время записи. */
-  background: rgba(194, 102, 77, .12);
+  background: rgba(192, 57, 43, .12);
 }
 
 /* Пульсирующее кольцо вокруг микрофона (расходящаяся волна). */
@@ -4444,7 +4445,7 @@ select.field__input {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: rgba(194, 102, 77, .35);
+  background: rgba(192, 57, 43, .35);
   /* Бесконечная пульсация — визуальный признак активной записи. */
   animation: scanVoicePulse 1.6s ease-out infinite;
 }
@@ -4632,7 +4633,7 @@ select.field__input {
 }
 
 .scan-voice-item__remove:active {
-  background: rgba(194, 102, 77, .15);
+  background: rgba(192, 57, 43, .15);
   transform: scale(.92);
 }
 
@@ -4786,7 +4787,7 @@ select.field__input {
   gap: 6px;
   padding: 4px 9px;
   border-radius: 999px;
-  background: rgba(58, 53, 47, .55);
+  background: rgba(23, 26, 22, .55);
   color: var(--white);
   font-size: 11px;
   font-weight: 600;
@@ -4802,19 +4803,19 @@ select.field__input {
   height: 7px;
   border-radius: 50%;
   background: var(--cta);
-  box-shadow: 0 0 0 0 rgba(125, 155, 118, .6);
+  box-shadow: 0 0 0 0 rgba(47, 111, 78, .6);
   animation: scan-cam-pulse 1.6s ease-out infinite;
 }
 
 @keyframes scan-cam-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(125, 155, 118, .55);
+    box-shadow: 0 0 0 0 rgba(47, 111, 78, .55);
   }
   70% {
-    box-shadow: 0 0 0 7px rgba(125, 155, 118, 0);
+    box-shadow: 0 0 0 7px rgba(47, 111, 78, 0);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(125, 155, 118, 0);
+    box-shadow: 0 0 0 0 rgba(47, 111, 78, 0);
   }
 }
 
@@ -5157,7 +5158,7 @@ select.field__input {
 
 /* Выделенная строка «Новая цель». */
 .adapt-stat--accent {
-  background: rgba(125, 155, 118, .16);
+  background: rgba(47, 111, 78, .16);
 }
 
 .adapt-stat__label {
@@ -5187,7 +5188,7 @@ select.field__input {
 
 .adapt-note--warn {
   color: var(--text);
-  background: rgba(194, 102, 77, .12);
+  background: rgba(192, 57, 43, .12);
 }
 
 /* ============================================================
@@ -5213,20 +5214,20 @@ select.field__input {
    чтобы блок шаблонов визуально отделялся от «Добавить вручную». */
 .tpl-actions__btn {
   flex: 1 1 calc(50% - 5px);
-  background: rgba(201, 184, 168, .14);
+  background: rgba(220, 224, 214, .14);
 }
 
 /* Лёгкая цветовая дифференциация трёх действий (в пределах пастели). */
 .tpl-actions__btn--save {
-  background: rgba(125, 155, 118, .12); /* зеленоватый — «сохранить» */
+  background: rgba(47, 111, 78, .12); /* зеленоватый — «сохранить» */
 }
 
 .tpl-actions__btn--list {
-  background: rgba(201, 184, 168, .18); /* нейтральный беж — «список» */
+  background: rgba(220, 224, 214, .18); /* нейтральный беж — «список» */
 }
 
 .tpl-actions__btn--copy {
-  background: rgba(201, 184, 168, .14);
+  background: rgba(220, 224, 214, .14);
 }
 
 /* Активная (выбранная) кнопка «Шаблоны» — как у базовых действий. */
@@ -5436,7 +5437,7 @@ select.field__input {
   flex-shrink: 0;
   border: none;
   border-radius: 50%;
-  background: rgba(194, 102, 77, .12);
+  background: rgba(192, 57, 43, .12);
   color: var(--danger);
   font-size: 15px;
   line-height: 1;
@@ -5446,7 +5447,7 @@ select.field__input {
 
 .tpl-card__del:active {
   transform: scale(.94);
-  background: rgba(194, 102, 77, .2);
+  background: rgba(192, 57, 43, .2);
 }
 
 .tpl-card__del:disabled {
@@ -5610,7 +5611,7 @@ select.field__input {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  background: rgba(125, 155, 118, .14);
+  background: rgba(47, 111, 78, .14);
   border: 1.5px solid var(--cta);
   border-radius: var(--radius-sm);
   padding: 14px 16px;
@@ -6143,8 +6144,8 @@ select.field__input {
   padding: 14px 16px;
   margin-bottom: 14px;
   /* Базовый (нейтральный) тон — переопределяется модификаторами фаз. */
-  background: rgba(201, 139, 155, .16);
-  border: 1.5px solid rgba(201, 139, 155, .55);
+  background: rgba(163, 70, 103, .16);
+  border: 1.5px solid rgba(163, 70, 103, .55);
 }
 
 .cyc-phase__icon {
@@ -6174,23 +6175,23 @@ select.field__input {
 
 /* Оттенки по фазам (деликатные пастельные тона). */
 .cyc-phase--menstrual {
-  background: rgba(201, 102, 77, .13);
-  border-color: rgba(201, 102, 77, .5);
+  background: rgba(192, 57, 43, .13);
+  border-color: rgba(192, 57, 43, .5);
 }
 
 .cyc-phase--follicular {
-  background: rgba(125, 155, 118, .16);
-  border-color: rgba(125, 155, 118, .55);
+  background: rgba(47, 111, 78, .16);
+  border-color: rgba(47, 111, 78, .55);
 }
 
 .cyc-phase--ovulation {
-  background: rgba(201, 168, 120, .18);
-  border-color: rgba(201, 168, 120, .6);
+  background: rgba(154, 96, 0, .18);
+  border-color: rgba(154, 96, 0, .6);
 }
 
 .cyc-phase--luteal {
-  background: rgba(150, 140, 190, .16);
-  border-color: rgba(150, 140, 190, .55);
+  background: rgba(107, 92, 158, .16);
+  border-color: rgba(107, 92, 158, .55);
 }
 
 /* ---- Прогнозы (следующая менструация, овуляция, фертильное окно) ---- */
@@ -6481,7 +6482,7 @@ select.field__input {
   height: 26px;
   border: none;
   border-radius: 50%;
-  background: rgba(58, 53, 47, .6);
+  background: rgba(23, 26, 22, .6);
   color: var(--white);
   font-size: 14px;
   line-height: 1;
@@ -6756,7 +6757,7 @@ button.cal-cell--selected:active {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8px 22px rgba(122, 107, 90, .28);
+  box-shadow: 0 8px 22px rgba(23, 26, 22, .28);
   transition: background .18s ease, transform .1s ease, box-shadow .18s ease;
 }
 
@@ -6780,7 +6781,7 @@ button.cal-cell--selected:active {
 .diary-sheet__backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(58, 53, 47, .38);
+  background: rgba(23, 26, 22, .38);
   opacity: 0;
   transition: opacity .22s ease;
   /* Тап/перетаскивание по фону не должны прокручивать страницу под листом. */
@@ -6799,7 +6800,7 @@ button.cal-cell--selected:active {
   bottom: 0;
   background: var(--bg);
   border-radius: var(--radius) var(--radius) 0 0;
-  box-shadow: 0 -8px 28px rgba(122, 107, 90, .18);
+  box-shadow: 0 -8px 28px rgba(23, 26, 22, .18);
   padding: 8px 16px calc(var(--safe-bottom) + 20px);
   transform: translateY(100%);
   transition: transform .24s cubic-bezier(.22, .61, .36, 1);
@@ -7069,7 +7070,7 @@ button.cal-cell--selected:active {
 }
 
 .acc-fold__head:active {
-  background: rgba(122, 107, 90, .08);
+  background: rgba(23, 26, 22, .08);
 }
 
 /* Заголовок — как у карточек (.acc-title). */
@@ -7158,7 +7159,7 @@ button.cal-cell--selected:active {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8px 22px rgba(122, 107, 90, .28);
+  box-shadow: 0 8px 22px rgba(23, 26, 22, .28);
   transition: background .18s ease, transform .1s ease, box-shadow .18s ease;
 }
 
@@ -7547,7 +7548,7 @@ body::-webkit-scrollbar-thumb:hover {
 
 .onb-field__input:focus {
   border-color: var(--cta);
-  box-shadow: 0 0 0 3px rgba(125, 155, 118, .18);
+  box-shadow: 0 0 0 3px rgba(47, 111, 78, .18);
 }
 
 /* Стрелка для select внутри шага (как select.field__input). */
@@ -7600,8 +7601,8 @@ select.onb-field__input {
 /* Выбранная кнопка пола — зелёная рамка/подсветка (--cta). */
 .onb-choice--on {
   border-color: var(--cta);
-  background: rgba(125, 155, 118, .12);
-  box-shadow: 0 0 0 3px rgba(125, 155, 118, .18);
+  background: rgba(47, 111, 78, .12);
+  box-shadow: 0 0 0 3px rgba(47, 111, 78, .18);
 }
 
 /* Ряд действий (обычно одна CTA + при необходимости «Назад»). */
@@ -7629,7 +7630,7 @@ select.onb-field__input {
   font-size: 16px;
   cursor: pointer;
   user-select: none;
-  box-shadow: 0 6px 16px rgba(125, 155, 118, .28);
+  box-shadow: 0 6px 16px rgba(47, 111, 78, .28);
   transition: background .18s ease, transform .08s ease, opacity .18s ease;
 }
 
@@ -7725,8 +7726,8 @@ select.onb-field__input {
 }
 .onb-toggle--on {
   border-color: var(--cta);
-  background: rgba(125, 155, 118, .12);
-  box-shadow: 0 0 0 3px rgba(125, 155, 118, .16);
+  background: rgba(47, 111, 78, .12);
+  box-shadow: 0 0 0 3px rgba(47, 111, 78, .16);
 }
 .onb-toggle__emoji {
   font-size: 26px;
@@ -7825,7 +7826,7 @@ select.onb-field__input {
   color: var(--white);
   font-weight: 600;
   font-size: 16px;
-  box-shadow: 0 6px 16px rgba(125, 155, 118, .28);
+  box-shadow: 0 6px 16px rgba(47, 111, 78, .28);
 }
 
 /* Круглый затвор под превью удалён: спуск — центральная кнопка-камера в
@@ -7850,7 +7851,7 @@ select.onb-field__input {
 .sub-card--best {
   position: relative;
   border: 2px solid var(--cta);
-  box-shadow: 0 8px 24px rgba(125, 155, 118, .28);
+  box-shadow: 0 8px 24px rgba(47, 111, 78, .28);
 }
 
 /* Пробный период + «истёкшая» подписка (экран подписки). */
@@ -7887,7 +7888,7 @@ select.onb-field__input {
   display: inline-block;
   padding: 2px 8px;
   border-radius: 8px;
-  background: rgba(125, 155, 118, .14);
+  background: rgba(47, 111, 78, .14);
   color: var(--cta-press);
   font-size: 12px;
   font-weight: 700;
@@ -7901,7 +7902,7 @@ select.onb-field__input {
   box-shadow: none;
 }
 .btn--danger:active {
-  background: rgba(200, 90, 90, .12);
+  background: rgba(192, 57, 43, .12);
 }
 
 /* Пояснение над кнопкой удаления данных в листе настроек. */
@@ -7948,7 +7949,7 @@ select.onb-field__input {
   cursor: pointer;
 }
 .diary-entry:active {
-  background: rgba(201, 184, 168, .18);
+  background: rgba(220, 224, 214, .18);
 }
 /* Кнопка удаления не должна наследовать «палец» строки. */
 .diary-entry__del {
@@ -8016,8 +8017,8 @@ select.onb-field__input {
   font-size: 12px;
   font-weight: 700;
 }
-.rec-badge--ok { background: rgba(125, 155, 118, .18); color: var(--cta); }
-.rec-badge--warn { background: rgba(224, 122, 95, .18); color: #B4573C; }
+.rec-badge--ok { background: rgba(47, 111, 78, .18); color: var(--cta); }
+.rec-badge--warn { background: rgba(47, 111, 78, .18); color: #245A3F; }
 
 .rec-cause {
   margin: 10px 0 4px;
@@ -8053,7 +8054,7 @@ select.onb-field__input {
   padding: 10px 12px;
   border-radius: 12px;
   border: 1.5px solid var(--danger);
-  background: rgba(194, 102, 77, .07);
+  background: rgba(192, 57, 43, .07);
 }
 .rec-block--flags .rec-block__title { color: var(--danger); }
 
@@ -8117,7 +8118,7 @@ select.onb-field__input {
 }
 
 .fsearch__list {
-  border: 1px solid rgba(58, 53, 47, .12);
+  border: 1px solid rgba(23, 26, 22, .12);
   border-radius: 12px;
   overflow: hidden;
   background: var(--white);
@@ -8133,14 +8134,14 @@ select.onb-field__input {
   width: 100%;
   padding: 9px 12px;
   border: none;
-  border-top: 1px solid rgba(58, 53, 47, .08);
+  border-top: 1px solid rgba(23, 26, 22, .08);
   background: transparent;
   text-align: left;
   cursor: pointer;
 }
 
 .fsearch__item:first-child { border-top: none; }
-.fsearch__item:active { background: rgba(201, 184, 168, .22); }
+.fsearch__item:active { background: rgba(220, 224, 214, .22); }
 
 .fsearch__name {
   font-size: 14px;
@@ -8170,7 +8171,7 @@ select.onb-field__input {
   margin: 0 0 10px;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
-  background: rgba(125, 155, 118, .12);
+  background: rgba(47, 111, 78, .12);
   font-size: 13px;
   line-height: 1.45;
   color: var(--text);

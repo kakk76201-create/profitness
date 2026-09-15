@@ -498,7 +498,7 @@
     var exit = cur === "trainer" || (cur === "trainer-onboarding" && !App.state.trainerEdit);
     if (exit || !App._pages || !App._pages.trainer) {
       var origin = App.state.trainerOrigin;
-      if (!origin || isTrainerPage(origin) || !App._pages[origin]) origin = "workouts";
+      if (!origin || isTrainerPage(origin) || !App._pages[origin]) origin = "today";
       App.navigate(origin);
       return;
     }

@@ -39,7 +39,7 @@
   margin: 0 -4px 12px;
   padding: 8px 4px 10px;
   background: var(--bg);
-  border-bottom: 1px solid rgba(58, 53, 47, .08);
+  border-bottom: 1px solid rgba(23, 26, 22, .08);
 }
 
 .tr-session-head__close {
@@ -189,7 +189,7 @@
 
 .tr-check-row--done {
   border-color: var(--cta);
-  background: rgba(125, 155, 118, .10);
+  background: rgba(47, 111, 78, .10);
 }
 
 .tr-check-row--done .tr-check-row__mark {
@@ -281,7 +281,7 @@
   display: inline-block;
   padding: 3px 9px;
   border-radius: 999px;
-  background: rgba(125, 155, 118, .18);
+  background: rgba(47, 111, 78, .18);
   color: var(--cta);
   font-size: 11px;
   font-weight: 700;
@@ -293,7 +293,7 @@
 }
 
 .tr-ex-card__badge--skip {
-  background: rgba(194, 102, 77, .14);
+  background: rgba(192, 57, 43, .14);
   color: var(--danger);
 }
 
@@ -322,18 +322,18 @@
 
 .tr-set-row {
   padding: 6px 0;
-  border-top: 1px solid rgba(58, 53, 47, .08);
+  border-top: 1px solid rgba(23, 26, 22, .08);
   border-radius: var(--radius-sm);
   transition: background .16s ease;
 }
 
 .tr-set-row--done {
-  background: rgba(125, 155, 118, .10);
+  background: rgba(47, 111, 78, .10);
 }
 
 /* Рекордный подход — тёплая подсветка + кубок. */
 .tr-set-row--pr {
-  background: rgba(201, 184, 168, .30);
+  background: rgba(220, 224, 214, .30);
 }
 
 .tr-set-row--pr .tr-set-num::after {
@@ -413,7 +413,7 @@
 .tr-set-input:focus {
   outline: none;
   border-color: var(--cta);
-  box-shadow: 0 0 0 3px rgba(125, 155, 118, .18);
+  box-shadow: 0 0 0 3px rgba(47, 111, 78, .18);
 }
 
 /* Подход на время — показываем секунды тем же полем. */
@@ -482,14 +482,14 @@
   border-radius: var(--radius);
   background: var(--white);
   border: 1.5px solid var(--accent);
-  box-shadow: 0 10px 28px rgba(122, 107, 90, .22);
+  box-shadow: 0 10px 28px rgba(23, 26, 22, .22);
   pointer-events: auto;
 }
 
 /* Отдых закончен — плашка «зеленеет». */
 .tr-rest-bar--done .tr-rest-bar__inner {
   border-color: var(--cta);
-  background: rgba(125, 155, 118, .12);
+  background: rgba(47, 111, 78, .12);
 }
 
 /* Кольцо таймера: SVG 44×44, r=19, обратный отсчёт через dashoffset. */
@@ -515,7 +515,7 @@
 }
 
 .tr-rest-bar__ring-bg {
-  stroke: rgba(201, 184, 168, .5);
+  stroke: rgba(220, 224, 214, .5);
 }
 
 .tr-rest-bar__ring-fg {
@@ -585,7 +585,7 @@
   border-radius: 999px;
   background: var(--cta);
   color: var(--white);
-  box-shadow: 0 10px 28px rgba(122, 107, 90, .28);
+  box-shadow: 0 10px 28px rgba(23, 26, 22, .28);
   transform: translateX(-50%) translateY(-8px);
   opacity: 0;
   transition: opacity .22s ease, transform .22s ease;
@@ -673,7 +673,7 @@
   gap: 12px;
   padding: 10px 12px;
   border-radius: var(--radius-sm);
-  background: rgba(201, 184, 168, .30);
+  background: rgba(220, 224, 214, .30);
 }
 
 .tr-record-card__icon {
@@ -760,8 +760,8 @@
   margin-top: 12px;
   padding: 12px 14px;
   border-radius: var(--radius);
-  background: rgba(125, 155, 118, .12);
-  border: 1.5px solid rgba(125, 155, 118, .45);
+  background: rgba(47, 111, 78, .12);
+  border: 1.5px solid rgba(47, 111, 78, .45);
 }
 
 .tr-adapt-card__title {
@@ -870,7 +870,7 @@
 
 .tr-history-item {
   padding: 8px 0;
-  border-top: 1px solid rgba(58, 53, 47, .08);
+  border-top: 1px solid rgba(23, 26, 22, .08);
 }
 
 .tr-history-item__date {
@@ -891,7 +891,7 @@
   margin: 2px 6px 2px 0;
   padding: 3px 9px;
   border-radius: 999px;
-  background: rgba(201, 184, 168, .30);
+  background: rgba(220, 224, 214, .30);
   font-size: 12px;
   font-weight: 600;
 }
@@ -966,7 +966,7 @@ button.tr-set-timer {
 
 button.tr-set-timer.is-running {
   border-color: var(--cta);
-  background: rgba(125, 155, 118, .12);
+  background: rgba(47, 111, 78, .12);
   font-variant-numeric: tabular-nums;
   font-size: 14px;
   font-weight: 700;

@@ -1,0 +1,328 @@
+/* ============================================================
+   ЭКРАН «СЕГОДНЯ» (page-today.js)
+   ------------------------------------------------------------
+   Витрина состояния дня: кольцо калорий, тренировка дня, вес и серия.
+   Ни одной формы — только числа и одна кнопка действия.
+   Цвета, размеры и отступы — исключительно из css/tokens.css.
+   ============================================================ */
+
+/* ---------- Шапка ---------- */
+.td-head {
+  margin-bottom: var(--s4);
+}
+
+.td-head__greeting {
+  margin: 0;
+  font-size: var(--fs-h1);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+  letter-spacing: -.02em;
+}
+
+.td-head__date {
+  margin: var(--s1) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+/* ---------- Общая карточка экрана ---------- */
+.td-card {
+  padding: var(--s5) var(--s4);
+}
+
+/* Карточка-приглашение: единственное действие по центру. */
+.td-card--cta {
+  text-align: center;
+}
+
+/* Надзаголовок карточки: роль блока, а не его содержимое. */
+.td-card__head {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+}
+
+/* ---------- Кольцо калорий ---------- */
+.td-cal {
+  text-align: center;
+}
+
+.td-ring {
+  position: relative;
+  width: 168px;
+  height: 168px;
+  margin: 0 auto;
+}
+
+.td-ring__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* Отсчёт от 12 часов по часовой стрелке — так читают любой циферблат. */
+  transform: rotate(-90deg);
+}
+
+.td-ring__track {
+  fill: none;
+  stroke: var(--surface-2);
+  stroke-width: 10;
+}
+
+.td-ring__value {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 10;
+  stroke-linecap: round;
+  transition: stroke-dashoffset var(--dur) var(--ease);
+}
+
+/* Перебор нормы — предупреждение, а не ошибка: человек не сделал ничего
+   непоправимого, поэтому янтарный, а не красный. */
+.td-ring__value--over {
+  stroke: var(--warning);
+}
+
+.td-ring__center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.td-ring__num {
+  font-size: var(--fs-display);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+  letter-spacing: -.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.td-ring__cap {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.td-cal__sum {
+  margin-top: var(--s3);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.td-cal__burned {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  margin-top: var(--s2);
+  padding: var(--s1) var(--s3);
+  border-radius: var(--radius-pill);
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+}
+
+/* ---------- Полосы БЖУ ---------- */
+.td-macros {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  margin-top: var(--s5);
+  text-align: left;
+}
+
+.td-macro__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--s2);
+  margin-bottom: var(--s1);
+}
+
+.td-macro__label {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+.td-macro__value {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.td-macro__track {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.td-macro__fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  transition: width var(--dur) var(--ease);
+}
+
+/* Три нутриента различаются цветом: одинаковые полосы невозможно
+   сопоставить с подписью, не перечитывая её каждый раз. */
+.td-macro--p .td-macro__fill { background: var(--data-protein); }
+.td-macro--f .td-macro__fill { background: var(--data-fat); }
+.td-macro--c .td-macro__fill { background: var(--data-carb); }
+
+/* ---------- Карточка тренировки ---------- */
+.td-workout__title {
+  margin: var(--s2) 0 0;
+  font-size: var(--fs-h2);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+}
+
+.td-workout__meta {
+  margin: var(--s1) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+.td-workout__btn {
+  margin-top: var(--s4);
+}
+
+/* Разделы без действия (отдых, «сделано») ведут внутрь ссылкой, а не
+   кнопкой: кнопка обещает действие, которого сейчас нет. */
+.td-workout__link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  min-height: var(--tap-min);
+  margin-top: var(--s2);
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+}
+
+/* Идущая тренировка — единственный блок с цветной кромкой на экране:
+   он должен находиться взглядом мгновенно. */
+.td-workout--active {
+  border-left: 3px solid var(--accent);
+}
+
+.td-workout--done .td-workout__title {
+  color: var(--muted);
+}
+
+.td-workout--rest .td-workout__title {
+  font-weight: var(--fw-semibold);
+}
+
+/* ---------- Плитки «вес» и «серия» ---------- */
+.td-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
+}
+
+.td-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.td-tile:active {
+  background: var(--surface-2);
+}
+
+.td-tile__label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.td-tile__value {
+  font-size: var(--fs-h2);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-tight);
+}
+
+.td-tile__delta {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+/* Снижение веса не красим зелёным, а рост — красным: цель бывает любой,
+   и приложение не вправе решать, какая динамика «хорошая». */
+.td-tile__delta--up,
+.td-tile__delta--down {
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+
+/* ---------- Пустые состояния ---------- */
+.td-empty__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: var(--s3);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.td-empty__title {
+  margin: 0;
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-semibold);
+}
+
+.td-empty__text {
+  margin: var(--s2) 0 var(--s4);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--muted);
+}
+
+.td-empty .btn {
+  width: auto;
+  min-width: 180px;
+  margin: 0 auto;
+}
+
+/* ---------- Скелетон под кольцо ---------- */
+.td-skel-ring {
+  height: 168px;
+  border-radius: var(--radius-lg);
+}
+
+/* ---------- Узкие экраны ---------- */
+@media (max-width: 360px) {
+  .td-ring {
+    width: 144px;
+    height: 144px;
+  }
+
+  .td-tiles {
+    grid-template-columns: 1fr;
+  }
+}

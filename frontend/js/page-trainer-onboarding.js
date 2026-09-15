@@ -961,7 +961,7 @@
     onShow: function (viewEl) {
       state.viewEl = viewEl;
       if (!App.requirePremium(viewEl, T.paywallOpts())) return;
-      if (!App.state.trainerOrigin) App.state.trainerOrigin = "workouts";
+      if (!App.state.trainerOrigin) App.state.trainerOrigin = "today";
 
       var edit = !!App.state.trainerEdit;
       if (edit !== state.edit) {

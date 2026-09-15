@@ -128,7 +128,7 @@
   margin-top: 10px;
   padding: 10px 12px;
   border-radius: var(--radius-sm);
-  background: rgba(125, 155, 118, .12);
+  background: rgba(47, 111, 78, .12);
   line-height: 1.45;
 }
 
@@ -160,7 +160,7 @@
   height: 20px;
   margin-top: 1px;
   border-radius: 50%;
-  background: rgba(125, 155, 118, .16);
+  background: rgba(47, 111, 78, .16);
   color: var(--cta);
   font-size: 12px;
   font-weight: 700;
@@ -193,7 +193,7 @@
 /* Выбранная опция (сейчас единственная) — акцент цветом CTA. */
 .pay-method__option--active {
   border-color: var(--cta);
-  background: rgba(125, 155, 118, .12);
+  background: rgba(47, 111, 78, .12);
 }
 
 /* Радио-метка слева. */
@@ -353,7 +353,7 @@
   color: var(--cta);
   font-weight: 600;
   text-decoration: none;
-  border-bottom: 1px solid rgba(125, 155, 118, .45);
+  border-bottom: 1px solid rgba(47, 111, 78, .45);
   overflow-wrap: anywhere;
 }
 

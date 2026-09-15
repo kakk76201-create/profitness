@@ -13,7 +13,7 @@
  *       баннер разбора, быстрые ссылки.
  *
  * Побочный эффект: после overview заполняет App.state.trainerBrief — текст
- * карточки-входа на «Тренировках» (page-workouts.js → coachCardHtml()).
+ * вкладки «Тренировка» в нижней навигации.
  *
  * Зависимости: window.Trainer (trainer-common.js), App.api.trainer*.
  * Локализация: все строки — App.pick(ru, en) в момент рендера.
@@ -50,7 +50,7 @@
 
   /**
    * Заполняет App.state.trainerBrief по overview (или по факту отсутствия
-   * профиля). Текст собирает coachCardHtml() в page-workouts.js.
+   * профиля). Используется экраном «Сегодня» для карточки тренировки дня.
    */
   function setBrief(ov) {
     var hasProfile = !!(ov && ov.profile && ov.profile.onboarding_completed);
@@ -798,7 +798,7 @@
       state.viewEl = viewEl;
       if (!App.requirePremium(viewEl, T.paywallOpts())) return;
       // Первый вход извне раздела — запоминаем, куда возвращаться.
-      if (!App.state.trainerOrigin) App.state.trainerOrigin = "workouts";
+      if (!App.state.trainerOrigin) App.state.trainerOrigin = "today";
       viewEl.innerHTML = shellHtml("");
       T.bindBack(viewEl);
       load();
