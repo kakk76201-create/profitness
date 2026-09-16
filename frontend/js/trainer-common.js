@@ -9,19 +9,25 @@
  *   Trainer.label(group,key) — подпись из словаря через App.pick НА МОМЕНТ рендера;
  *   Trainer.exName(ex)       — имя упражнения по языку (name_ru / name_en);
  *   Trainer.fmtKg / fmtSet / fmtTarget / fmtClock / fmtNum — форматирование;
+ *   Trainer.fmtDuration(min) — длительность по-человечески («45 мин», «2 ч 15 мин»);
  *   Trainer.humanDate / shortDate / shiftDate / weekdayOf — даты;
  *   Trainer.go(page) / back() — навигация с запоминанием App.state.trainerOrigin;
- *   Trainer.headHtml / bindBack — шапка «← Назад» (классы .sub-head/.sub-back);
+ *   Trainer.headHtml / bindBack — шапка страницы (классы .sub-head/.sub-back);
  *   Trainer.sheet(items,onPick,opts) / closeSheet — нижний лист (.tr-sheet*);
  *   Trainer.RestTimer        — таймер отдыха на Date.now() (переживает сворачивание);
  *   Trainer.beep()           — короткий сигнал WebAudio (разблокировка первым тапом);
  *   Trainer.lineChart(points,{w,h,key}) — SVG-строка графика;
  *   Trainer.skeleton(n) / errorCard(msg, retryId) / genWaitHtml / runGenerate;
  *   Trainer.errMessage(err) / confirm(msg) / parseServerDate / elapsedMin;
- *   Trainer.paywallOpts()    — единые параметры paywall для страниц тренера;
+ *   Trainer.paywallOpts() / paywall(viewEl, opts) / isPro() — платный доступ;
  *   Trainer.openProgram(program, mode) / startSession(dayId) / openSession(s)
  *                            — общие сценарии переходов между страницами;
  *   Trainer.cache            — кэш overview/activeSession с invalidate().
+ *
+ * ИКОНКИ: везде App.icon(name) из js/icons.js. Имя иконки передаётся отдельным
+ * полем (headHtml({icon:"coach"}), sheet([{icon:"swap"}])) и НИКОГДА не живёт
+ * внутри переводимой строки: иначе картинка дублируется в обеих локалях и
+ * попадает в перевод вместе с текстом.
  *
  * Локализация: все строки — App.pick(ru, en) в момент вызова; словари хранят
  * пары [ru, en] и резолвятся при отрисовке. Стиль — IIFE, 'use strict',
@@ -43,6 +49,21 @@
       return App.escapeHtml(s == null ? "" : String(s));
     }
     return String(s == null ? "" : s);
+  }
+
+  /**
+   * Иконка из общего набора (js/icons.js). Отдельная обёртка нужна потому,
+   * что icons.js может быть ещё не подключён (порядок скриптов меняли) —
+   * тогда вместо падения страницы получаем пустую строку.
+   * @param {string} name имя из App.iconNames
+   * @param {object} [opts] {size, rotate, cls, stroke}
+   * @returns {string} разметка <svg …> или ""
+   */
+  function icon(name, opts) {
+    if (!name) return "";
+    if (window.App && typeof App.icon === "function") return App.icon(name, opts);
+    if (typeof window.AppIcon === "function") return window.AppIcon(name, opts);
+    return "";
   }
 
   /* =====================================================================
@@ -453,11 +474,34 @@
 
   /**
    * Минут прошло с момента серверной метки (0 при ошибке разбора).
+   * ВНИМАНИЕ: число не ограничено сверху — брошенная неделю назад сессия
+   * честно вернёт 9532. Показывать его человеку нельзя: для подписи
+   * всегда пропускаем результат через fmtDuration().
    */
   function elapsedMin(raw) {
     var d = parseServerDate(raw);
     if (!d) return 0;
     return Math.max(0, Math.floor((Date.now() - d.getTime()) / 60000));
+  }
+
+  /**
+   * Длительность в минутах человеческим текстом. «9532 мин» — не число, а
+   * бессмыслица: минуты читаются только внутри часа, дальше нужны часы, а
+   * после суток точность уже никому не нужна и не заслуживает доверия.
+   *   0…59   → «45 мин»
+   *   60…1439→ «2 ч» / «2 ч 15 мин»
+   *   ≥ 1440 → «давно»
+   * @param {number} min минут (может быть любым, в том числе абсурдным)
+   * @returns {string}
+   */
+  function fmtDuration(min) {
+    var m = Math.max(0, Math.round(Number(min) || 0));
+    if (m >= 1440) return pick("давно", "a while ago");
+    if (m < 60) return m + " " + pick("мин", "min");
+    var h = Math.floor(m / 60);
+    var rest = m % 60;
+    var hours = h + " " + pick("ч", "h");
+    return rest ? hours + " " + rest + " " + pick("мин", "min") : hours;
   }
 
   /* =====================================================================
@@ -507,20 +551,36 @@
 
   /**
    * Шапка страницы тренера (переиспользует .sub-head/.sub-back/.sub-title).
-   * @param {object} opts {title, subtitle, icon, backLabel}
+   *
+   * back:false — шапка КОРНЯ раздела: «Тренировка» теперь вкладка первого
+   * уровня, и кнопка «Назад» на её главной вела бы в никуда (ниже таббара
+   * уже ничего нет). Внутренние экраны — программа, прогресс, библиотека,
+   * сессия — кнопку сохраняют: туда приходят именно с главной.
+   *
+   * @param {object} opts {title, subtitle, icon, backLabel, back, actions}
+   *        icon    — ИМЯ иконки из js/icons.js (не эмодзи и не разметка);
+   *        actions — готовая разметка кнопок в правом углу заголовка.
    */
   function headHtml(opts) {
     opts = opts || {};
+    var root = opts.back === false;
     var backLabel = opts.backLabel || pick("Назад", "Back");
+    var back = root
+      ? ""
+      : '<button type="button" class="sub-back" data-tr-back aria-label="' + esc(backLabel) + '">' +
+        icon("arrow", { size: 18, rotate: 180, cls: "sub-back__arrow" }) +
+        "<span>" + esc(backLabel) + "</span>" +
+        "</button>";
     return (
-      '<header class="sub-head tr-head">' +
-      '<button type="button" class="sub-back" data-tr-back aria-label="' + esc(backLabel) + '">' +
-      '<span class="sub-back__arrow" aria-hidden="true">←</span>' +
-      "<span>" + esc(backLabel) + "</span>" +
-      "</button>" +
+      '<header class="sub-head tr-head' + (root ? " tr-head--root" : "") + '">' +
+      back +
+      '<div class="tr-head__row">' +
       '<h1 class="page-title sub-title">' +
-      (opts.icon ? esc(opts.icon) + " " : "") + esc(opts.title || pick("Тренер", "Coach")) +
+      (opts.icon ? icon(opts.icon, { size: 22, cls: "tr-head__icon" }) : "") +
+      "<span>" + esc(opts.title || pick("Тренер", "Coach")) + "</span>" +
       "</h1>" +
+      (opts.actions || "") +
+      "</div>" +
       // Подзаголовок рисуем всегда (пусть и пустым): страницы обновляют его
       // текстом после загрузки данных без перерисовки шапки.
       '<p class="page-subtitle sub-subtitle">' + esc(opts.subtitle || "") + "</p>" +
@@ -529,7 +589,8 @@
   }
 
   /**
-   * Вешает обработчик на кнопку «← Назад» ([data-tr-back]) внутри контейнера.
+   * Вешает обработчик на кнопку «Назад» ([data-tr-back]) внутри контейнера.
+   * Кнопки может не быть (шапка корня раздела) — тогда просто выходим.
    * @param {HTMLElement} viewEl
    * @param {Function} [fn] своя реакция; по умолчанию Trainer.back()
    */
@@ -568,7 +629,8 @@
 
   /**
    * Открывает нижний лист.
-   * @param {Array|string} items пункты [{key, icon, label, desc, danger, disabled}]
+   * @param {Array|string} items пункты [{key, icon, label, desc, danger, disabled}],
+   *        где icon — ИМЯ иконки из js/icons.js,
    *        или готовая HTML-строка (тогда события вешает вызывающий на el)
    * @param {Function} [onPick] onPick(key, item) — после закрытия листа
    * @param {object} [opts] {title, cancel:false, onClose}
@@ -589,7 +651,7 @@
           (it.danger ? " tr-sheet__item--danger" : "") +
           (it.disabled ? " is-disabled" : "") +
           '" data-key="' + esc(it.key) + '"' + (it.disabled ? " disabled" : "") + ">" +
-          '<span class="tr-sheet__icon" aria-hidden="true">' + (it.icon ? esc(it.icon) : "•") + "</span>" +
+          '<span class="tr-sheet__icon" aria-hidden="true">' + icon(it.icon || "dot", { size: 20 }) + "</span>" +
           '<span class="tr-sheet__body">' +
           '<span class="tr-sheet__label">' + esc(it.label) + "</span>" +
           (it.desc ? '<span class="tr-sheet__desc">' + esc(it.desc) + "</span>" : "") +
@@ -880,21 +942,24 @@
         '<circle class="tr-chart__dot' + (k === pts.length - 1 ? " tr-chart__dot--last" : "") +
         '" cx="' + px + '" cy="' + py + '" r="' + (k === pts.length - 1 ? 4.5 : 3) +
         '" data-i="' + k + '" data-date="' + esc(pts[k].date || "") + '" data-value="' + pts[k].v +
-        '" style="fill:var(--cta);stroke:var(--white);stroke-width:1.5"/>';
+        '" style="fill:var(--accent);stroke:var(--surface);stroke-width:1.5"/>';
     }
     var axisY = r1(padT + innerH);
     var unit = opts.unit ? " " + opts.unit : "";
     var svg =
       open +
+      // Оси — волосяные линии --border. Раньше здесь стоял --accent: в новой
+      // палитре это цвет действия (зелёный), и сетка графика кричала громче
+      // самой линии данных.
       '<line class="tr-chart__axis" x1="' + padL + '" y1="' + axisY + '" x2="' + (w - padR) + '" y2="' + axisY +
-      '" style="stroke:var(--accent);stroke-width:1"/>' +
+      '" style="stroke:var(--border);stroke-width:1"/>' +
       '<line class="tr-chart__axis" x1="' + padL + '" y1="' + padT + '" x2="' + (w - padR) + '" y2="' + padT +
-      '" style="stroke:var(--accent);stroke-width:1;stroke-dasharray:3 3"/>' +
+      '" style="stroke:var(--border);stroke-width:1;stroke-dasharray:3 3"/>' +
       '<text class="tr-chart__label" x="' + (padL - 6) + '" y="' + (padT + 4) + '" text-anchor="end" ' +
       'style="fill:var(--muted);font-size:10px">' + esc(fmtNum(max) + unit) + "</text>" +
       '<text class="tr-chart__label" x="' + (padL - 6) + '" y="' + (axisY + 3) + '" text-anchor="end" ' +
       'style="fill:var(--muted);font-size:10px">' + esc(fmtNum(min) + unit) + "</text>" +
-      '<path class="tr-chart__line" d="' + d.trim() + '" style="fill:none;stroke:var(--cta);stroke-width:2;' +
+      '<path class="tr-chart__line" d="' + d.trim() + '" style="fill:none;stroke:var(--accent);stroke-width:2;' +
       'stroke-linejoin:round;stroke-linecap:round"/>' +
       dots;
     if (pts[0].date) {
@@ -935,7 +1000,7 @@
   function errorCard(msg, retryId) {
     return (
       '<div class="card wk-error tr-error">' +
-      '<div class="wk-error__icon" aria-hidden="true">⚠️</div>' +
+      '<div class="wk-error__icon" aria-hidden="true">' + icon("warning", { size: 32 }) + "</div>" +
       '<p class="wk-error__title">' + esc(pick("Что-то пошло не так", "Something went wrong")) + "</p>" +
       '<p class="wk-error__text">' + esc(msg || pick("Неизвестная ошибка", "Unknown error")) + "</p>" +
       (retryId
@@ -1075,22 +1140,101 @@
    * ===================================================================== */
 
   /**
+   * Есть ли платный доступ. Обёртка нужна, чтобы страницы тренера не лезли
+   * в App напрямую и одинаково вели себя при отсутствии ядра подписки.
+   */
+  function isPro() {
+    return !!(window.App && typeof App.isPremium === "function" && App.isPremium());
+  }
+
+  /**
    * Параметры paywall для страниц тренера (единый текст на всех экранах).
+   * Текст рассказывает именно про тренера: раньше здесь стояли общие слова
+   * про подписку, и человек, упёршийся в стену на экране тренировки, читал
+   * про журнал калорий — то есть про другую функцию.
    */
   function paywallOpts() {
     return {
-      icon: "🧑‍🏫",
+      icon: "coach",
       title: pick("AI-тренер", "AI Coach"),
       desc: pick(
-        "Персональная программа тренировок, которая подстраивается под ваш прогресс",
-        "A personal training program that adapts to your progress"
+        "Программа под вас, ведение тренировки подход за подходом и разбор недели",
+        "A program built for you, set-by-set guidance during the workout and a weekly review"
       ),
       bullets: [
-        pick("Программа под цель, уровень и оборудование", "Program for your goal, level and equipment"),
-        pick("Таблица подходов, таймер отдыха и рекорды", "Set table, rest timer and personal records"),
-        pick("Недельный разбор и связь с питанием", "Weekly review linked to your nutrition")
+        pick(
+          "Программа под цель, уровень, оборудование и травмы",
+          "A program for your goal, level, equipment and injuries"
+        ),
+        pick(
+          "Ведение тренировки: таблица подходов, таймер отдыха, рекорды",
+          "Guided workout: set table, rest timer, personal records"
+        ),
+        pick(
+          "Разбор недели: что добавить, что снять, когда разгрузка",
+          "Weekly review: what to add, what to cut, when to deload"
+        )
       ]
     };
+  }
+
+  /**
+   * Paywall раздела тренера. Свой, а не App.paywall, по двум причинам:
+   * App.paywall печатает иконку как ТЕКСТ (эмодзи), а здесь нужен App.icon;
+   * и нужна вторая, бесплатная кнопка — анкету человек заполняет до оплаты,
+   * иначе он платит, не увидев ни одного экрана продукта.
+   *
+   * @param {HTMLElement} viewEl контейнер страницы
+   * @param {object} [opts] paywallOpts() + {extraLabel, onExtra}
+   */
+  function paywall(viewEl, opts) {
+    if (!viewEl) return;
+    opts = opts || paywallOpts();
+    var bullets = "";
+    var list = opts.bullets || [];
+    for (var i = 0; i < list.length; i++) {
+      bullets +=
+        '<li class="tr-paywall__bullet">' +
+        icon("check", { size: 18, cls: "tr-paywall__tick" }) +
+        "<span>" + esc(list[i]) + "</span>" +
+        "</li>";
+    }
+    viewEl.innerHTML =
+      '<section class="page tr-page tr-paywall">' +
+      '<div class="card tr-paywall__card">' +
+      '<div class="tr-paywall__icon" aria-hidden="true">' + icon(opts.icon || "coach", { size: 32 }) + "</div>" +
+      '<h1 class="tr-paywall__title">' + esc(opts.title || pick("AI-тренер", "AI Coach")) + "</h1>" +
+      '<p class="tr-paywall__desc">' + esc(opts.desc || "") + "</p>" +
+      (bullets ? '<ul class="tr-paywall__bullets">' + bullets + "</ul>" : "") +
+      "</div>" +
+      '<p class="tr-paywall__note">' +
+      icon("lock", { size: 16 }) +
+      "<span>" + esc(pick("Доступно по подписке", "Included in the subscription")) + "</span>" +
+      "</p>" +
+      '<button type="button" class="btn btn-cta btn-block" id="trPaywallCta">' +
+      esc(pick("Оформить подписку", "Get subscription")) +
+      "</button>" +
+      (opts.extraLabel
+        ? '<button type="button" class="btn btn-ghost btn-block" id="trPaywallExtra">' +
+          esc(opts.extraLabel) +
+          "</button>"
+        : "") +
+      "</section>";
+
+    var cta = viewEl.querySelector("#trPaywallCta");
+    if (cta) {
+      cta.addEventListener("click", function () {
+        App.haptic("light");
+        App.goSubscription();
+      });
+    }
+    var extra = viewEl.querySelector("#trPaywallExtra");
+    if (extra && typeof opts.onExtra === "function") {
+      extra.addEventListener("click", function () {
+        App.haptic("light");
+        opts.onExtra();
+      });
+    }
   }
 
   /**
@@ -1155,6 +1299,7 @@
     labels: labels,
     pick: pick,
     esc: esc,
+    icon: icon,
     exName: exName,
     fmtNum: fmtNum,
     fmtKg: fmtKg,
@@ -1162,6 +1307,7 @@
     fmtTarget: fmtTarget,
     plural: plural,
     fmtClock: fmtClock,
+    fmtDuration: fmtDuration,
     humanDate: humanDate,
     shortDate: shortDate,
     shiftDate: shiftDate,
@@ -1185,6 +1331,8 @@
     genWaitHtml: genWaitHtml,
     runGenerate: runGenerate,
     paywallOpts: paywallOpts,
+    paywall: paywall,
+    isPro: isPro,
     openProgram: openProgram,
     startSession: startSession,
     openSession: openSession,

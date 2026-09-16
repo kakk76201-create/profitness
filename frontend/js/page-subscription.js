@@ -1,11 +1,18 @@
 /*
- * page-subscription.js — страница «Подписка» (💎).
+ * page-subscription.js — страница «Подписка».
  *
  * Регистрирует контроллер через App.registerPage("subscription", {...}).
  * Публичная ссылка — window.PageSubscription.
  *
- * Страница НЕ входит в нижнюю навигацию (#tabbar) — она открывается кнопкой
- * «💎 Подписка» со страницы «Аккаунт». Возврат — кнопкой «Назад» в account.
+ * Страница НЕ входит в нижнюю навигацию (#tabbar) — она открывается строкой
+ * «Подписка» со страницы «Профиль». Возврат — кнопкой «Назад».
+ *
+ * ЕДИНЫЙ СПИСОК ВЫГОД. Здесь живёт единственный на всё приложение список
+ * того, что даёт подписка (BENEFITS), и он же отдаётся наружу методом
+ * controller.benefits(). Страница оплаты и paywall добавок берут его
+ * отсюда, а не составляют свой: раньше на витрине было
+ * восемь пунктов БЕЗ AI-тренера, а на оплате — другие пять, и человек не мог
+ * понять, за что платит. AI-тренер стоит ПЕРВЫМ: это главная функция продукта.
  *
  * Что показывает:
  *   1. ТЕКУЩИЙ СТАТУС подписки (App.subscription):
@@ -41,37 +48,39 @@
   // Описание тарифов: ключ для бэкенда -> метаданные для отображения.
   // Порядок задаёт расположение карточек на странице.
   // Тексты заданы парами [ru, en] и переводятся через pick() в момент рендера.
+  // icon — имя из общего набора js/icons.js (эмодзи в интерфейсе нет).
   var TARIFF_META = [
     {
       key: "monthly",
       title: ["Месячный", "Monthly"],
-      icon: "📅",
+      icon: "calendar",
       note: ["Доступ на 30 дней", "Access for 30 days"]
     },
     {
       key: "yearly",
       title: ["Годовой", "Yearly"],
-      icon: "🗓️",
+      // «Кубок» — годовой всегда самый выгодный вариант и всегда несёт бейдж
+      // «Выгодно»: отдельной иконки «год» в наборе нет, а второй календарь
+      // рядом с месячным было бы не отличить.
+      icon: "trophy",
       note: ["Выгоднее на длинной дистанции", "Better value over time"]
-      // Бейдж «Выгодно»/«Best value» и подсветка sub-card--best добавляются
-      // динамически в renderTariffs (годовой всегда самый выгодный вариант).
     },
     {
       key: "lifetime",
       title: ["Вечный", "Lifetime"],
-      icon: "♾️",
+      icon: "infinity",
       note: ["Один раз — и навсегда", "Pay once — keep forever"],
       badge: ["Навсегда", "Forever"]
     }
   ];
 
-  // Преимущества подписки — общий список ценности (показываем на странице).
+  // ЕДИНЫЙ список того, что даёт подписка. Один и тот же на витрине, на
+  // экране оплаты и в paywall — см. комментарий в шапке файла.
   // Каждый пункт — пара [ru, en]; перевод выполняется при рендере.
   var BENEFITS = [
-    ["Журнал тренировок и расход калорий", "Workout log and calorie burn"],
     [
-      "Учёт добавок, напоминания и AI-советы",
-      "Supplement tracking, reminders and AI tips"
+      "AI-тренер: программа под вас и разбор каждой тренировки",
+      "AI trainer: a program built for you and a review of every workout"
     ],
     [
       "Распознавание еды по фото и голосу без лимита",
@@ -85,9 +94,12 @@
       "Планировщик меню и AI «Что съесть?»",
       "Meal planner and AI “What to eat?”"
     ],
+    [
+      "Добавки: учёт, напоминания и AI-советы",
+      "Supplements: tracking, reminders and AI tips"
+    ],
     ["Недельный отчёт о прогрессе", "Weekly progress report"],
-    ["Трекер цикла", "Cycle tracker"],
-    ["Фото-прогресс", "Photo progress"]
+    ["Фото-прогресс и трекер цикла", "Photo progress and cycle tracker"]
   ];
 
   // Внутреннее состояние контроллера (живёт между методами через замыкание).
@@ -102,6 +114,11 @@
 
   function esc(s) {
     return App.escapeHtml(s == null ? "" : String(s));
+  }
+
+  /** Иконка из общего набора (js/icons.js). Возвращает строку <svg …>. */
+  function icon(name, opts) {
+    return App.icon ? App.icon(name, opts) : "";
   }
 
   function haptic(kind) {
@@ -258,6 +275,22 @@
   }
 
   /* =====================================================================
+   *  ЕДИНЫЙ СПИСОК ВЫГОД — ОБЩИЙ ДЛЯ ВСЕГО ПРИЛОЖЕНИЯ
+   *  Публикуется через window.PageSubscription, чтобы экран оплаты и paywall
+   *  показывали ТОТ ЖЕ список, а не составляли собственный.
+   * ===================================================================== */
+
+  /**
+   * Список выгод подписки на текущем языке (AI-тренер первым).
+   * @returns {string[]}
+   */
+  function benefitsList() {
+    return BENEFITS.map(function (b) {
+      return pick(b[0], b[1]);
+    });
+  }
+
+  /* =====================================================================
    *  РАЗМЕТКА
    * ===================================================================== */
 
@@ -266,16 +299,20 @@
    * отдельно и перерисовываются при обновлении статуса.
    */
   function template() {
-    var benefitsHtml = BENEFITS.map(function (b) {
-      return (
-        '<li class="sub-benefit">' +
-        '<span class="sub-benefit__check" aria-hidden="true">✓</span>' +
-        '<span class="sub-benefit__text">' +
-        esc(pick(b[0], b[1])) +
-        "</span>" +
-        "</li>"
-      );
-    }).join("");
+    var benefitsHtml = benefitsList()
+      .map(function (text) {
+        return (
+          '<li class="sub-benefit">' +
+          '<span class="sub-benefit__check" aria-hidden="true">' +
+          icon("check", { size: 18 }) +
+          "</span>" +
+          '<span class="sub-benefit__text">' +
+          esc(text) +
+          "</span>" +
+          "</li>"
+        );
+      })
+      .join("");
 
     var backLabel = pick("Назад", "Back");
 
@@ -286,13 +323,20 @@
       '<button type="button" class="sub-back" id="subBack" aria-label="' +
       esc(backLabel) +
       '">' +
-      '<span class="sub-back__arrow" aria-hidden="true">←</span>' +
+      '<span class="sub-back__arrow" aria-hidden="true">' +
+      icon("arrow", { size: 18, rotate: 180 }) +
+      "</span>" +
       "<span>" +
       esc(backLabel) +
       "</span>" +
       "</button>" +
-      '<h1 class="page-title sub-title">💎 ' +
+      '<h1 class="page-title sub-title">' +
+      '<span class="sub-title__icon" aria-hidden="true">' +
+      icon("gem", { size: 24 }) +
+      "</span>" +
+      "<span>" +
       esc(pick("Подписка", "Subscription")) +
+      "</span>" +
       "</h1>" +
       '<p class="page-subtitle sub-subtitle">' +
       esc(
@@ -367,7 +411,9 @@
       }
       box.className = "card sub-status sub-status--premium";
       box.innerHTML =
-        '<div class="sub-status__icon" aria-hidden="true">✅</div>' +
+        '<div class="sub-status__icon" aria-hidden="true">' +
+        icon("check", { size: 24 }) +
+        "</div>" +
         '<div class="sub-status__body">' +
         '<div class="sub-status__title">' +
         esc(pick("Подписка активна", "Subscription active")) +
@@ -377,7 +423,8 @@
     } else {
       // Не премиум: «истекла» (была платная) или обычный free.
       var expired = s.is_expired;
-      var icon = expired ? "⏳" : "🔓";
+      // Истёкшая подписка — часы (время вышло), обычный free — замок.
+      var statusIcon = icon(expired ? "clock" : "lock", { size: 24 });
       var title = expired
         ? pick("Подписка истекла", "Subscription expired")
         : pick("Бесплатный доступ", "Free access");
@@ -390,17 +437,20 @@
       if (s.is_trial_available && s.trial_days > 0) {
         trialHtml =
           '<button type="button" class="btn btn--cta btn-block sub-trial" id="subTrial">' +
+          icon("gift") +
+          "<span>" +
           esc(pick(
-            "🎁 Попробовать " + s.trial_days + " " + daysWordRu(s.trial_days) + " бесплатно",
-            "🎁 Try " + s.trial_days + (s.trial_days === 1 ? " day" : " days") + " free"
+            "Попробовать " + s.trial_days + " " + daysWordRu(s.trial_days) + " бесплатно",
+            "Try " + s.trial_days + (s.trial_days === 1 ? " day" : " days") + " free"
           )) +
+          "</span>" +
           "</button>";
       }
 
       box.className = "card sub-status " + (expired ? "sub-status--expired" : "sub-status--free");
       box.innerHTML =
         '<div class="sub-status__row">' +
-        '<div class="sub-status__icon" aria-hidden="true">' + icon + "</div>" +
+        '<div class="sub-status__icon" aria-hidden="true">' + statusIcon + "</div>" +
         '<div class="sub-status__body">' +
         '<div class="sub-status__title">' + esc(title) + "</div>" +
         '<div class="sub-status__until">' + esc(subtitle) + "</div>" +
@@ -510,7 +560,7 @@
           '">' +
           '<div class="sub-tariff__head">' +
           '<span class="sub-tariff__icon" aria-hidden="true">' +
-          esc(meta.icon) +
+          icon(meta.icon, { size: 24 }) +
           "</span>" +
           '<div class="sub-tariff__info">' +
           '<div class="sub-tariff__title">' +
@@ -724,7 +774,13 @@
     onHide: function () {
       state.viewEl = null;
       state.loading = false;
-    }
+    },
+
+    // ---- Общее достояние: единый список выгод ----
+    // Его берут экран оплаты (page-payment.js) и paywall добавок
+    // (page-supplements.js). Функция, а не массив: язык меняется,
+    // и значение должно считаться на момент вызова.
+    benefits: benefitsList
   };
 
   // Регистрируем страницу и публикуем контроллер (для отладки/повторного входа).

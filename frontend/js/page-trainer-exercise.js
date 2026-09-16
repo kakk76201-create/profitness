@@ -43,6 +43,10 @@
     return document.getElementById(id);
   }
 
+  function icon(name, opts) {
+    return T.icon(name, opts);
+  }
+
   // Группы мышц каталога (ТЗ §3, колонка muscle_group).
   var MUSCLES = [
     "chest", "back", "shoulders", "biceps", "triceps",
@@ -82,7 +86,8 @@
     history: null,         // TrainerExerciseHistoryOut
     historyBusy: false,
     historyMetric: "est_1rm",
-    excludeBusy: false
+    excludeBusy: false,
+    filtersOpen: false     // раскрыт ли блок фильтров (см. filtersHtml)
   };
 
   // Счётчики запросов по видам: ответ применяем, только если он последний
@@ -119,11 +124,22 @@
     return "1RM";
   }
 
-  /** Сложность точками: ●○○ / ●●○ / ●●●. */
+  /**
+   * Сложность тремя точками: залитая — набранная ступень, контурная — пустая.
+   * Раньше рисовалось текстовыми кружками: шрифты рисуют их разного размера,
+   * и ряд получался неровным. Форма у всех трёх одна и та же (icon "dot"),
+   * различает их ТОЛЬКО заливка (класс --on, fill в CSS): если брать разные
+   * иконки, ряд читается как «маленький, большой, большой», а не как шкала.
+   */
   function difficultyMark(level) {
     var n = Math.min(3, Math.max(1, parseInt(level, 10) || 1));
     var out = "";
-    for (var i = 1; i <= 3; i++) out += i <= n ? "●" : "○";
+    for (var i = 1; i <= 3; i++) {
+      out += icon("dot", {
+        size: 11,
+        cls: "tr-diff-dot" + (i <= n ? " tr-diff-dot--on" : "")
+      });
+    }
     return out;
   }
 
@@ -148,10 +164,10 @@
    * ===================================================================== */
 
   /** Каркас страницы под текущий режим. */
-  function shellHtml(title, subtitle, icon) {
+  function shellHtml(title, subtitle, iconName) {
     return (
       '<section class="page sub-page tr-page tr-library">' +
-      T.headHtml({ icon: icon || "📚", title: title, subtitle: subtitle || "" }) +
+      T.headHtml({ icon: iconName || "book", title: title, subtitle: subtitle || "" }) +
       '<div id="trLibBody"></div>' +
       "</section>"
     );
@@ -183,16 +199,47 @@
     return '<div class="tr-lib-filters__row">' + html + "</div>";
   }
 
-  /** Панель фильтров: поиск + чипы мышц + чипы оборудования. */
+  /** Текущий выбор одной строкой: «Все мышцы · Всё оборудование». */
+  function filterSummary() {
+    var m = state.muscle
+      ? T.label("muscle", state.muscle)
+      : pick("Все мышцы", "All muscles");
+    var e = state.equipment
+      ? T.label("equipment", state.equipment)
+      : pick("всё оборудование", "any equipment");
+    return m + " · " + e;
+  }
+
+  /**
+   * Панель фильтров: поиск + сворачиваемый блок с чипами мышц и оборудования.
+   *
+   * Раньше чипы лежали двумя рядами с горизонтальной прокруткой: фильтр,
+   * который уехал за край экрана, никто не применяет. Развернуть их с
+   * переносом мало — двадцать четыре чипа занимают экран целиком, и список
+   * упражнений, ради которого сюда пришли, оказывается ниже сгиба. Поэтому
+   * фильтры свёрнуты, а выбранное показано строкой: по умолчанию виден
+   * список, фильтры открываются одним касанием и никуда не прокручиваются.
+   */
   function filtersHtml() {
+    var open = !!state.filtersOpen;
     return (
       '<section class="card tr-lib-filters">' +
       '<input class="field__input tr-lib-search" id="trLibSearch" type="text" ' +
       'inputmode="search" autocomplete="off" maxlength="60" ' +
       'placeholder="' + esc(pick("Поиск по названию", "Search by name")) + '" ' +
       'value="' + esc(state.query) + '">' +
+      '<button type="button" class="tr-lib-filters__toggle" id="trLibFiltersToggle" ' +
+      'aria-expanded="' + (open ? "true" : "false") + '" aria-controls="trLibFiltersBody">' +
+      icon("list", { size: 18, cls: "tr-lib-filters__ico" }) +
+      '<span class="tr-lib-filters__sum" id="trLibFiltersSum">' + esc(filterSummary()) + "</span>" +
+      '<span class="tr-lib-filters__chev" aria-hidden="true">' +
+      icon("chevron", { size: 18, rotate: open ? 270 : 90 }) +
+      "</span>" +
+      "</button>" +
+      '<div class="tr-lib-filters__body" id="trLibFiltersBody"' + (open ? "" : " hidden") + ">" +
       filterRowHtml("data-muscle", "muscle", MUSCLES, state.muscle) +
       filterRowHtml("data-equipment", "equipment", EQUIPMENT, state.equipment) +
+      "</div>" +
       "</section>"
     );
   }
@@ -227,7 +274,7 @@
     if (!items.length) {
       return (
         '<section class="card wk-empty tr-lib-empty">' +
-        '<div class="wk-empty__icon" aria-hidden="true">🔍</div>' +
+        '<div class="wk-empty__icon" aria-hidden="true">' + icon("search", { size: 36 }) + "</div>" +
         '<p class="wk-empty__title">' + esc(pick("Ничего не нашлось", "Nothing found")) + "</p>" +
         '<p class="wk-empty__text">' +
         esc(pick(
@@ -474,8 +521,7 @@
         var text = T.fmtSet(st.weight_kg, st.reps, st.time_sec);
         if (st.set_type === "warmup") text = pick("Р ", "W ") + text;
         if (!st.is_done) text = "(" + text + ")";
-        if (st.is_pr) text = "🏆 " + text;
-        parts.push(text);
+        parts.push((st.is_pr ? icon("trophy", { size: 13, cls: "tr-pr-mark" }) : "") + esc(text));
       }
       rows +=
         '<div class="tr-history-set">' +
@@ -483,7 +529,7 @@
         esc((s.date ? T.shortDate(s.date) : "") + (s.title ? " · " + s.title : "")) +
         "</span>" +
         '<span class="tr-history-set__vals">' +
-        esc(parts.length ? parts.join(", ") : pick("нет подходов", "no sets")) +
+        (parts.length ? parts.join(", ") : esc(pick("нет подходов", "no sets"))) +
         "</span>" +
         "</div>";
     }
@@ -562,7 +608,7 @@
       picking
         ? pick("Тап по упражнению — и оно в тренировке", "Tap an exercise to add it to the workout")
         : pick("Библиотека и техника", "Library and technique"),
-      picking ? "➕" : "📚"
+      picking ? "plus" : "book"
     );
     T.bindBack(state.viewEl, function () {
       if (state.pickSession) {
@@ -608,6 +654,21 @@
     }
     var filters = state.viewEl ? state.viewEl.querySelector(".tr-lib-filters") : null;
     if (filters) filters.addEventListener("click", onFilterClick);
+    var toggle = byId("trLibFiltersToggle");
+    if (toggle) toggle.addEventListener("click", toggleFilters);
+  }
+
+  /** Раскрывает/сворачивает блок фильтров (состояние живёт до ухода с экрана). */
+  function toggleFilters() {
+    var body = byId("trLibFiltersBody");
+    var toggle = byId("trLibFiltersToggle");
+    if (!body || !toggle) return;
+    App.haptic("light");
+    state.filtersOpen = !state.filtersOpen;
+    body.hidden = !state.filtersOpen;
+    toggle.setAttribute("aria-expanded", state.filtersOpen ? "true" : "false");
+    var chev = toggle.querySelector(".tr-lib-filters__chev");
+    if (chev) chev.innerHTML = icon("chevron", { size: 18, rotate: state.filtersOpen ? 270 : 90 });
   }
 
   function onFilterClick(ev) {
@@ -631,6 +692,10 @@
     var chips = row ? row.querySelectorAll(".chip") : [];
     for (var i = 0; i < chips.length; i++) chips[i].classList.remove("chip--active");
     chip.classList.add("chip--active");
+    // Строка-сводка — единственное, что видно при свёрнутых фильтрах:
+    // без её обновления выбор пропадал бы из виду сразу после нажатия.
+    var sum = byId("trLibFiltersSum");
+    if (sum) sum.textContent = filterSummary();
     loadItems();
   }
 
@@ -699,7 +764,7 @@
     state.viewEl.innerHTML = shellHtml(
       ex ? T.exName(ex) : pick("Упражнение", "Exercise"),
       ex ? itemMeta(ex) : "",
-      "🏋️"
+      "dumbbell"
     );
     T.bindBack(state.viewEl, onDetailBack);
     var body = byId("trLibBody");
@@ -875,7 +940,7 @@
         state.listLoading = false;
         if (stale("list", token) || state.mode !== "list") return;
         if (err && err.status === 402) {
-          App.paywall(state.viewEl, T.paywallOpts());
+          T.paywall(state.viewEl, T.paywallOpts());
           return;
         }
         var h = byId("trLibList");
@@ -919,7 +984,7 @@
       .catch(function (err) {
         if (stale("detail", token) || state.mode !== "detail") return;
         if (err && err.status === 402) {
-          App.paywall(state.viewEl, T.paywallOpts());
+          T.paywall(state.viewEl, T.paywallOpts());
           return;
         }
         var body = byId("trLibBody");
@@ -992,7 +1057,10 @@
   var controller = {
     onShow: function (viewEl) {
       state.viewEl = viewEl;
-      if (!App.requirePremium(viewEl, T.paywallOpts())) return;
+      if (!T.isPro()) {
+        T.paywall(viewEl, T.paywallOpts());
+        return;
+      }
       dropRequests();
       state.items = null;
       state.total = 0;

@@ -1138,13 +1138,14 @@
    * («Недоступно — нужна подписка», «Оформить подписку») локализуются здесь.
    * @param {HTMLElement} viewEl  контейнер для вставки
    * @param {object} [opts] { icon, title, desc, bullets:[...] }
+   *        icon — ИМЯ иконки из набора js/icons.js (не эмодзи).
    */
   App.paywall = function (viewEl, opts) {
     if (!viewEl) {
       return;
     }
     opts = opts || {};
-    var icon = opts.icon || "🔒";
+    var iconName = opts.icon || "lock";
     var title = opts.title || App.pick("Премиум-функция", "Premium feature");
     var desc =
       opts.desc ||
@@ -1160,7 +1161,7 @@
       for (var i = 0; i < bullets.length; i++) {
         items +=
           '<li class="paywall-bullet">' +
-          '<span class="paywall-bullet-mark" aria-hidden="true">✓</span>' +
+          '<span class="paywall-bullet-mark">' + App.icon("check", { size: 16 }) + "</span>" +
           '<span class="paywall-bullet-text">' +
           App.escapeHtml(bullets[i]) +
           "</span>" +
@@ -1169,11 +1170,34 @@
       bulletsHtml = '<ul class="paywall-bullets">' + items + "</ul>";
     }
 
+    // Цена и пробный период. Прежний пейволл не показывал ни того, ни
+    // другого: человек видел «нужна подписка» и уходил, не зная ни сколько
+    // это стоит, ни что первые дни бесплатны. Берём из кэша статуса —
+    // если он ещё не загружен, блок просто не рисуется.
+    var sub = App.subscription || {};
+    var priceLine = "";
+    var monthly = (sub.card_prices && sub.card_prices.monthly) ||
+      (sub.tariffs && sub.tariffs.monthly && sub.tariffs.monthly.price) || 0;
+    if (monthly) {
+      var shown = Number(monthly);
+      shown = shown % 1 === 0 ? String(shown) : shown.toFixed(2);
+      priceLine = App.pick("от ", "from ") + shown + " ₽" + App.pick(" в месяц", " per month");
+    }
+    if (sub.is_trial_available && sub.trial_days > 0) {
+      var trial = App.pick(
+        "Первые " + sub.trial_days + " дней бесплатно",
+        "First " + sub.trial_days + " days free"
+      );
+      priceLine = priceLine ? trial + " · " + priceLine : trial;
+    }
+
     var html =
       '<section class="paywall">' +
       '<div class="card paywall-card">' +
-      '<div class="paywall-icon" aria-hidden="true">' +
-      App.escapeHtml(icon) +
+      '<div class="paywall-icon">' +
+      // Страховка: если страница передала имя, которого нет в наборе (или
+      // по недосмотру эмодзи), показываем замок, а не пустое место.
+      (App.icon(iconName, { size: 28 }) || App.icon("lock", { size: 28 })) +
       "</div>" +
       '<h2 class="paywall-title">' +
       App.escapeHtml(title) +
@@ -1182,18 +1206,17 @@
       App.escapeHtml(desc) +
       "</p>" +
       bulletsHtml +
-      "</div>" +
-      '<div class="paywall-lock">' +
-      '<span class="paywall-lock-icon" aria-hidden="true">🔒</span>' +
-      '<span class="paywall-lock-text">' +
+      (priceLine
+        ? '<p class="paywall-price">' + App.escapeHtml(priceLine) + "</p>"
+        : "") +
+      '<button type="button" class="btn btn--cta btn-block paywall-cta" id="paywall-subscribe">' +
       App.escapeHtml(
-        App.pick("Недоступно — нужна подписка", "Unavailable — subscription required")
+        sub.is_trial_available && sub.trial_days > 0
+          ? App.pick("Попробовать бесплатно", "Start free trial")
+          : App.pick("Оформить подписку", "Get subscription")
       ) +
-      "</span>" +
-      "</div>" +
-      '<button type="button" class="btn btn-cta btn-block paywall-cta" id="paywall-subscribe">' +
-      App.escapeHtml(App.pick("Оформить подписку", "Get subscription")) +
       "</button>" +
+      "</div>" +
       "</section>";
 
     viewEl.innerHTML = html;

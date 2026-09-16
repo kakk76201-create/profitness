@@ -72,40 +72,34 @@
   margin-top: 2px;
 }
 
-/* Лента недель: горизонтальный скролл, каждая — кнопка с фазой. */
+/* Недели программы. Была горизонтальная лента со скроллом — и половина
+   недель пряталась за краем экрана: выбор, которого не видно, выбором не
+   является, а жест вбок ещё и спорил с вертикальной прокруткой страницы.
+   Теперь сетка с переносом: недель максимум восемь, они помещаются
+   целиком, и видно сразу всю программу. */
 .tr-program-weeks {
-  overflow: hidden;
+  display: block;
 }
 
-.tr-week-strip--weeks {
-  display: flex;
-  gap: 8px;
-  margin: 0 -14px;
-  padding: 2px 14px 6px;
-  overflow-x: auto;
-  scroll-snap-type: x proximity;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-}
-
-.tr-week-strip--weeks::-webkit-scrollbar {
-  display: none;
+.tr-week-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  gap: var(--s2);
 }
 
 .tr-week-item {
-  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  min-width: 78px;
-  padding: 10px 10px 8px;
-  border: 1.5px solid var(--accent);
+  min-height: var(--tap-min);
+  padding: 10px 8px 8px;
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--white);
+  background: var(--surface);
   color: var(--text);
   cursor: pointer;
-  scroll-snap-align: start;
   transition: background .16s ease, border-color .16s ease, color .16s ease;
 }
 
@@ -203,7 +197,7 @@
   display: block;
   height: 12px;
   border-radius: 6px;
-  background: var(--card);
+  background: var(--surface-2);
   overflow: hidden;
 }
 
@@ -215,22 +209,25 @@
   background: rgba(47, 111, 78, .22);
 }
 
+/* Полоса объёма по группе мышц. Три состояния должны РАЗЛИЧАТЬСЯ: раньше
+   и «норма», и «недобор» были окрашены var(--accent) — в новой палитре это
+   один и тот же зелёный, и полоса переставала что-либо сообщать. */
 .tr-muscle-bar__fill {
   position: absolute;
   top: 0;
   bottom: 0;
   left: 0;
   border-radius: 6px;
-  background: var(--accent);
+  background: var(--border-strong);
   transition: width .3s ease;
 }
 
 .tr-muscle-bar--ok .tr-muscle-bar__fill {
-  background: var(--cta);
+  background: var(--success);
 }
 
 .tr-muscle-bar--low .tr-muscle-bar__fill {
-  background: var(--accent);
+  background: var(--warning);
 }
 
 .tr-muscle-bar--high .tr-muscle-bar__fill {
@@ -299,7 +296,7 @@
   justify-content: space-between;
   gap: 10px;
   padding: 10px 0;
-  border-top: 1px solid rgba(23, 26, 22, .08);
+  border-top: 1px solid var(--border);
 }
 
 .tr-record-row:first-child {
@@ -353,7 +350,7 @@
 }
 
 .tr-history-item {
-  border-top: 1px solid rgba(23, 26, 22, .08);
+  border-top: 1px solid var(--border);
 }
 
 .tr-history-item:first-child {
@@ -391,6 +388,20 @@
   margin-top: 2px;
   font-size: 12px;
   color: var(--muted);
+}
+
+/* Кубок рекорда: в строке истории и рядом с подходом. Иконка вместо эмодзи,
+   поэтому цвет задаём здесь — иначе она унаследует цвет приглушённого
+   текста и перестанет быть отметкой. */
+.tr-history-item__pr,
+.tr-pr-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  vertical-align: -2px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--warning);
 }
 
 .tr-history-item__chevron {
@@ -437,7 +448,7 @@
   margin: 8px 0 0;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
-  background: var(--card);
+  background: var(--surface-2);
   font-size: 13px;
   line-height: 1.45;
 }
@@ -498,9 +509,9 @@
   gap: 10px;
   padding: 8px 10px;
   margin-bottom: 6px;
-  border: 1.5px solid var(--accent);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--white);
+  background: var(--surface);
   cursor: pointer;
 }
 
@@ -544,7 +555,7 @@
   padding: 2px 8px;
   border-radius: 999px;
   background: var(--cta);
-  color: var(--white);
+  color: var(--on-accent);
   font-size: 11px;
   font-weight: 700;
 }
@@ -592,22 +603,66 @@
   margin-bottom: 8px;
 }
 
-.tr-lib-filters__row {
+/* Строка-переключатель фильтров: что выбрано сейчас + раскрытие. Именно она
+   видна по умолчанию — чипы лежат под ней. */
+.tr-lib-filters__toggle {
   display: flex;
-  gap: 6px;
-  margin: 0 -14px;
-  padding: 2px 14px 4px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  min-height: var(--tap-min);
+  margin-top: var(--s2);
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  text-align: left;
+  cursor: pointer;
 }
 
-.tr-lib-filters__row::-webkit-scrollbar {
-  display: none;
+.tr-lib-filters__ico {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.tr-lib-filters__sum {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tr-lib-filters__chev {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--muted);
+}
+
+.tr-lib-filters__body {
+  padding-top: var(--s2);
+  border-top: 1px solid var(--border);
+}
+
+/* Фильтры библиотеки. Был ряд с горизонтальной прокруткой: фильтр, который
+   уехал за край экрана, никто не применяет, да и жест вбок внутри
+   вертикальной страницы неудобен. Теперь чипы переносятся на новую строку
+   и видны все сразу — а чтобы два десятка чипов не выдавили список за
+   пределы экрана, весь блок по умолчанию свёрнут. */
+.tr-lib-filters__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin: 0;
+  padding: 2px 0 4px;
 }
 
 .tr-lib-filters__row .chip {
   flex: 0 0 auto;
+  min-height: var(--tap-min);
   white-space: nowrap;
 }
 
@@ -623,7 +678,7 @@
   width: 100%;
   padding: 10px 0;
   border: none;
-  border-top: 1px solid rgba(23, 26, 22, .08);
+  border-top: 1px solid var(--border);
   background: transparent;
   color: var(--text);
   text-align: left;
@@ -635,7 +690,7 @@
 }
 
 .tr-lib-item:active {
-  background: var(--card);
+  background: var(--surface-2);
 }
 
 .tr-lib-item__body {
@@ -675,12 +730,20 @@
   color: var(--danger);
 }
 
-/* Сложность — точки «●●○». */
+/* Сложность — три одинаковых кружка (иконка dot): набранные ступени залиты,
+   пустые остаются контуром. Раньше это были текстовые кружки, и шрифт рисовал
+   их разного размера — ряд получался неровным. */
 .tr-lib-item__diff {
   flex: 0 0 auto;
-  font-size: 11px;
-  letter-spacing: 1px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   color: var(--muted);
+}
+
+/* fill как свойство перебивает атрибут fill="none" на самой иконке. */
+.tr-diff-dot--on {
+  fill: currentColor;
 }
 
 .tr-lib-more {
@@ -713,7 +776,10 @@
 }
 
 .tr-ex-head__diff span {
-  letter-spacing: 1px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  vertical-align: -2px;
   color: var(--text);
 }
 
@@ -741,11 +807,12 @@
   margin: 0 0 12px;
   padding: 4px;
   border-radius: var(--radius-sm);
-  background: var(--card);
+  background: var(--surface-2);
 }
 
 .tr-ex-tab {
-  padding: 9px 8px;
+  min-height: var(--tap-min);
+  padding: 0 8px;
   border: none;
   border-radius: 9px;
   background: transparent;
@@ -756,10 +823,12 @@
   transition: background .16s ease, color .16s ease;
 }
 
+/* Активная вкладка отличается только заливкой: тень здесь дала бы третий
+   уровень (тень внутри карточки внутри экрана), а выбранное состояние
+   светлой плашки на тёмной дорожке читается и без неё. */
 .tr-ex-tab.is-active {
-  background: var(--white);
+  background: var(--surface);
   color: var(--text);
-  box-shadow: var(--shadow);
 }
 
 .tr-ex-section {

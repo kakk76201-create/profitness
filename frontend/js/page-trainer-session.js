@@ -5,11 +5,11 @@
  * Публичная ссылка — window.PageTrainerSession.
  *
  * Два экрана внутри одной страницы (ТЗ §2.5, §2.6):
- *   run    — sticky-шапка (✕, название, секундомер, «2/6 упражнений»),
+ *   run    — sticky-шапка (закрыть, название, секундомер, «2/6 упражнений»),
  *            блоки разминки/заминки чек-листом, карточки упражнений с
- *            таблицей подходов «# | Прошлый раз | кг | повт | ✓», липкая
+ *            таблицей подходов «# | Прошлый раз | кг | повт | отметка», липкая
  *            плашка отдыха (−15/+15/Пропустить), тост рекорда, «Завершить»;
- *   finish — «Готово! 💪», сетка итогов, карточки рекордов, отзыв
+ *   finish — «Готово!», сетка итогов, карточки рекордов, отзыв
  *            (легко/норм/тяжело + заметка) и карточка «Учёл на следующий раз».
  *
  * Автосохранение: каждый отмеченный подход уходит на сервер
@@ -39,6 +39,19 @@
 
   function byId(id) {
     return document.getElementById(id);
+  }
+
+  function icon(name, opts) {
+    return T.icon(name, opts);
+  }
+
+  /**
+   * Иконка «плей» для кнопки таймера строки. Кнопка переключается между
+   * иконкой и обратным отсчётом, поэтому разметка нужна в двух местах:
+   * при отрисовке строки и при остановке таймера.
+   */
+  function playIcon() {
+    return icon("play", { size: 18 });
   }
 
   // Бэкенд принимает set_index 1..12 (TrainerSetIn), больше строк не рисуем.
@@ -279,13 +292,15 @@
    *  РАЗМЕТКА: ЭКРАН ВЫПОЛНЕНИЯ
    * ===================================================================== */
 
-  /** Sticky-шапка сессии: ✕, название дня, секундомер, «2/6 упражнений». */
+  /** Sticky-шапка сессии: закрыть, название дня, секундомер, «2/6 упражнений». */
   function headHtml() {
     var s = state.session || {};
     return (
       '<header class="tr-session-head">' +
       '<button type="button" class="tr-session-head__close" data-act="close" ' +
-      'aria-label="' + esc(pick("Закрыть тренировку", "Close workout")) + '">✕</button>' +
+      'aria-label="' + esc(pick("Закрыть тренировку", "Close workout")) + '">' +
+      icon("close", { size: 20 }) +
+      "</button>" +
       '<div class="tr-session-head__body">' +
       '<div class="tr-session-head__title" id="trsTitle">' +
       esc(s.title || pick("Тренировка", "Workout")) +
@@ -324,7 +339,7 @@
     return (
       '<button type="button" class="tr-check-row' + (done ? " tr-check-row--done" : "") +
       '" data-act="check-item" data-sex="' + esc(sex.id) + '" aria-pressed="' + (done ? "true" : "false") + '">' +
-      '<span class="tr-check-row__mark" aria-hidden="true">' + (done ? "✓" : "") + "</span>" +
+      '<span class="tr-check-row__mark" aria-hidden="true">' + (done ? icon("check", { size: 14 }) : "") + "</span>" +
       '<span class="tr-check-row__body">' +
       '<span class="tr-check-row__name">' + esc(T.exName(sex.exercise)) + "</span>" +
       (meta ? '<span class="tr-check-row__meta">' + esc(meta) + "</span>" : "") +
@@ -353,7 +368,7 @@
       'aria-expanded="' + (folded ? "false" : "true") + '">' +
       '<span class="tr-block__title">' + esc(title) + "</span>" +
       '<span class="tr-block__count">' + done + "/" + list.length + "</span>" +
-      '<span class="tr-block__chevron" aria-hidden="true">⌄</span>' +
+      '<span class="tr-block__chevron" aria-hidden="true">' + icon("chevron", { size: 18, rotate: 90 }) + "</span>" +
       "</button>" +
       '<div class="tr-block__body">' + rows + "</div>" +
       "</section>"
@@ -375,7 +390,7 @@
     } else {
       cells += '<span class="tr-set-cell">' + esc(pick("повт", "reps")) + "</span>";
     }
-    cells += '<span class="tr-set-cell" aria-hidden="true">✓</span>';
+    cells += '<span class="tr-set-cell" aria-hidden="true">' + icon("check", { size: 14 }) + "</span>";
     return '<div class="tr-set-head">' + cells + "</div>";
   }
 
@@ -388,18 +403,29 @@
     var manual = index > Math.max(1, sex.planned_sets || 1);
     var locked = sex.status === "skipped";
 
+    var isPr = !!(saved && saved.is_pr);
     var cls = "tr-set-row";
     if (done) cls += " tr-set-row--done";
-    if (saved && saved.is_pr) cls += " tr-set-row--pr";
+    if (isPr) cls += " tr-set-row--pr";
     if (stype === "warmup") cls += " tr-set-row--warmup";
+
+    // Кубок рекорда рисуем разметкой, а не через content в CSS: там он был
+    // эмодзи, то есть картинкой операционной системы — своего размера и
+    // своего цвета на каждом телефоне.
+    var prMark = isPr
+      ? icon("trophy", { size: 12, cls: "tr-set-pr" })
+      : "";
 
     var numCell = manual
       ? '<span class="tr-set-cell tr-set-num">' +
         '<button type="button" class="tr-set-del" data-act="del" ' +
-        'aria-label="' + esc(pick("Удалить подход", "Delete set")) + '">✕</button>' +
+        'aria-label="' + esc(pick("Удалить подход", "Delete set")) + '">' +
+        icon("close", { size: 16 }) +
+        "</button>" +
         "</span>"
       : '<span class="tr-set-cell tr-set-num">' +
         (stype === "warmup" ? esc(pick("Р", "W")) : index) +
+        prMark +
         "</span>";
 
     var prevText = prev ? T.fmtSet(prev.weight_kg, prev.reps, prev.time_sec) : "—";
@@ -430,7 +456,9 @@
         "</span>" +
         '<span class="tr-set-cell">' +
         '<button type="button" class="tr-set-timer" data-act="itimer" ' +
-        'aria-label="' + esc(pick("Запустить таймер", "Start timer")) + '">▶</button>' +
+        'aria-label="' + esc(pick("Запустить таймер", "Start timer")) + '">' +
+        playIcon() +
+        "</button>" +
         "</span>";
     } else {
       inputs +=
@@ -449,7 +477,9 @@
       '<button type="button" class="tr-set-check' + (done ? " tr-set-check--done" : "") +
       '" data-act="check" aria-pressed="' + (done ? "true" : "false") + '"' +
       (locked ? " disabled" : "") +
-      ' aria-label="' + esc(pick("Отметить подход", "Mark set")) + '">✓</button>' +
+      ' aria-label="' + esc(pick("Отметить подход", "Mark set")) + '">' +
+      icon("check", { size: 20 }) +
+      "</button>" +
       "</div>"
     );
   }
@@ -497,11 +527,15 @@
       esc(T.exName(ex)) +
       "</button>" +
       '<button type="button" class="tr-ex-card__menu" data-act="menu" data-sex="' + esc(sex.id) + '" ' +
-      'aria-label="' + esc(pick("Меню упражнения", "Exercise menu")) + '">⋯</button>' +
+      'aria-label="' + esc(pick("Меню упражнения", "Exercise menu")) + '">' +
+      icon("dots", { size: 20 }) +
+      "</button>" +
       "</div>" +
       (badges ? '<div class="tr-ex-card__badges">' + badges + "</div>" : "") +
       (target ? '<p class="tr-ex-card__target">' + esc(target) + "</p>" : "") +
-      (sex.note ? '<p class="tr-ex-card__note">💡 ' + esc(sex.note) + "</p>" : "") +
+      (sex.note
+        ? '<p class="tr-ex-card__note">' + icon("bulb", { size: 16 }) + "<span>" + esc(sex.note) + "</span></p>"
+        : "") +
       setTableHtml(sex) +
       (canAdd
         ? '<button type="button" class="tr-set-add" data-act="add" data-sex="' + esc(sex.id) + '">+ ' +
@@ -529,8 +563,8 @@
     // в режиме «выбор для тренировки»), пока сессия не завершена.
     html +=
       '<button type="button" class="tr-add-ex" data-act="addex">' +
-      '<span aria-hidden="true">＋</span> ' +
-      esc(pick("Добавить упражнение", "Add exercise")) +
+      icon("plus", { size: 18 }) +
+      "<span>" + esc(pick("Добавить упражнение", "Add exercise")) + "</span>" +
       "</button>";
     html += blockHtml("cooldown");
     html +=
@@ -623,7 +657,7 @@
         : pick("первый результат", "first result");
     return (
       '<div class="tr-record-card">' +
-      '<span class="tr-record-card__icon" aria-hidden="true">🏆</span>' +
+      '<span class="tr-record-card__icon" aria-hidden="true">' + icon("trophy", { size: 22 }) + "</span>" +
       '<span class="tr-record-card__body">' +
       '<span class="tr-record-card__name">' + esc(name) + "</span>" +
       '<span class="tr-record-card__value">' +
@@ -661,8 +695,9 @@
 
   /** Блок отзыва: чипы, заметка, «Отправить». */
   function feedbackHtml() {
+    // Чипы без картинок: «Слишком легко / В самый раз / Слишком тяжело» —
+    // это оценка, а не предмет; лица-эмодзи здесь только мешали читать.
     var codes = ["easy", "ok", "hard"];
-    var icons = { easy: "😮‍💨", ok: "👍", hard: "🥵" };
     var chips = "";
     for (var i = 0; i < codes.length; i++) {
       var code = codes[i];
@@ -671,7 +706,6 @@
         (state.feedback === code ? " is-active" : "") +
         '" data-act="fb" data-fb="' + code + '" aria-pressed="' +
         (state.feedback === code ? "true" : "false") + '">' +
-        '<span aria-hidden="true">' + icons[code] + "</span> " +
         esc(T.label("feedback", code)) +
         "</button>";
     }
@@ -700,7 +734,7 @@
     var prs = (state.finish && state.finish.prs) || s.prs || [];
     var stats =
       statHtml(
-        (sum.duration_min || 0) + " " + pick("мин", "min"),
+        T.fmtDuration(sum.duration_min || 0),
         pick("Длительность", "Duration")
       ) +
       statHtml(String(sum.total_sets || 0), pick("Подходы", "Sets")) +
@@ -711,7 +745,7 @@
       statHtml(
         App.fmt(sum.calories_burned || 0) + " " + pick("ккал", "kcal"),
         pick("Сожжено", "Burned"),
-        pick("→ добавлено в дневник", "→ added to the diary")
+        pick("добавлено в дневник", "added to the diary")
       );
 
     var records = "";
@@ -731,7 +765,7 @@
     return (
       '<section class="page sub-page tr-page tr-session tr-session--finish">' +
       '<header class="sub-head tr-head">' +
-      '<h1 class="page-title sub-title">' + esc(pick("Готово! 💪", "Done! 💪")) + "</h1>" +
+      '<h1 class="page-title sub-title">' + esc(pick("Готово!", "Done!")) + "</h1>" +
       '<p class="page-subtitle sub-subtitle">' +
       esc((s.title || "") + (s.date ? (s.title ? " · " : "") + T.humanDate(s.date) : "")) +
       "</p>" +
@@ -846,7 +880,11 @@
     if (!el || !state.session) return;
     var started = T.parseServerDate(state.session.started_at);
     var sec = started ? Math.floor((Date.now() - started.getTime()) / 1000) : 0;
-    el.textContent = fmtElapsed(sec);
+    // Сессию можно бросить и вернуться к ней через неделю. Секундомер тогда
+    // показал бы «168:04:11» — это не длительность тренировки, а мусор,
+    // который к тому же ломает ширину шапки. За сутками отдаём разговор
+    // Trainer.fmtDuration: он скажет «давно».
+    el.textContent = sec >= 86400 ? T.fmtDuration(Math.floor(sec / 60)) : fmtElapsed(sec);
   }
 
   function startClock() {
@@ -934,7 +972,7 @@
   }
 
   /* =====================================================================
-   *  ТАЙМЕР УПРАЖНЕНИЯ НА ВРЕМЯ (кнопка ▶ в строке)
+   *  ТАЙМЕР УПРАЖНЕНИЯ НА ВРЕМЯ (кнопка «плей» в строке)
    * ===================================================================== */
 
   function inlineButton() {
@@ -950,7 +988,9 @@
     if (state.inline) state.inline.stop();
     var btn = inlineButton();
     if (btn) {
-      btn.textContent = "▶";
+      // innerHTML, а не textContent: в состоянии покоя кнопка — иконка,
+      // в состоянии отсчёта — текст «м:сс».
+      btn.innerHTML = playIcon();
       btn.classList.remove("is-running");
     }
     state.inlineKey = "";
@@ -982,7 +1022,7 @@
           T.beep();
           var btn = inlineButton();
           if (btn) {
-            btn.textContent = "▶";
+            btn.innerHTML = playIcon();
             btn.classList.remove("is-running");
           }
           state.inlineKey = "";
@@ -1003,7 +1043,7 @@
     var texts = [];
     for (var i = 0; i < prs.length; i++) texts.push(prText(prs[i]));
     el.innerHTML =
-      '<span class="tr-pr-toast__icon" aria-hidden="true">🏆</span>' +
+      '<span class="tr-pr-toast__icon" aria-hidden="true">' + icon("trophy", { size: 20 }) + "</span>" +
       '<span class="tr-pr-toast__text">' +
       esc(pick("Рекорд! ", "Record! ") + texts.join(" · ")) +
       "</span>";
@@ -1164,7 +1204,7 @@
       });
   }
 
-  /** «+ подход» — новая строка (дублирует последнюю, сохранится по ✓). */
+  /** «+ подход» — новая строка (дублирует последнюю, сохранится по отметке). */
   function addRow(sex) {
     var n = rowCount(sex);
     if (n >= MAX_SETS) {
@@ -1192,7 +1232,7 @@
     else renderBody();
   }
 
-  /** ✕ у добавленной вручную строки: удаляем на сервере (если сохранена). */
+  /** Крест у добавленной вручную строки: удаляем на сервере (если сохранена). */
   function deleteRow(sex, index) {
     var saved = setAt(sex, index);
     var sid = sessionId();
@@ -1259,12 +1299,12 @@
   function openMenu(sex) {
     var ex = sex.exercise || {};
     var items = [
-      { key: "replace", icon: "🔁", label: pick("Заменить", "Replace"),
+      { key: "replace", icon: "swap", label: pick("Заменить", "Replace"),
         desc: pick("Занят тренажёр, нет оборудования или болит", "Busy machine, no equipment or pain") },
-      { key: "skip", icon: "⏭", label: pick("Пропустить", "Skip") },
-      { key: "tech", icon: "📖", label: pick("Техника", "Technique") },
-      { key: "history", icon: "📊", label: pick("История", "History") },
-      { key: "exclude", icon: "🚫", label: pick("Исключить навсегда", "Never suggest again"), danger: true }
+      { key: "skip", icon: "skip", label: pick("Пропустить", "Skip") },
+      { key: "tech", icon: "book", label: pick("Техника", "Technique") },
+      { key: "history", icon: "chartBar", label: pick("История", "History") },
+      { key: "exclude", icon: "ban", label: pick("Исключить навсегда", "Never suggest again"), danger: true }
     ];
     T.sheet(items, function (key) {
       if (key === "replace") openReasons(sex);
@@ -1278,7 +1318,7 @@
   /** Лист причин замены (busy / no_equipment / pain / other). */
   function openReasons(sex) {
     var codes = ["busy", "no_equipment", "pain", "other"];
-    var icons = { busy: "⛔", no_equipment: "🎒", pain: "🤕", other: "🔄" };
+    var icons = { busy: "lock", no_equipment: "dumbbell", pain: "bandage", other: "dots" };
     var items = [];
     for (var i = 0; i < codes.length; i++) {
       items.push({ key: codes[i], icon: icons[codes[i]], label: T.label("reason", codes[i]) });
@@ -1578,20 +1618,20 @@
     App.state.trainerSessionId = state.session.status === "in_progress" ? state.session.id : null;
   }
 
-  /** ✕ в шапке: свернуть (прогресс сохранён) или отменить тренировку. */
+  /** Крест в шапке: свернуть (прогресс сохранён) или отменить тренировку. */
   function onClose() {
     T.sheet(
       [
         {
           key: "minimize",
-          icon: "⤵️",
+          icon: "arrow",
           label: pick("Свернуть тренировку", "Leave for now"),
           desc: pick("Прогресс сохранён — вернётесь по кнопке «Продолжить»",
                      "Progress is saved — come back with “Continue”")
         },
         {
           key: "abandon",
-          icon: "🗑",
+          icon: "trash",
           label: pick("Отменить тренировку", "Cancel workout"),
           desc: pick("Прогресс не сохранится", "Progress will not be saved"),
           danger: true
@@ -1878,7 +1918,7 @@
     }, 280);
   }
 
-  /** Enter в поле — как нажатие ✓ (удобно с числовой клавиатурой). */
+  /** Enter в поле — как нажатие отметки (удобно с числовой клавиатурой). */
   function onKeyDown(ev) {
     if (ev.key !== "Enter") return;
     var input = ev.target;
@@ -1900,9 +1940,9 @@
     if (!state.viewEl) return;
     state.viewEl.innerHTML =
       '<section class="page sub-page tr-page tr-session">' +
-      T.headHtml({ icon: "🏋️", title: pick("Тренировка", "Workout"), subtitle: "" }) +
+      T.headHtml({ icon: "dumbbell", title: pick("Тренировка", "Workout"), subtitle: "" }) +
       '<section class="card wk-empty">' +
-      '<div class="wk-empty__icon" aria-hidden="true">🏋️</div>' +
+      '<div class="wk-empty__icon" aria-hidden="true">' + icon("dumbbell", { size: 36 }) + "</div>" +
       '<p class="wk-empty__title">' + esc(pick("Активной тренировки нет", "No active workout")) + "</p>" +
       '<p class="wk-empty__text">' +
       esc(message || pick("Начните тренировку на главной тренера.", "Start a workout from the coach home.")) +
@@ -1928,7 +1968,7 @@
     if (!state.viewEl) return;
     state.viewEl.innerHTML =
       '<section class="page sub-page tr-page tr-session">' +
-      T.headHtml({ icon: "🏋️", title: pick("Тренировка", "Workout"), subtitle: "" }) +
+      T.headHtml({ icon: "dumbbell", title: pick("Тренировка", "Workout"), subtitle: "" }) +
       T.errorCard(T.errMessage(err), "trsRetry") +
       "</section>";
     state.rootEl = state.viewEl.querySelector(".tr-session");
@@ -2006,7 +2046,7 @@
         state.loading = false;
         if (reqId !== state.reqId || !state.viewEl) return;
         if (err && err.status === 402) {
-          App.paywall(state.viewEl, T.paywallOpts());
+          T.paywall(state.viewEl, T.paywallOpts());
           return;
         }
         if (err && err.status === 404) {
@@ -2033,7 +2073,10 @@
   var controller = {
     onShow: function (viewEl) {
       state.viewEl = viewEl;
-      if (!App.requirePremium(viewEl, T.paywallOpts())) return;
+      if (!T.isPro()) {
+        T.paywall(viewEl, T.paywallOpts());
+        return;
+      }
       if (!App.state.trainerOrigin) App.state.trainerOrigin = "today";
       state.finish = null;
       state.busy = false;

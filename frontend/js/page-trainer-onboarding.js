@@ -15,6 +15,10 @@
  * тренера): анкета предзаполняется из профиля, кнопка «Сохранить»; при активной
  * программе после сохранения предлагаем пересобрать её.
  *
+ * ДОСТУП: первичная анкета открыта без подписки — она вся считается на
+ * клиенте и служит витриной продукта. Paywall встаёт на сохранении профиля
+ * (402 от сервера) и на входе в режим редактирования, который читает профиль.
+ *
  * Зависимости: window.Trainer (trainer-common.js), App.api.trainer*.
  * Локализация: все строки — App.pick(ru, en) в момент рендера.
  */
@@ -35,6 +39,10 @@
     return document.getElementById(id);
   }
 
+  function icon(name, opts) {
+    return T.icon(name, opts);
+  }
+
   var TOTAL_STEPS = 9;
   var LIMIT_TEXT_MAX = 300;
 
@@ -42,24 +50,28 @@
    *  СПРАВОЧНИКИ ШАГОВ (коды = TrainerProfileIn; подписи — Trainer.L)
    * ===================================================================== */
 
+  // icon — ИМЯ иконки из js/icons.js, не эмодзи: эмодзи рисует ОС, поэтому
+  // на разных телефонах анкета выглядела по-разному и не наследовала цвет.
   var GOALS = [
-    { key: "loss", icon: "🔥" },
-    { key: "muscle", icon: "💪" },
-    { key: "strength", icon: "🏋️" },
-    { key: "endurance", icon: "🏃" },
-    { key: "tone", icon: "✨" }
+    { key: "loss", icon: "flame" },
+    { key: "muscle", icon: "dumbbell" },
+    { key: "strength", icon: "trophy" },
+    { key: "endurance", icon: "run" },
+    { key: "tone", icon: "heart" }
   ];
 
+  // Уровень — одна и та же иконка «столбики»: разницу несёт подпись,
+  // а три разных картинки (росток/куст/дерево) её только запутывали.
   var LEVELS = [
-    { key: "beginner", icon: "🌱", desc: ["меньше 6 месяцев", "less than 6 months"] },
-    { key: "intermediate", icon: "🌿", desc: ["6 мес.–2 года регулярно", "6 months – 2 years, regularly"] },
-    { key: "advanced", icon: "🌳", desc: ["2+ года", "2+ years"] }
+    { key: "beginner", icon: "level", desc: ["меньше 6 месяцев", "less than 6 months"] },
+    { key: "intermediate", icon: "level", desc: ["6 мес.–2 года регулярно", "6 months – 2 years, regularly"] },
+    { key: "advanced", icon: "level", desc: ["2+ года", "2+ years"] }
   ];
 
   var EQUIPMENT = [
-    { key: "gym", icon: "🏟️", desc: ["Штанги, гантели, тренажёры", "Barbells, dumbbells, machines"] },
-    { key: "home_dumbbells", icon: "🏠", desc: ["Дома с гантелями/резинками", "At home with dumbbells/bands"] },
-    { key: "bodyweight", icon: "🤸", desc: ["Только вес тела", "Bodyweight only"] }
+    { key: "gym", icon: "dumbbell", desc: ["Штанги, гантели, тренажёры", "Barbells, dumbbells, machines"] },
+    { key: "home_dumbbells", icon: "home", desc: ["Дома с гантелями/резинками", "At home with dumbbells/bands"] },
+    { key: "bodyweight", icon: "body", desc: ["Только вес тела", "Bodyweight only"] }
   ];
 
   // Доп. чипы оборудования; barbell — только для home_dumbbells (ТЗ §2.2).
@@ -76,27 +88,30 @@
 
   var MINUTES = [20, 30, 45, 60, 75, 90];
 
+  // Ограничения и акцент — БЕЗ иконок, чистым текстом. Раньше группы мышц и
+  // травмы кодировались эмодзи (ягодицы, грудь, беременность), и это было и
+  // нечитаемо, и местами неуместно: разговор о травме не нуждается в картинке.
   var LIMITATIONS = [
-    { key: "knee", icon: "🦵" },
-    { key: "lower_back", icon: "🧍" },
-    { key: "shoulder", icon: "🤷" },
-    { key: "wrist", icon: "✋" },
-    { key: "neck", icon: "🧠" },
-    { key: "hip", icon: "🦴" },
-    { key: "pregnancy", icon: "🤰" },
-    { key: "heart_bp", icon: "❤️" },
-    { key: "none", icon: "✅" }
+    { key: "knee" },
+    { key: "lower_back" },
+    { key: "shoulder" },
+    { key: "wrist" },
+    { key: "neck" },
+    { key: "hip" },
+    { key: "pregnancy" },
+    { key: "heart_bp" },
+    { key: "none" }
   ];
 
   var FOCUS = [
-    { key: "glutes", icon: "🍑" },
-    { key: "core", icon: "🎯" },
-    { key: "back", icon: "🔙" },
-    { key: "chest", icon: "🫁" },
-    { key: "shoulders", icon: "🤷" },
-    { key: "arms", icon: "💪" },
-    { key: "legs", icon: "🦵" },
-    { key: "none", icon: "⚖️" }
+    { key: "glutes" },
+    { key: "core" },
+    { key: "back" },
+    { key: "chest" },
+    { key: "shoulders" },
+    { key: "arms" },
+    { key: "legs" },
+    { key: "none" }
   ];
 
   var WEEKS = [4, 6, 8];
@@ -327,21 +342,22 @@
 
   /**
    * Карточка-опция (.tr-option).
-   * @param {object} o {key, icon, title, desc}
+   * @param {object} o {key, icon, title, desc}; icon — ИМЯ иконки или пусто
    * @param {string} group имя группы ответа (data-group)
    * @param {boolean} active
    * @param {boolean} [compact] вертикальная раскладка для сеток
    */
   function optionHtml(o, group, active, compact) {
     return (
-      '<button type="button" class="tr-option' + (compact ? " tr-option--compact" : "") + (active ? " is-active" : "") +
+      '<button type="button" class="tr-option' + (compact ? " tr-option--compact" : "") +
+      (o.icon ? "" : " tr-option--plain") + (active ? " is-active" : "") +
       '" data-opt="' + esc(o.key) + '" data-group="' + esc(group) + '" aria-pressed="' + (active ? "true" : "false") + '">' +
-      (o.icon ? '<span class="tr-option__icon" aria-hidden="true">' + o.icon + "</span>" : "") +
+      (o.icon ? '<span class="tr-option__icon" aria-hidden="true">' + icon(o.icon, { size: 22 }) + "</span>" : "") +
       '<span class="tr-option__body">' +
       '<span class="tr-option__title">' + esc(o.title) + "</span>" +
       (o.desc ? '<span class="tr-option__desc">' + esc(o.desc) + "</span>" : "") +
       "</span>" +
-      '<span class="tr-option__mark" aria-hidden="true">✓</span>' +
+      '<span class="tr-option__mark" aria-hidden="true">' + icon("check", { size: 14 }) + "</span>" +
       "</button>"
     );
   }
@@ -410,7 +426,7 @@
     return (
       '<div class="tr-option-grid">' + html + "</div>" +
       extras +
-      '<div class="tr-onb-quip"><span aria-hidden="true">💡</span><span>' +
+      '<div class="tr-onb-quip">' + icon("bulb", { size: 18 }) + "<span>" +
       esc(pick("Программа строится только из доступного оборудования.", "The program uses only the equipment you have.")) +
       "</span></div>"
     );
@@ -455,7 +471,7 @@
     var html = "";
     for (var i = 0; i < LIMITATIONS.length; i++) {
       var l = LIMITATIONS[i];
-      html += optionHtml({ key: l.key, icon: l.icon, title: T.label("limitation", l.key) }, "limitations", inList(a.limitations, l.key), true);
+      html += optionHtml({ key: l.key, title: T.label("limitation", l.key) }, "limitations", inList(a.limitations, l.key), true);
     }
     var text = a.limitations_text || "";
     return (
@@ -483,7 +499,7 @@
     var html = "";
     for (var i = 0; i < FOCUS.length; i++) {
       var f = FOCUS[i];
-      html += optionHtml({ key: f.key, icon: f.icon, title: T.label("muscle", f.key) }, "focus", inList(a.focus, f.key), true);
+      html += optionHtml({ key: f.key, title: T.label("muscle", f.key) }, "focus", inList(a.focus, f.key), true);
     }
     return '<div class="tr-option-grid tr-option-grid--2">' + html + "</div>";
   }
@@ -494,12 +510,12 @@
     var on = !!a.reminder_enabled;
     return (
       '<button type="button" class="tr-toggle' + (on ? " tr-toggle--on" : "") + '" id="trOnbReminder" aria-pressed="' + (on ? "true" : "false") + '">' +
-      '<span class="tr-toggle__emoji" aria-hidden="true">🔔</span>' +
+      '<span class="tr-toggle__icon" aria-hidden="true">' + icon("bell", { size: 22 }) + "</span>" +
       '<span class="tr-toggle__text">' +
       '<span class="tr-toggle__title">' + esc(pick("Напоминать в дни тренировок", "Remind me on training days")) + "</span>" +
       '<span class="tr-toggle__hint">' + esc(pick("Сообщение от бота с планом дня", "A bot message with the day’s plan")) + "</span>" +
       "</span>" +
-      '<span class="tr-toggle__mark" aria-hidden="true">✓</span>' +
+      '<span class="tr-toggle__mark" aria-hidden="true">' + icon("check", { size: 14 }) + "</span>" +
       "</button>" +
       '<div id="trOnbTimeWrap" style="margin-top:14px"' + (on ? "" : " hidden") + ">" +
       '<label class="field">' +
@@ -526,10 +542,10 @@
     var html = "";
     for (var i = 0; i < WEEKS.length; i++) {
       var w = WEEKS[i];
+      // Иконки здесь не нужны: содержание опции — само число недель.
       html += optionHtml(
         {
           key: String(w),
-          icon: w === 4 ? "🗓️" : w === 6 ? "📆" : "🏁",
           title: w + " " + pick("нед.", "wk"),
           desc: w === 4 ? pick("Быстрый старт", "Quick start") : w === 6 ? pick("Оптимально", "Optimal") : pick("Максимум", "Maximum")
         },
@@ -543,7 +559,8 @@
     var warn = "";
     if (p.weight == null || !p.gender || p.age == null) {
       warn =
-        '<div class="tr-warn"><span class="tr-warn__icon" aria-hidden="true">⚠️</span><span>' +
+        '<div class="tr-warn"><span class="tr-warn__icon" aria-hidden="true">' +
+        icon("warning", { size: 18 }) + "</span><span>" +
         esc(pick(
           "Заполните вес и пол в аккаунте — стартовые веса будут точнее.",
           "Fill in weight and gender in your account — starting weights will be more accurate."
@@ -617,7 +634,7 @@
     var subtitle = pick("Шаг ", "Step ") + state.step + pick(" из ", " of ") + TOTAL_STEPS + " · " + stepTitle(state.step);
     return (
       '<section class="page sub-page tr-page tr-onb">' +
-      T.headHtml({ icon: "🧑‍🏫", title: title, subtitle: subtitle }) +
+      T.headHtml({ icon: "coach", title: title, subtitle: subtitle }) +
       '<div id="trOnbBody">' +
       progressHtml() +
       '<div class="card tr-onb-step" id="trOnbCard"></div>' +
@@ -824,6 +841,22 @@
     if (btn) btn.disabled = !!flag;
   }
 
+  /**
+   * Paywall на выходе из анкеты. Анкету проходят бесплатно, поэтому стена
+   * встаёт ровно там, где начинается платная работа — на сборке программы.
+   * Ответы остаются в state.answers: вернувшись после оплаты, человек
+   * продолжит с девятого шага, а не начнёт девять вопросов заново.
+   */
+  function showPaywall() {
+    if (!state.viewEl) return;
+    var opts = T.paywallOpts();
+    opts.extraLabel = pick("Вернуться к анкете", "Back to the profile");
+    opts.onExtra = function () {
+      render();
+    };
+    T.paywall(state.viewEl, opts);
+  }
+
   function submit() {
     var payload = buildPayload();
     setBusy(true);
@@ -848,6 +881,10 @@
       .catch(function (err) {
         setBusy(false);
         App.haptic("error");
+        if (err && err.status === 402) {
+          showPaywall();
+          return;
+        }
         App.toast(T.errMessage(err, pick("Не удалось сохранить анкету", "Failed to save the profile")));
       });
   }
@@ -918,7 +955,7 @@
     state.loading = true;
     state.viewEl.innerHTML =
       '<section class="page sub-page tr-page tr-onb">' +
-      T.headHtml({ icon: "🧑‍🏫", title: pick("Настройки тренера", "Coach settings") }) +
+      T.headHtml({ icon: "coach", title: pick("Настройки тренера", "Coach settings") }) +
       T.skeleton(5) +
       "</section>";
     T.bindBack(state.viewEl);
@@ -942,7 +979,7 @@
         if (!state.viewEl) return;
         state.loading = false;
         if (err && err.status === 402) {
-          App.paywall(state.viewEl, T.paywallOpts());
+          showPaywall();
           return;
         }
         // Профиля нет/ошибка — начинаем с пустой анкеты.
@@ -960,8 +997,15 @@
   var controller = {
     onShow: function (viewEl) {
       state.viewEl = viewEl;
-      if (!App.requirePremium(viewEl, T.paywallOpts())) return;
       if (!App.state.trainerOrigin) App.state.trainerOrigin = "today";
+      // Анкета открыта без подписки: это единственный экран тренера, который
+      // работает целиком на клиенте, и единственный способ показать продукт
+      // до оплаты. Стена встаёт на сохранении профиля (402 от сервера).
+      // Редактирование настроек — другое дело: оно читает профиль с сервера.
+      if (App.state.trainerEdit && !T.isPro()) {
+        showPaywall();
+        return;
+      }
 
       var edit = !!App.state.trainerEdit;
       if (edit !== state.edit) {

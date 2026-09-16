@@ -28,101 +28,144 @@
   display: none !important;
 }
 
-/* Шапка: наследует .sub-head; заголовок с эмодзи не должен переноситься. */
+/* Шапка: наследует .sub-head. Заголовок — флекс, потому что рядом с текстом
+   стоит SVG-иконка: она должна сидеть на одной линии, а не «висеть». */
 .tr-head .sub-title {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: var(--s2);
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+/* Стрелка «Назад» теперь SVG, а не символ: снимаем текстовые метрики. */
+.tr-head .sub-back__arrow {
+  display: block;
+  flex-shrink: 0;
+}
+
+.tr-head__icon {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+/* Строка заголовка: название слева, действия (шестерёнка) справа. */
+.tr-head__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+  margin-bottom: var(--s2);
+}
+
+/* Шапка КОРНЯ раздела (вкладка «Тренировка»): крупный заголовок без кнопки
+   возврата — тот же приём, что на экране «Сегодня». Отступ снизу меньше
+   обычного: под заголовком сразу идут сегменты, и они должны читаться
+   частью шапки, а не отдельным блоком. */
+.tr-head--root {
+  margin-bottom: var(--s3);
+}
+
+.tr-head--root .sub-title {
+  font-size: var(--fs-h1);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+  letter-spacing: -.02em;
+}
+
+/* Иконка-действие в углу заголовка. Зона нажатия — не меньше --tap-min:
+   шестерёнка 22px сама по себе слишком мелкая цель для пальца. */
+.tr-head__action {
+  flex-shrink: 0;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.tr-head__action:active {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* Сегменты раздела: Сегодня · Программа · Прогресс · Упражнения.
+   Пришли на смену четырём ссылкам внизу экрана — из-за них раздел читался
+   оглавлением, хотя вся работа идёт на самом экране. */
+.tr-segments {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  margin-bottom: var(--s4);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+}
+
+/* Сегмент — основной переключатель раздела, по нему бьют пальцем не глядя:
+   высота не меньше --tap-min, дорожка вокруг тонкая, чтобы вся полоса
+   не съедала экран. */
+.tr-segment {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: var(--tap-min);
+  /* Четыре подписи делят ширину телефона: боковые поля минимальны, кегль —
+     самый мелкий из шкалы. Иначе «Программа» и «Упражнения» обрезаются
+     многоточием, и переключатель перестаёт называть разделы. */
+  padding: 0 var(--s1);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.tr-segment.is-active {
+  background: var(--surface);
+  color: var(--text);
 }
 
 /* Небольшой заголовок секции («Питание сегодня», «Неделя»). */
 .tr-section-title {
-  font-size: 12px;
-  font-weight: 700;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
   text-transform: uppercase;
-  letter-spacing: .04em;
+  letter-spacing: .06em;
   color: var(--muted);
-  margin: 4px 4px 8px;
+  margin: var(--s1) var(--s1) var(--s2);
 }
 
-/* Карточка-вход на «Тренировках» (кнопка, стилизованная под .card). */
-.tr-coach-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-  text-align: left;
-  border: 1.5px solid var(--cta);
-  background: var(--white);
-  color: var(--text);
-  cursor: pointer;
-  transition: transform .08s ease, box-shadow .18s ease;
-}
-
-.tr-coach-card:active {
-  transform: scale(.985);
-}
-
-.tr-coach-card__icon {
-  flex-shrink: 0;
-  width: 48px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: rgba(47, 111, 78, .16);
-  font-size: 26px;
-  line-height: 1;
-}
-
-.tr-coach-card__body {
-  flex: 1;
-  min-width: 0;
-}
-
-.tr-coach-card__title {
-  display: block;
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.tr-coach-card__sub {
-  display: block;
-  font-size: 13px;
-  color: var(--muted);
-  margin-top: 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tr-coach-card__arrow {
-  flex-shrink: 0;
-  font-size: 24px;
-  line-height: 1;
-  color: var(--muted);
-}
-
-/* Жёлтая плашка-предупреждение (на --accent). */
+/* Плашка-предупреждение. Фон был var(--accent): в новой палитре это цвет
+   действия, и предупреждение заливалось сплошным зелёным. */
 .tr-warn {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: var(--s3);
+  padding: var(--s3);
   border-radius: var(--radius-sm);
-  background: var(--accent);
+  background: var(--warning-soft);
   color: var(--text);
-  font-size: 13px;
-  line-height: 1.45;
-  margin-bottom: 14px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  margin-bottom: var(--s4);
 }
 
 .tr-warn__icon {
   flex-shrink: 0;
-  font-size: 18px;
-  line-height: 1.2;
+  display: flex;
+  color: var(--warning);
 }
 
 /* Скелетон и ошибка (обёртки над .skeleton-line / .wk-error). */
@@ -138,15 +181,15 @@
 .tr-gen-wait {
   text-align: center;
   padding: 36px 20px 30px;
-  background: var(--white);
+  background: var(--surface);
 }
 
 .tr-gen-wait__spinner {
   width: 46px;
   height: 46px;
   margin: 0 auto 18px;
-  border: 4px solid rgba(220, 224, 214, .55);
-  border-top-color: var(--cta);
+  border: 4px solid var(--surface-2);
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin .8s linear infinite;
 }
@@ -217,7 +260,7 @@
   width: 40px;
   height: 4px;
   border-radius: 2px;
-  background: var(--accent);
+  background: var(--border);
   margin: 6px auto 14px;
 }
 
@@ -236,7 +279,7 @@
   padding: 10px 14px;
   border: none;
   border-radius: var(--radius-sm);
-  background: var(--white);
+  background: var(--surface);
   color: var(--text);
   font-size: 16px;
   font-weight: 600;
@@ -251,7 +294,7 @@
 
 .tr-sheet__item:active {
   transform: scale(.99);
-  background: var(--card);
+  background: var(--surface-2);
 }
 
 .tr-sheet__item--danger {
@@ -266,10 +309,15 @@
 
 .tr-sheet__icon {
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 28px;
-  text-align: center;
-  font-size: 22px;
-  line-height: 1;
+  color: var(--muted);
+}
+
+.tr-sheet__item--danger .tr-sheet__icon {
+  color: var(--danger);
 }
 
 .tr-sheet__body {
@@ -303,9 +351,9 @@
   width: 100%;
   text-align: left;
   padding: 14px 16px;
-  border: 1.5px solid var(--accent);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--white);
+  background: var(--surface);
   color: var(--text);
   cursor: pointer;
   transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
@@ -317,10 +365,10 @@
   box-shadow: 0 0 0 3px rgba(47, 111, 78, .16);
 }
 
-.tr-toggle__emoji {
+.tr-toggle__icon {
   flex-shrink: 0;
-  font-size: 26px;
-  line-height: 1;
+  display: flex;
+  color: var(--accent);
 }
 
 .tr-toggle__text {
@@ -346,19 +394,18 @@
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  border: 2px solid var(--accent);
+  border: 2px solid var(--border-strong);
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Галочка внутри невидима, пока опция не выбрана: currentColor = прозрачный. */
   color: transparent;
-  font-size: 14px;
-  font-weight: 800;
 }
 
 .tr-toggle--on .tr-toggle__mark {
-  background: var(--cta);
-  border-color: var(--cta);
-  color: var(--white);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
 }
 
 /* ===== trainer: onboarding ===== */
@@ -378,8 +425,8 @@
   flex: 1;
   height: 4px;
   border-radius: 2px;
-  background: var(--accent);
-  transition: background .2s ease;
+  background: var(--surface-2);
+  transition: background var(--dur) var(--ease);
 }
 
 .tr-onb-progress__seg.is-done {
@@ -417,10 +464,17 @@
   margin: 12px 0 0;
   padding: 10px 12px;
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, .6);
-  font-size: 12.5px;
+  /* Вложенный блок ВНУТРИ карточки: только заливка --surface-2,
+     без собственной границы и тени (иначе карточка в карточке). */
+  background: var(--surface-2);
+  font-size: var(--fs-xs);
   color: var(--muted);
-  line-height: 1.45;
+  line-height: var(--lh-normal);
+}
+
+.tr-onb-quip .icon {
+  flex-shrink: 0;
+  color: var(--accent);
 }
 
 /* Сетка опций. */
@@ -446,9 +500,9 @@
   width: 100%;
   min-height: 60px;
   padding: 12px 14px;
-  border: 1.5px solid var(--accent);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--white);
+  background: var(--surface);
   color: var(--text);
   text-align: left;
   cursor: pointer;
@@ -468,8 +522,14 @@
 
 .tr-option__icon {
   flex-shrink: 0;
-  font-size: 26px;
-  line-height: 1;
+  display: flex;
+  color: var(--accent);
+}
+
+/* Опция без иконки (ограничения здоровья, акцент, длина программы):
+   текстовый чип читается быстрее, чем текст с картинкой рядом. */
+.tr-option--plain .tr-option__title {
+  font-weight: var(--fw-semibold);
 }
 
 .tr-option__body {
@@ -496,19 +556,17 @@
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  border: 2px solid var(--accent);
+  border: 2px solid var(--border-strong);
   display: flex;
   align-items: center;
   justify-content: center;
   color: transparent;
-  font-size: 12px;
-  font-weight: 800;
 }
 
 .tr-option.is-active .tr-option__mark {
-  background: var(--cta);
-  border-color: var(--cta);
-  color: var(--white);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
 }
 
 /* Компактная опция в сетках 2/3 колонки (вертикальная раскладка). */
@@ -642,18 +700,34 @@
 /* Карточка дня. */
 .tr-today-card {
   display: block;
-  background: var(--white);
+  background: var(--surface);
 }
 
 .tr-today-card--rest {
-  background: var(--card);
+  background: var(--surface-2);
+}
+
+/* Незаконченная тренировка — единственное состояние, которое человек должен
+   находить взглядом мгновенно: он уже в процессе, и всё остальное на экране
+   подождёт. Кромка цветом действия, как у той же карточки на «Сегодня». */
+.tr-today-card--progress {
+  border-left: 3px solid var(--accent);
 }
 
 .tr-today-card__title {
-  font-size: 20px;
-  font-weight: 700;
-  margin: 8px 0 4px;
-  line-height: 1.25;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--fs-h2);
+  font-weight: var(--fw-bold);
+  margin: var(--s2) 0 var(--s1);
+  line-height: var(--lh-tight);
+}
+
+/* Галочка «сделано» перед названием дня — иконка, а не символ в тексте. */
+.tr-today-card__check {
+  flex-shrink: 0;
+  color: var(--success);
 }
 
 .tr-today-card__meta {
@@ -697,8 +771,8 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .03em;
-  background: var(--accent);
-  color: var(--text);
+  background: var(--surface-2);
+  color: var(--muted);
 }
 
 .tr-day-badge--today {
@@ -713,7 +787,7 @@
 
 .tr-day-badge--progress {
   background: var(--cta);
-  color: var(--white);
+  color: var(--on-accent);
 }
 
 /* Превью первых упражнений дня. */
@@ -783,14 +857,14 @@
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  border: 1.5px solid var(--accent);
-  background: var(--white);
+  border: 1px solid var(--border);
+  background: var(--surface);
   color: var(--text);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12.5px;
-  font-weight: 700;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
   line-height: 1;
 }
 
@@ -806,7 +880,7 @@
 .tr-week-day--done .tr-week-day__dot {
   background: var(--cta);
   border-color: var(--cta);
-  color: var(--white);
+  color: var(--on-accent);
 }
 
 .tr-week-day--skipped .tr-week-day__dot {
@@ -841,8 +915,9 @@
 }
 
 .tr-streak__icon {
-  font-size: 22px;
-  line-height: 1;
+  display: flex;
+  flex-shrink: 0;
+  color: var(--warning);
 }
 
 .tr-streak__text {
@@ -945,11 +1020,13 @@
   gap: 12px;
   width: 100%;
   text-align: left;
-  border: none;
-  background: var(--accent);
+  /* Карточка = поверхность + волосяная граница и БЕЗ тени. Раньше здесь была
+     заливка var(--accent), то есть в новой палитре сплошной зелёный. */
+  border: 1px solid var(--border);
+  background: var(--surface);
   color: var(--text);
   cursor: pointer;
-  transition: transform .08s ease;
+  transition: transform var(--dur-fast) var(--ease);
 }
 
 .tr-review-banner:active {
@@ -958,8 +1035,8 @@
 
 .tr-review-banner__icon {
   flex-shrink: 0;
-  font-size: 24px;
-  line-height: 1;
+  display: flex;
+  color: var(--accent);
 }
 
 .tr-review-banner__text {
@@ -972,59 +1049,13 @@
 
 .tr-review-banner__arrow {
   flex-shrink: 0;
-  color: var(--muted);
-  font-size: 22px;
-  line-height: 1;
-}
-
-/* Быстрые ссылки: Программа · Прогресс · Упражнения · Настройки. */
-.tr-links {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.tr-link {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 72px;
-  padding: 10px 4px;
-  border: 1.5px solid var(--accent);
-  border-radius: var(--radius);
-  background: var(--white);
-  color: var(--text);
-  font-size: 11.5px;
-  font-weight: 600;
-  text-align: center;
-  cursor: pointer;
-  transition: background .15s ease, transform .08s ease;
-}
-
-.tr-link:active {
-  transform: scale(.96);
-  background: var(--card);
-}
-
-.tr-link__icon {
-  font-size: 22px;
-  line-height: 1;
-}
-
-.tr-link__label {
-  line-height: 1.2;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
+  color: var(--muted);
 }
 
 /* Пустое состояние «Программа не создана». */
 .tr-empty {
-  background: var(--white);
+  background: var(--surface);
 }
 
 .tr-empty .btn {
@@ -1065,8 +1096,8 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .03em;
-  background: var(--accent);
-  color: var(--text);
+  background: var(--surface-2);
+  color: var(--muted);
 }
 
 .tr-phase-chip--base {
@@ -1080,7 +1111,7 @@
 
 .tr-phase-chip--peak {
   background: var(--cta);
-  color: var(--white);
+  color: var(--on-accent);
 }
 
 .tr-phase-chip--deload {
@@ -1091,6 +1122,21 @@
 /* День плана — аккордеон на .acc-fold. */
 .tr-plan-day {
   display: block;
+}
+
+/* Статус дня перед названием: иконка вместо символа внутри строки. */
+.tr-plan-day__mark {
+  flex-shrink: 0;
+  margin-right: var(--s1);
+  vertical-align: -3px;
+}
+
+.tr-plan-day--done .tr-plan-day__mark {
+  color: var(--success);
+}
+
+.tr-plan-day--skipped .tr-plan-day__mark {
+  color: var(--muted);
 }
 
 .tr-plan-day__meta {
@@ -1138,12 +1184,8 @@
   color: var(--muted);
 }
 
-/* Узкие экраны: ссылки в 2 ряда по 2, компактнее чипы. */
+/* Узкие экраны: сетка опций в две колонки вместо трёх. */
 @media (max-width: 340px) {
-  .tr-links {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .tr-option-grid--3 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1152,4 +1194,138 @@
 /* Карточка «Сегодня сделано» — зелёная кромка, как у выполненного дня. */
 .tr-today-card--done {
   border-left: 4px solid var(--cta);
+}
+
+/* ============================================================
+   САМОЧУВСТВИЕ (совет по восстановлению)
+   ------------------------------------------------------------
+   Переехало сюда из удалённого раздела «Тренировки». Разметка
+   ответа переиспользует .rec-* из style.css; здесь — только
+   шапка карточки, чипы зон и отступы.
+   ============================================================ */
+.tr-recovery {
+  display: block;
+}
+
+.tr-recovery__title {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin: 0 0 var(--s1);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+}
+
+.tr-recovery__title .icon {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.tr-recovery__hint {
+  margin: 0 0 var(--s3);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  line-height: var(--lh-normal);
+}
+
+.tr-recovery__zones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-bottom: var(--s4);
+}
+
+/* Зона тела — обычный чип. Поднимаем высоту до --tap-min: восемь целей
+   подряд промахиваются тем чаще, чем они ниже. */
+.tr-zone {
+  min-height: var(--tap-min);
+}
+
+.tr-recovery__field {
+  margin-bottom: var(--s3);
+}
+
+.tr-recovery__result:empty {
+  display: none;
+}
+
+/* ============================================================
+   PAYWALL РАЗДЕЛА (Trainer.paywall)
+   ------------------------------------------------------------
+   Свой, а не общий App.paywall: тот печатает иконку как текст,
+   а здесь нужен App.icon и вторая, бесплатная кнопка.
+   ============================================================ */
+.tr-paywall {
+  display: block;
+  animation: fadeIn .28s ease;
+}
+
+.tr-paywall__card {
+  text-align: center;
+  padding: var(--s5) var(--s4);
+}
+
+.tr-paywall__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: var(--s3);
+  border-radius: 50%;
+  /* Вложенная поверхность внутри карточки: без границы и без тени. */
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.tr-paywall__title {
+  margin: 0 0 var(--s2);
+  font-size: var(--fs-h1);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+}
+
+.tr-paywall__desc {
+  margin: 0 0 var(--s4);
+  font-size: var(--fs-body);
+  color: var(--muted);
+  line-height: var(--lh-normal);
+}
+
+.tr-paywall__bullets {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.tr-paywall__bullet {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  padding: var(--s2) 0;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+}
+
+.tr-paywall__tick {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--success);
+}
+
+.tr-paywall__note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  margin: var(--s4) 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+.tr-paywall__note .icon {
+  flex-shrink: 0;
 }

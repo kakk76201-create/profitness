@@ -1,0 +1,666 @@
+/* ============================================================
+   Раздел «nutrition» — стили компонентов, появившихся при редизайне.
+   Всё оформление берётся из css/tokens.css: литеральных цветов,
+   произвольных кеглей и отступов вне сетки здесь быть не должно.
+   Старые правила этого раздела пока живут в style.css и вытесняются
+   по мере переписывания экранов.
+
+   Файл подключается ПОСЛЕ style.css, поэтому правила с той же
+   специфичностью здесь перекрывают прежние — этим и пользуемся,
+   чтобы не трогать style.css.
+   ============================================================ */
+
+/* ============================================================
+   ШАПКА: СЧЁТЧИК СЕРИИ
+   ============================================================ */
+
+/* Иконка внутри плашки серии наследует цвет текста (раньше цвет нёс
+   эмодзи-огонёк, то есть картинка решала за палитру). */
+.diary-streak {
+  gap: var(--s1);
+  padding: var(--s1) var(--s3);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  box-shadow: none;
+}
+
+.diary-streak__num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Плашка ставится hidden, пока серия не загрузилась или равна нулю, но
+   display:inline-flex перебивает атрибут hidden — без этого правила на экране
+   висел пустой кружок. */
+.diary-streak[hidden] {
+  display: none;
+}
+
+/* ============================================================
+   ПЕРЕКЛЮЧАТЕЛЬ ДАТЫ
+   ============================================================ */
+
+/* Кнопки-стрелки теперь содержат SVG — центрируем содержимое. */
+.diary-datebar__nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.diary-datebar__nav:active {
+  background: var(--accent-soft);
+}
+
+.diary-datebar__nav:disabled {
+  opacity: .4;
+  cursor: default;
+}
+
+/* Подпись даты — тоже кнопка (открывает мини-календарь), а две строки текста
+   давали высоту около 36px. Доводим зону нажатия до --tap-min. */
+.diary-datebar__label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-min);
+}
+
+/* ============================================================
+   ПРИЁМЫ ПИЩИ
+   ============================================================ */
+
+.diary-meal__title {
+  gap: var(--s2);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-semibold);
+}
+
+/* Иконка приёма пищи — подложка цвета действия вместо разноцветного эмодзи. */
+.diary-meal__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* Приём пищи БЕЗ записей: одна строка вместо карточки с пустым состоянием.
+   Пять пустых состояний на экране (общее + по одному в каждом приёме)
+   повторяли одну и ту же мысль пять раз. */
+.diary-meal-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  width: 100%;
+  min-height: 52px;
+  margin-bottom: var(--s2);
+  padding: 0 var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: var(--fs-body);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+
+.diary-meal-row:active {
+  transform: scale(.99);
+  background: var(--surface-2);
+}
+
+.diary-meal-row__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--data-neutral);
+}
+
+.diary-meal-row__title {
+  flex: 1;
+  min-width: 0;
+  font-weight: var(--fw-medium);
+}
+
+/* «Плюс» в строке пустого приёма — подсказка, что строка добавляет. */
+.diary-meal-row__add {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+/* Кнопка «Добавить» внутри карточки приёма пищи: вложенный блок, поэтому
+   заливка --surface-2 и ни границы, ни тени. */
+.diary-meal__add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  width: 100%;
+  min-height: var(--tap-min);
+  margin-top: var(--s3);
+  padding: 0 var(--s3);
+  border: none;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--accent);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.diary-meal__add:active {
+  background: var(--accent-soft);
+}
+
+/* ============================================================
+   ЗАПИСЬ ДНЕВНИКА
+   ============================================================ */
+
+/* Зона нажатия удаления — 44px вместо прежних 32 на 32 px. Кнопка стоит впритык
+   к зоне открытия редактора, и на маленькой мишени промах приводил к
+   мгновенному удалению записи. */
+.diary-entry__del {
+  width: var(--tap-min);
+  height: var(--tap-min);
+  min-height: var(--tap-min);
+  border-radius: var(--radius);
+  color: var(--muted);
+}
+
+.diary-entry__del:active {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* ============================================================
+   ПУСТОЕ СОСТОЯНИЕ ДНЯ (одно на экран)
+   ============================================================ */
+
+.diary-empty__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto var(--s3);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0; /* гасим прежний эмодзи-кегль 44px */
+}
+
+.diary-empty__title {
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-semibold);
+}
+
+.diary-empty__cta {
+  display: flex;
+  max-width: 240px;
+  margin: var(--s4) auto 0;
+}
+
+/* ============================================================
+   ИТОГ ДНЯ
+   ============================================================ */
+
+/* Подсказка «цель не задана» над кнопкой настройки цели. */
+.diary-total__nogoal-hint {
+  margin: 0 0 var(--s2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--muted);
+}
+
+.diary-total__nogoal-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: var(--tap-min);
+}
+
+/* ============================================================
+   СЕКЦИЯ «АКТИВНОСТЬ» (расход калорий)
+   ============================================================ */
+
+.diary-act__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s2);
+}
+
+.diary-act__title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-semibold);
+}
+
+.diary-act__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.diary-act__total {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.diary-act__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.diary-act-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) 0;
+  border-top: 1px solid var(--border);
+}
+
+.diary-act-item:first-child {
+  border-top: none;
+}
+
+.diary-act-item__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.diary-act-item__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.diary-act-item__name {
+  display: block;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diary-act-item__meta {
+  display: block;
+  margin-top: var(--s1);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.diary-act-item__kcal {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.diary-act-item__del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.diary-act-item__del:active {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* Замок вместо кнопки удаления у записей AI-тренера: они принадлежат
+   журналу тренировок, дневник их только показывает. */
+.diary-act-item__locked {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  flex-shrink: 0;
+  color: var(--data-neutral);
+}
+
+/* ---------- Фолбэк-заглушка «Активность» (если App.paywall недоступен) ---------- */
+
+.diary-act-locked {
+  text-align: center;
+}
+
+.diary-act-locked__title {
+  margin: 0 0 var(--s1);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+}
+
+.diary-act-locked__sub {
+  margin: 0 0 var(--s4);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--muted);
+}
+
+/* ---------- Чипы типа активности ---------- */
+
+.act-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-top: var(--s2);
+}
+
+.act-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s1);
+  flex: 1 1 auto;
+  min-height: var(--tap-min);
+  padding: 0 var(--s3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.act-chip.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: var(--fw-semibold);
+}
+
+/* ============================================================
+   НИЖНИЕ ЛИСТЫ (единый паттерн формы и подтверждения)
+   ============================================================ */
+
+/* Лист — по-настоящему приподнятая поверхность, поэтому --surface + тень
+   и НИКАКОЙ границы. */
+.diary-sheet__panel {
+  background: var(--surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: var(--shadow-2);
+  padding: var(--s2) var(--gutter) calc(var(--safe-bottom) + var(--s5));
+}
+
+.diary-sheet__handle {
+  width: 36px;
+  height: 4px;
+  background: var(--border-strong);
+  opacity: .5;
+  margin: var(--s1) auto var(--s4);
+}
+
+.diary-sheet__title {
+  margin: 0 0 var(--s2);
+  font-size: var(--fs-h2);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+}
+
+.diary-sheet__text {
+  margin: 0 0 var(--s4);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--muted);
+}
+
+.diary-sheet__group-title {
+  font-size: var(--fs-2xs);
+  letter-spacing: .06em;
+  color: var(--muted);
+  margin: 0 var(--s1) var(--s2);
+}
+
+/* Пункт листа: вложенный блок листа — заливка без границы и тени. */
+.diary-sheet__item {
+  gap: var(--s3);
+  min-height: 56px;
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: var(--fs-body);
+}
+
+.diary-sheet__item:active {
+  background: var(--accent-soft);
+}
+
+.diary-sheet__item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--accent);
+  font-size: 0; /* гасим прежний эмодзи-кегль */
+}
+
+.diary-sheet__item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.diary-sheet__item-label {
+  display: block;
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-semibold);
+}
+
+/* Пояснение под подписью: чем этот способ отличается от соседнего. */
+.diary-sheet__item-hint {
+  display: block;
+  margin-top: var(--s1);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-regular);
+  color: var(--muted);
+}
+
+.diary-sheet__item-lock {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--muted);
+  opacity: 1;
+}
+
+.diary-sheet__item--locked .diary-sheet__item-icon {
+  opacity: 1;
+  color: var(--muted);
+}
+
+/* ============================================================
+   ВАЛИДАЦИЯ ФОРМ НА МЕСТЕ
+   ============================================================ */
+
+/* Поле с ошибкой: подсветка говорит ГДЕ, тост — ЧТО. Раньше был только тост,
+   и проблемное поле приходилось искать глазами. */
+.field__input.is-invalid,
+.field--invalid .field__input {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.field__input.is-invalid:focus,
+.field--invalid .field__input:focus {
+  border-color: var(--danger);
+  outline: none;
+}
+
+/* ============================================================
+   ПЛАВАЮЩАЯ КНОПКА «+»
+   ============================================================ */
+
+.diary-fab {
+  width: 56px;
+  height: 56px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 0; /* внутри теперь SVG, а не символ «+» */
+  box-shadow: var(--shadow-2);
+}
+
+.diary-fab:active {
+  background: var(--accent-press);
+}
+
+/* ============================================================
+   БЫСТРЫЙ ПОВТОР («Недавние» / «Вчера»)
+   ============================================================ */
+
+.yday__item {
+  background: var(--surface-2);
+}
+
+/* Скелетон строки быстрого повтора. Без своей высоты он брал 160px от
+   .skeleton-block, и лист открывался тремя огромными пульсирующими плитами
+   вместо намёка на будущие строки списка. */
+.yday__skeleton {
+  height: 56px;
+  margin-bottom: var(--s2);
+}
+
+/* Тело строки — тоже кнопка (автозаполняет форму), а две строки текста давали
+   высоту около 35px. Доводим зону нажатия до --tap-min. */
+.yday__body {
+  justify-content: center;
+  min-height: var(--tap-min);
+}
+
+/* Кнопка быстрого добавления — полноценная зона нажатия 44px. */
+.yday__add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0;
+}
+
+.yday__add:active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* ============================================================
+   AI-ПАНЕЛИ: ИКОНКИ В ЗАГОЛОВКАХ И КНОПКАХ
+   ============================================================ */
+
+.diary-recommend__title,
+.plan-locked__title,
+.plan-shopping__title {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+/* Заметка AI-тренера: иконка отдельно от текста, текст не переносится под неё. */
+.diary-recommend__note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+/* Кнопка замены блюда в плане меню — зона нажатия 44px. */
+.plan-dish__swap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s1);
+  min-height: var(--tap-min);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-sm);
+}
+
+.plan-dish__swap:active {
+  background: var(--accent-soft);
+}
+
+.plan-meal__icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+}
+
+/* ============================================================
+   КАРТОЧКА «НАПОМИНАНИЯ О ЕДЕ»
+   ============================================================ */
+
+/* Шеврон свёртки — одна иконка с поворотом (раньше был символ стрелка-треугольник).
+   Разворот на 180° к её собственному повороту даёт «вверх». */
+.acc-fold__chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0;
+}
+
+/* Кнопка удаления времени напоминания — зона нажатия 44px. */
+.mr-time-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 0;
+}
+
+.mr-time-del:active {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.mr-time-add__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+}

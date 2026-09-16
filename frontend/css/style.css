@@ -377,34 +377,6 @@ body.is-task-screen #view {
   margin-bottom: 14px;
 }
 
-.result-card__name {
-  font-size: 20px;
-  font-weight: 700;
-  margin-bottom: 6px;
-}
-
-/* Крупное число калорий + единица «ккал» */
-.result-card__kcal {
-  display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 6px;
-  margin-bottom: 16px;
-}
-
-.result-card__kcal-val {
-  font-size: 40px;
-  font-weight: 800;
-  color: var(--cta);
-  line-height: 1;
-}
-
-.result-card__kcal-unit {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--muted);
-}
-
 /* Плитки Б/Ж/У */
 .macros {
   display: flex;
@@ -424,13 +396,6 @@ body.is-task-screen #view {
   display: block;
   font-size: 17px;
   font-weight: 700;
-}
-
-.macro__lbl {
-  display: block;
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 2px;
 }
 
 /* Комментарий от ИИ */
@@ -651,14 +616,6 @@ body.is-task-screen #view {
   font-weight: 600;
   color: var(--muted);
   white-space: nowrap;
-}
-
-/* Пустое состояние конкретного приёма пищи */
-.diary-meal__empty {
-  font-size: 14px;
-  color: var(--muted);
-  text-align: center;
-  padding: 12px 8px;
 }
 
 /* Список записей внутри секции */
@@ -936,12 +893,6 @@ body.is-task-screen #view {
   display: block;
 }
 
-.acc-title {
-  font-size: 17px;
-  font-weight: 700;
-  margin-bottom: 14px;
-}
-
 /* Сетка 2×2 для коротких полей (вес/рост/возраст/пол) */
 .acc-grid {
   display: grid;
@@ -1005,58 +956,6 @@ select.field__input {
   margin-top: 10px;
 }
 
-/* --- История за 30 дней --- */
-.acc-history {
-  display: block;
-}
-
-.acc-history__body {
-  display: block;
-}
-
-/* Подпись цели над графиком */
-.hist-goal {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--cta);
-  margin-bottom: 12px;
-}
-
-.hist-goal--muted {
-  color: var(--muted);
-  font-weight: 500;
-}
-
-/* Список строк-баров истории */
-.hist-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* Одна строка истории: дата | горизонтальный бар | значение */
-.hist-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.hist-row__date {
-  flex: 0 0 42px;
-  font-size: 12px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-/* Дорожка для бара */
-.hist-row__bar-wrap {
-  flex: 1;
-  height: 16px;
-  border-radius: 999px;
-  background: var(--bg);
-  overflow: hidden;
-}
-
 /* Сам бар (ширина задаётся inline-стилем в JS) */
 .hist-row__bar {
   display: block;
@@ -1070,25 +969,6 @@ select.field__input {
 /* Бар, превышающий цель — красный */
 .hist-row__bar--over {
   background: var(--danger);
-}
-
-.hist-row__val {
-  flex: 0 0 auto;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text);
-  white-space: nowrap;
-  text-align: right;
-  min-width: 64px;
-}
-
-/* Пустое состояние истории */
-.acc-empty {
-  font-size: 14px;
-  color: var(--muted);
-  text-align: center;
-  padding: 24px 12px;
-  line-height: 1.5;
 }
 
 /* Ошибка загрузки истории */
@@ -1297,11 +1177,13 @@ select.field__input {
 /* ============================================================
    ОБЩЕЕ: ПЯТЬ пунктов в #tabbar + ЦЕНТРАЛЬНАЯ КНОПКА-КАМЕРА
    ------------------------------------------------------------
-   Слева направо: 🏋️ Тренировки / 💊 Добавки / (📷 ЦЕНТР =
-   «Определение», приподнятый кружок без подписи) / 🥗 Рацион /
-   👤 Аккаунт. Четыре обычные вкладки делят ширину поровну (flex:1),
-   а центральная кнопка-камера имеет фиксированную ширину, приподнята
-   над панелью и НЕ растягивается. Паттерн Instagram/TikTok.
+   Слева направо: Сегодня / Тренировка / (ЦЕНТР = приподнятая кнопка
+   камеры без подписи) / Питание / Профиль. Иконки — SVG из того же
+   набора, что и js/icons.js: они наследуют цвет активного состояния
+   и одинаково выглядят на всех устройствах, в отличие от эмодзи.
+   Четыре обычные вкладки делят ширину поровну (flex:1), а центральная
+   кнопка имеет фиксированный размер, приподнята над панелью и НЕ
+   растягивается. Паттерн Instagram/TikTok.
    ============================================================ */
 
 /* Панель должна позволять центральной кнопке выступать ВВЕРХ. */
@@ -1401,67 +1283,6 @@ select.field__input {
   display: block;
 }
 
-/* --- Переключатель даты (◀ дата ▶) — как на странице рациона --- */
-.wk-datebar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 12px;
-}
-
-.wk-datebar__nav {
-  width: 44px;
-  height: 44px;
-  min-height: 44px;
-  flex-shrink: 0;
-  border: none;
-  border-radius: 12px;
-  background: var(--white);
-  color: var(--text);
-  font-size: 18px;
-  cursor: pointer;
-  transition: background .15s ease, transform .08s ease;
-}
-
-.wk-datebar__nav:active {
-  transform: scale(.94);
-  background: var(--accent);
-}
-
-.wk-datebar__label {
-  flex: 1;
-  text-align: center;
-  line-height: 1.2;
-  /* <button> открытия календаря — гасим «кнопочный» вид (не серая плашка). */
-  border: none;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-  padding: 0;
-  -webkit-appearance: none;
-  appearance: none;
-}
-
-.wk-datebar__date {
-  display: block;
-  font-weight: 700;
-  font-size: 16px;
-}
-
-.wk-datebar__iso {
-  display: block;
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 2px;
-}
-
-/* --- Итог «Сожжено за день» --- */
-.wk-summary {
-  display: block;
-}
-
 /* Карточка-итог: подпись слева, крупное число справа. */
 .wk-summary__card {
   display: flex;
@@ -1472,62 +1293,9 @@ select.field__input {
   padding: 16px 18px;
 }
 
-.wk-summary__caption {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--muted);
-}
-
-.wk-summary__value {
-  font-size: 24px;
-  font-weight: 800;
-  color: var(--cta);
-  white-space: nowrap;
-}
-
-/* --- Форма добавления тренировки --- */
-.wk-form {
-  display: block;
-}
-
-.wk-form__title {
-  font-size: 17px;
-  font-weight: 700;
-  margin-bottom: 14px;
-}
-
-/* Длительность и калории — в две колонки. */
-.wk-form__grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-/* Подсказка под формой тренировки. */
-.wk-form__hint {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 12px;
-  line-height: 1.5;
-}
-
-/* Кнопка «Оценить калории» (вторичная) — отступ сверху. */
-.wk-estimate {
-  margin-top: 4px;
-}
-
 /* Кнопка «Добавить тренировку» (CTA) — отступ от «Оценить». */
 .wk-add {
   margin-top: 10px;
-}
-
-/* --- Список тренировок и его скелетон --- */
-.wk-list {
-  display: block;
-}
-
-.wk-skeleton {
-  display: block;
 }
 
 /* Список строк тренировок (ul без маркеров). */
@@ -1541,82 +1309,12 @@ select.field__input {
   animation: fadeIn .28s ease;
 }
 
-/* Одна строка тренировки. */
-.wk-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 0;
-  border-top: 1px solid rgba(23, 26, 22, .08);
-}
-
-.wk-item:first-child {
-  border-top: none;
-}
-
 /* Скелетон-строка тренировки (отдельная плашка). */
 .wk-item.skeleton-block {
   display: block;
   height: auto;
   padding: 16px;
   border-top: none;
-}
-
-.wk-item__main {
-  flex: 1;
-  min-width: 0;
-}
-
-.wk-item__title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.wk-item__icon {
-  font-size: 18px;
-  line-height: 1;
-}
-
-.wk-item__meta {
-  display: block;
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 2px;
-}
-
-/* Кнопка удаления тренировки ✕ (иконочная). */
-.wk-item__del {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  min-height: 32px;
-  flex-shrink: 0;
-  padding: 0;
-  border: none;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--danger);
-  font-size: 15px;
-  line-height: 1;
-  cursor: pointer;
-  transition: background .15s ease, transform .08s ease;
-}
-
-.wk-item__del:active {
-  background: rgba(192, 57, 43, .15);
-  transform: scale(.92);
-}
-
-.wk-item__del:disabled {
-  opacity: .5;
-  cursor: default;
 }
 
 /* Пустое состояние списка тренировок. */
@@ -1865,13 +1563,6 @@ select.field__input {
   margin-bottom: 12px;
 }
 
-/* Тип и дозировка — в две колонки. */
-.sup-form__grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
 /* Строка-чекбокс «Напоминать о приёме». */
 .sup-form__check {
   display: flex;
@@ -1901,119 +1592,9 @@ select.field__input {
   margin-top: 4px;
 }
 
-/* --- ИИ-подсказка добавок --- */
-.sup-suggest {
-  margin: 6px 0 4px;
-}
-
 /* Контейнер результата подсказки (наполняется JS-ом). */
 .sup-suggest-box {
   display: block;
-}
-
-/* Внутренняя обёртка с рекомендациями. */
-.sup-suggest-box__inner {
-  background: var(--bg);
-  border-radius: var(--radius-sm);
-  padding: 14px;
-  margin-bottom: 12px;
-  animation: fadeIn .28s ease;
-}
-
-.sup-suggest-box__title {
-  font-size: 15px;
-  font-weight: 700;
-  margin-bottom: 10px;
-}
-
-/* Состояние загрузки подсказки (скелетоны внутри). */
-.sup-suggest-box__loading {
-  background: var(--bg);
-  border-radius: var(--radius-sm);
-  padding: 14px;
-  margin-bottom: 12px;
-}
-
-/* Пустой результат подсказки. */
-.sup-suggest-box__empty {
-  font-size: 14px;
-  color: var(--muted);
-  text-align: center;
-  background: var(--bg);
-  border-radius: var(--radius-sm);
-  padding: 16px 14px;
-  margin-bottom: 12px;
-  line-height: 1.5;
-}
-
-/* Ошибка подсказки. */
-.sup-suggest-box__error {
-  text-align: center;
-  background: var(--bg);
-  border-radius: var(--radius-sm);
-  padding: 16px 14px;
-  margin-bottom: 12px;
-}
-
-.sup-suggest-box__error-text {
-  font-size: 13px;
-  color: var(--danger);
-  margin-bottom: 12px;
-  line-height: 1.5;
-}
-
-.sup-suggest-box__retry {
-  width: auto;
-  min-width: 150px;
-  margin: 0 auto;
-}
-
-/* Список карточек-рекомендаций. */
-.sup-suggest-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-/* Одна карточка-рекомендация. */
-.sup-suggest-card {
-  background: var(--white);
-  border-radius: var(--radius-sm);
-  padding: 12px 14px;
-  box-shadow: 0 2px 8px rgba(23, 26, 22, .08);
-}
-
-.sup-suggest-card__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.sup-suggest-card__name {
-  font-weight: 700;
-  font-size: 15px;
-}
-
-.sup-suggest-card__dosage {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--cta);
-  white-space: nowrap;
-}
-
-.sup-suggest-card__note {
-  font-size: 13px;
-  color: var(--muted);
-  line-height: 1.5;
-  margin-bottom: 10px;
-}
-
-/* Кнопка «Заполнить форму» — компактная вторичная. */
-.sup-suggest-card__use {
-  min-height: 40px;
-  font-size: 14px;
 }
 
 /* Дисклеймер по спортпиту: заметный, но мягкий (тёплый персиковый фон). */
@@ -2075,22 +1656,6 @@ select.field__input {
   font-weight: 700;
 }
 
-/* --- Кнопки действий рациона: «➕ Добавить вручную» / «🤖 Что съесть?» --- */
-.diary-actions {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-/* Каждая кнопка занимает половину ширины. */
-.diary-actions__btn {
-  flex: 1 1 0;
-  min-width: 0;
-  min-height: 48px;
-  font-size: 14px;
-  padding: 0 10px;
-}
-
 /* Активная (нажатая) кнопка действия — подсвечена как выбранный режим. */
 .diary-actions__btn.is-active {
   background: var(--cta);
@@ -2107,12 +1672,6 @@ select.field__input {
 .diary-manual {
   display: block;
   background: var(--white);
-}
-
-.diary-manual__title {
-  font-size: 17px;
-  font-weight: 700;
-  margin-bottom: 14px;
 }
 
 .diary-manual__form {
@@ -2159,97 +1718,8 @@ select.field__input {
   border-top: 1px solid rgba(23, 26, 22, .08);
 }
 
-.recent__title {
-  font-size: 16px;
-  font-weight: 700;
-  margin-bottom: 10px;
-}
-
-/* Селектор «Добавить как» над списком недавних. */
-.recent__meal {
-  margin-bottom: 12px;
-}
-
 .recent__meal .field__label {
   margin-bottom: 10px;
-}
-
-/* Список карточек недавних блюд. */
-.recent__list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-/* Скелетон недавних — невысокие плашки. */
-.recent__skeleton {
-  height: 56px;
-  margin-bottom: 0;
-}
-
-/* Пустое состояние недавних. */
-.recent__empty {
-  font-size: 14px;
-  color: var(--muted);
-  line-height: 1.5;
-  padding: 4px 0;
-}
-
-/* Карточка недавнего блюда — кликабельная (добавить в один тап). */
-.recent__item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  text-align: left;
-  border: 1.5px solid var(--accent);
-  border-radius: var(--radius-sm);
-  background: var(--bg);
-  padding: 12px 14px;
-  cursor: pointer;
-  transition: background .15s ease, border-color .15s ease, transform .08s ease;
-}
-
-.recent__item:active {
-  transform: scale(.99);
-  background: rgba(220, 224, 214, .25);
-}
-
-.recent__item:disabled {
-  opacity: .55;
-  cursor: default;
-}
-
-.recent__name {
-  flex: 1;
-  min-width: 0;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.recent__macros {
-  display: block;
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 2px;
-}
-
-/* Иконка «＋» — кружок-акцент справа. */
-.recent__add {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: var(--cta);
-  color: var(--white);
-  font-size: 18px;
-  font-weight: 700;
-  line-height: 1;
 }
 
 /* В карточке недавнего блюда название и макросы кладём в колонку,
@@ -2257,23 +1727,6 @@ select.field__input {
 .recent__item .recent__name,
 .recent__item .recent__macros {
   flex-basis: auto;
-}
-
-.recent__item {
-  flex-wrap: wrap;
-}
-
-.recent__item .recent__name {
-  flex: 1 1 calc(100% - 40px);
-}
-
-.recent__item .recent__macros {
-  flex-basis: 100%;
-  order: 3;
-}
-
-.recent__item .recent__add {
-  order: 2;
 }
 
 /* --- Панель рекомендаций «Что съесть?» --- */
@@ -2473,42 +1926,6 @@ select.field__input {
   margin-top: 2px;
 }
 
-/* --- Раздел «Уведомления» --- */
-.notif-card {
-  display: block;
-}
-
-.notif-body {
-  display: block;
-}
-
-/* Список строк настроек. */
-.notif-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-/* Одна строка: тумблер + (опционально) поля времени. */
-.notif-row {
-  padding: 12px 0;
-  border-top: 1px solid rgba(23, 26, 22, .08);
-}
-
-.notif-row:first-child {
-  border-top: none;
-  padding-top: 4px;
-}
-
-/* Строка-тумблер (чекбокс + подпись). */
-.notif-toggle {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  cursor: pointer;
-  user-select: none;
-}
-
 /* Сам чекбокс-тумблер — крупный, акцентный. */
 .notif-toggle__input {
   width: 22px;
@@ -2516,21 +1933,6 @@ select.field__input {
   flex-shrink: 0;
   accent-color: var(--cta);
   cursor: pointer;
-}
-
-.notif-toggle__label {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-/* Группа полей времени под тумблером. */
-.notif-times {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 12px;
-  padding-left: 34px; /* выравниваем под подпись тумблера */
 }
 
 .notif-times[hidden] {
@@ -2546,20 +1948,9 @@ select.field__input {
   min-width: 120px;
 }
 
-.notif-time__label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
-}
-
 /* Поле времени наследует .field__input; чуть компактнее по высоте. */
 .notif-time__input {
   min-height: 46px;
-}
-
-/* Кнопка «Сохранить уведомления». */
-.notif-save {
-  margin-top: 16px;
 }
 
 /* Ошибка загрузки настроек уведомлений. */
@@ -2770,47 +2161,6 @@ select.field__input {
   display: block;
 }
 
-.wk-rem-card__title {
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-
-.wk-rem-card__subtitle {
-  font-size: 13px;
-  color: var(--muted);
-  margin-bottom: 14px;
-  line-height: 1.5;
-}
-
-/* Контейнер списка напоминаний (наполняется отдельно). */
-.wk-rem-list {
-  display: block;
-  margin-bottom: 4px;
-}
-
-.wk-rem-skeleton {
-  display: block;
-}
-
-/* Список строк напоминаний. */
-.wk-rem-item-list {
-  list-style: none;
-}
-
-/* Одна строка напоминания о тренировке. */
-.wk-rem-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 0;
-  border-top: 1px solid rgba(23, 26, 22, .08);
-}
-
-.wk-rem-item:first-child {
-  border-top: none;
-}
-
 /* Скелетон-строка напоминания (отдельная плашка). */
 .wk-rem-item.skeleton-block {
   display: block;
@@ -2820,176 +2170,10 @@ select.field__input {
   background: var(--bg);
 }
 
-.wk-rem-item__main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
-}
-
 /* Текст «Пн, Ср, Пт · 18:00». */
 .wk-rem-item__meta {
   font-weight: 600;
   color: var(--text);
-}
-
-/* Бейдж состояния (вкл/выкл). */
-.wk-rem-item__badge {
-  display: inline-flex;
-  align-items: center;
-  font-size: 11px;
-  font-weight: 600;
-  border-radius: 999px;
-  padding: 2px 8px;
-  white-space: nowrap;
-}
-
-/* Включено — зелёный акцент. */
-.wk-rem-item__badge--on {
-  color: var(--cta);
-  background: rgba(47, 111, 78, .14);
-}
-
-/* Выключено — приглушённый бежевый. */
-.wk-rem-item__badge--off {
-  color: var(--muted);
-  background: rgba(91, 97, 87, .15);
-}
-
-/* Кнопка удаления напоминания ✕. */
-.wk-rem-item__del {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  min-height: 32px;
-  flex-shrink: 0;
-  padding: 0;
-  border: none;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--danger);
-  font-size: 15px;
-  line-height: 1;
-  cursor: pointer;
-  transition: background .15s ease, transform .08s ease;
-}
-
-.wk-rem-item__del:active {
-  background: rgba(192, 57, 43, .15);
-  transform: scale(.92);
-}
-
-.wk-rem-item__del:disabled {
-  opacity: .5;
-  cursor: default;
-}
-
-/* Пустое состояние списка напоминаний. */
-.wk-rem-empty {
-  text-align: center;
-  color: var(--muted);
-  padding: 22px 12px;
-}
-
-.wk-rem-empty__icon {
-  font-size: 36px;
-  line-height: 1;
-  margin-bottom: 10px;
-}
-
-.wk-rem-empty__text {
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-/* Ошибка загрузки напоминаний. */
-.wk-rem-error {
-  text-align: center;
-  color: var(--text);
-  padding: 18px 8px;
-}
-
-.wk-rem-error__icon {
-  font-size: 36px;
-  line-height: 1;
-  margin-bottom: 10px;
-}
-
-.wk-rem-error__title {
-  font-size: 15px;
-  font-weight: 700;
-  margin-bottom: 6px;
-}
-
-.wk-rem-error__text {
-  font-size: 13px;
-  color: var(--muted);
-  margin-bottom: 14px;
-  line-height: 1.5;
-}
-
-.wk-rem-error__retry {
-  width: auto;
-  min-width: 160px;
-  margin: 0 auto;
-}
-
-/* --- Форма добавления напоминания о тренировке --- */
-.wk-rem-form {
-  display: block;
-  margin-top: 6px;
-  padding-top: 16px;
-  border-top: 1px solid rgba(23, 26, 22, .08);
-}
-
-.wk-rem-form__title {
-  font-size: 16px;
-  font-weight: 700;
-  margin-bottom: 12px;
-}
-
-/* Время + чекбокс «Включено» — в две колонки. */
-.wk-rem-form__grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  align-items: end;
-}
-
-/* Строка-чекбокс «Включено». */
-.wk-rem-form__check {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  /* Выравниваем по нижнему краю соседнего поля времени. */
-  min-height: 52px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.wk-rem-form__checkbox {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-  accent-color: var(--cta);
-  cursor: pointer;
-}
-
-.wk-rem-form__check-label {
-  font-size: 14px;
-  color: var(--text);
-}
-
-/* Подсказка под формой напоминания. */
-.wk-rem-form__hint {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 12px;
-  line-height: 1.5;
 }
 
 /* --- Чипы выбора дней недели (Пн…Вс) --- */
@@ -3025,11 +2209,6 @@ select.field__input {
   background: var(--cta);
   border-color: var(--cta);
   color: var(--white);
-}
-
-/* Кнопка «Добавить напоминание» — отступ сверху. */
-.wk-rem-add {
-  margin-top: 4px;
 }
 
 /* ============================================================
@@ -3121,27 +2300,6 @@ select.field__input {
 /* Состав не выбран — ещё более приглушённо/курсивом. */
 .sup-rem-item__sups--empty {
   font-style: italic;
-}
-
-/* Бейдж состояния (вкл/выкл). */
-.sup-rem-item__badge {
-  display: inline-flex;
-  align-items: center;
-  font-size: 11px;
-  font-weight: 600;
-  border-radius: 999px;
-  padding: 2px 8px;
-  white-space: nowrap;
-}
-
-.sup-rem-item__badge--on {
-  color: var(--cta);
-  background: rgba(47, 111, 78, .14);
-}
-
-.sup-rem-item__badge--off {
-  color: var(--muted);
-  background: rgba(91, 97, 87, .15);
 }
 
 /* Кнопка удаления напоминания ✕. */
@@ -3254,29 +2412,6 @@ select.field__input {
   margin-bottom: 10px;
 }
 
-/* Строка-чекбокс «Напоминание включено». */
-.sup-rem-form__check {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 4px 0 14px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.sup-rem-form__checkbox {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-  accent-color: var(--cta);
-  cursor: pointer;
-}
-
-.sup-rem-form__check-label {
-  font-size: 14px;
-  color: var(--text);
-}
-
 /* Кнопка «Создать напоминание» — отступ сверху. */
 .sup-rem-add {
   margin-top: 4px;
@@ -3367,11 +2502,6 @@ select.field__input {
 .sup-ai-chip {
   /* База берётся из .chip; гарантируем выравнивание эмодзи и подписи. */
   gap: 6px;
-}
-
-.sup-ai-chip__emoji {
-  font-size: 16px;
-  line-height: 1;
 }
 
 .sup-ai-chip__label {
@@ -3534,12 +2664,6 @@ select.field__input {
   display: block;
 }
 
-.diary-notif-title {
-  font-size: 17px;
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-
 .diary-notif-sub {
   font-size: 13px;
   color: var(--muted);
@@ -3547,46 +2671,10 @@ select.field__input {
   line-height: 1.5;
 }
 
-.diary-notif-body {
-  display: block;
-}
-
 /* Скелетон карточки напоминаний о еде. */
 .diary-notif-skeleton {
   height: 96px;
   margin-bottom: 0;
-}
-
-/* Строка-тумблер «Включить напоминания о еде». */
-.diary-notif-toggle {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.diary-notif-toggle__input {
-  width: 22px;
-  height: 22px;
-  flex-shrink: 0;
-  accent-color: var(--cta);
-  cursor: pointer;
-}
-
-.diary-notif-toggle__label {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-/* Группа полей времени (Завтрак / Обед / Ужин). */
-.diary-notif-times {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 14px;
-  padding-left: 34px; /* выравниваем под подпись тумблера */
 }
 
 .diary-notif-times[hidden] {
@@ -3602,20 +2690,9 @@ select.field__input {
   min-width: 90px;
 }
 
-.diary-notif-time__label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
-}
-
 /* Поле времени наследует .field__input; чуть компактнее по высоте. */
 .diary-notif-time__input {
   min-height: 46px;
-}
-
-/* Кнопка «Сохранить» напоминания о еде. */
-.diary-notif-save {
-  margin-top: 16px;
 }
 
 /* Ошибка загрузки настроек напоминаний о еде. */
@@ -3651,47 +2728,6 @@ select.field__input {
   display: block;
 }
 
-/* Подсказка под заголовком карточки. */
-.acc-summary-hint {
-  font-size: 13px;
-  color: var(--muted);
-  margin-bottom: 14px;
-  line-height: 1.5;
-}
-
-.acc-summary-body {
-  display: block;
-}
-
-/* Строка с тумблером сводки. */
-.acc-summary-row {
-  display: block;
-  margin-bottom: 4px;
-}
-
-/* Тумблер «Присылать вечернюю сводку». */
-.acc-summary-toggle {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.acc-summary-toggle__input {
-  width: 22px;
-  height: 22px;
-  flex-shrink: 0;
-  accent-color: var(--cta);
-  cursor: pointer;
-}
-
-.acc-summary-toggle__label {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
-}
-
 /* Поле времени сводки (наследует .field). */
 .acc-summary-time {
   margin-top: 14px;
@@ -3705,27 +2741,6 @@ select.field__input {
 /* Поле ввода времени сводки (наследует .field__input). */
 .acc-summary-time__input {
   min-height: 46px;
-}
-
-/* Кнопка «Сохранить» вечернюю сводку. */
-.acc-summary-save {
-  margin-top: 16px;
-}
-
-/* Ошибка загрузки настроек сводки. */
-.acc-summary-error {
-  text-align: center;
-  color: var(--text);
-  padding: 12px 8px;
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.acc-summary-error__msg {
-  font-size: 13px;
-  color: var(--danger);
-  margin: 8px 0 14px;
-  line-height: 1.5;
 }
 
 /* Кнопка «Повторить» в ошибке сводки — компактная по центру. */
@@ -3795,14 +2810,22 @@ select.field__input {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 76px;
-  height: 76px;
-  margin: 0 auto 14px;
-  border-radius: 50%;
-  background: var(--bg);
-  font-size: 40px;
-  line-height: 1;
-  box-shadow: inset 0 0 0 1px rgba(23, 26, 22, .06);
+  width: 64px;
+  height: 64px;
+  margin: 0 auto var(--s3);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* Цена и пробный период прямо на заглушке: прежде человек видел «нужна
+   подписка» и уходил, не зная ни стоимости, ни что первые дни бесплатны. */
+.paywall-price {
+  margin: var(--s4) 0 var(--s3);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+  text-align: center;
 }
 
 .paywall-title {
@@ -3861,16 +2884,10 @@ select.field__input {
 
 /* Плашка-замок «🔒 Недоступно — нужна подписка»: мягкий персиковый фон,
    заметная, но не агрессивная. */
+/* .paywall-lock больше не рендерится: красная плашка «Недоступно» стояла
+   прямо над кнопкой покупки и работала против неё. */
 .paywall-lock {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin-bottom: 14px;
-  padding: 12px 14px;
-  border-radius: var(--radius-sm);
-  border: 1px solid rgba(192, 57, 43, .25);
-  background: rgba(192, 57, 43, .1);
+  display: none;
 }
 
 .paywall-lock-icon {
@@ -4222,15 +3239,6 @@ select.field__input {
   background: rgba(192, 57, 43, .1);
 }
 
-/* ============================================================
-   ДНЕВНИК: ПЛАТНАЯ КНОПКА «🤖 Что съесть?» И ЗАГЛУШКА-ПОДПИСКА
-   ============================================================ */
-
-/* Кнопка-рекомендация в панели действий (наследует .diary-actions__btn). */
-.diary-actions__btn--recommend {
-  position: relative;
-}
-
 /* Заблокированная (платная) кнопка для free-пользователя: приглушаем,
    но оставляем кликабельной — тап ведёт к paywall/подписке. */
 .diary-actions__btn.is-locked {
@@ -4546,12 +3554,6 @@ select.field__input {
   padding: 26px 18px;
 }
 
-.scan-voice-empty__icon {
-  font-size: 44px;
-  line-height: 1;
-  margin-bottom: 12px;
-}
-
 .scan-voice-empty__msg {
   font-size: 15px;
   color: var(--text);
@@ -4776,37 +3778,6 @@ select.field__input {
   background: var(--card);
 }
 
-/* Мелкий индикатор «живого» потока в углу окна (необязательный).
-   Полупрозрачная тёмная плашка с зелёной точкой-пульсом. */
-.scan-cam-badge {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 9px;
-  border-radius: 999px;
-  background: rgba(23, 26, 22, .55);
-  color: var(--white);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-  pointer-events: none;
-}
-
-/* Зелёная точка-пульс перед текстом бейджа. */
-.scan-cam-badge::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--cta);
-  box-shadow: 0 0 0 0 rgba(47, 111, 78, .6);
-  animation: scan-cam-pulse 1.6s ease-out infinite;
-}
-
 @keyframes scan-cam-pulse {
   0% {
     box-shadow: 0 0 0 0 rgba(47, 111, 78, .55);
@@ -4891,30 +3862,11 @@ select.field__input {
   padding: 0;
 }
 
-.wt-hint {
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--muted);
-  margin-bottom: 14px;
-}
-
-.wt-input-row {
-  display: block;
-}
-
-.wt-input-field {
-  margin-bottom: 4px;
-}
-
 /* Поле ввода веса. Базовый вид берёт из .field__input (52px, рамка, фокус);
    здесь — лёгкий акцент именно для замера веса. */
 .wt-input {
   font-weight: 600;
   letter-spacing: .2px;
-}
-
-.wt-save-btn {
-  margin-top: 14px;
 }
 
 /* ---- Обёртка графика ---- */
@@ -5074,34 +4026,6 @@ select.field__input {
   display: none;
 }
 
-.adapt-row {
-  display: block;
-  margin-bottom: 4px;
-}
-
-/* Тумблер «Адаптивные калории» (одинаковый стиль с вечерней сводкой). */
-.adapt-toggle {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.adapt-toggle__input {
-  width: 22px;
-  height: 22px;
-  flex-shrink: 0;
-  accent-color: var(--cta);
-  cursor: pointer;
-}
-
-.adapt-toggle__label {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
-}
-
 .adapt-hint {
   font-size: 13px;
   line-height: 1.5;
@@ -5209,27 +4133,6 @@ select.field__input {
   flex-wrap: wrap;
 }
 
-/* Кнопки шаблонов: общий вид — мягкая «контурная» кнопка действий.
-   Базовый размер берётся от .diary-actions__btn; здесь — лёгкий фон,
-   чтобы блок шаблонов визуально отделялся от «Добавить вручную». */
-.tpl-actions__btn {
-  flex: 1 1 calc(50% - 5px);
-  background: rgba(220, 224, 214, .14);
-}
-
-/* Лёгкая цветовая дифференциация трёх действий (в пределах пастели). */
-.tpl-actions__btn--save {
-  background: rgba(47, 111, 78, .12); /* зеленоватый — «сохранить» */
-}
-
-.tpl-actions__btn--list {
-  background: rgba(220, 224, 214, .18); /* нейтральный беж — «список» */
-}
-
-.tpl-actions__btn--copy {
-  background: rgba(220, 224, 214, .14);
-}
-
 /* Активная (выбранная) кнопка «Шаблоны» — как у базовых действий. */
 .tpl-actions__btn.is-active {
   background: var(--cta);
@@ -5251,53 +4154,6 @@ select.field__input {
   background: var(--white);
 }
 
-.tpl-locked__title {
-  font-size: 17px;
-  font-weight: 700;
-  margin-bottom: 6px;
-}
-
-.tpl-locked__sub {
-  font-size: 14px;
-  color: var(--muted);
-  line-height: 1.5;
-  margin-bottom: 14px;
-}
-
-.tpl-locked__subscribe {
-  margin-top: 4px;
-}
-
-/* --- Панель «Сохранить день как шаблон» (.tpl-save) --- */
-.tpl-save {
-  display: block;
-  background: var(--white);
-}
-
-.tpl-save__title {
-  font-size: 17px;
-  font-weight: 700;
-  margin-bottom: 6px;
-}
-
-.tpl-save__sub {
-  font-size: 13px;
-  color: var(--muted);
-  line-height: 1.5;
-  margin-bottom: 14px;
-}
-
-/* Пустое состояние: за день нет записей — сохранять нечего. */
-.tpl-save__empty {
-  font-size: 14px;
-  color: var(--muted);
-  line-height: 1.5;
-  text-align: center;
-  background: var(--bg);
-  border-radius: var(--radius-sm);
-  padding: 16px 14px;
-}
-
 /* Инлайн-поле ввода имени шаблона (наследует .field__input). */
 .tpl-save__name {
   width: 100%;
@@ -5306,74 +4162,6 @@ select.field__input {
 /* Кнопка «Сохранить шаблон» (CTA). */
 .tpl-save__submit {
   margin-top: 4px;
-}
-
-/* --- Панель со списком шаблонов (.tpl-list) --- */
-.tpl-list {
-  display: block;
-  background: var(--white);
-}
-
-.tpl-list__title {
-  font-size: 17px;
-  font-weight: 700;
-  margin-bottom: 6px;
-}
-
-.tpl-list__sub {
-  font-size: 13px;
-  color: var(--muted);
-  line-height: 1.5;
-  margin-bottom: 14px;
-}
-
-.tpl-list__body {
-  display: block;
-}
-
-/* Скелетон строки списка шаблонов. */
-.tpl-list__skeleton {
-  height: 64px;
-  margin-bottom: 10px;
-}
-
-/* Пустое состояние: у пользователя ещё нет шаблонов. */
-.tpl-list__empty {
-  font-size: 14px;
-  color: var(--muted);
-  line-height: 1.5;
-  text-align: center;
-  background: var(--bg);
-  border-radius: var(--radius-sm);
-  padding: 16px 14px;
-}
-
-/* Ошибка загрузки списка шаблонов с кнопкой «Повторить». */
-.tpl-list__error {
-  text-align: center;
-  background: var(--bg);
-  border-radius: var(--radius-sm);
-  padding: 16px 14px;
-}
-
-.tpl-list__error-text {
-  font-size: 13px;
-  color: var(--danger);
-  line-height: 1.5;
-  margin-bottom: 12px;
-}
-
-.tpl-list__retry {
-  width: auto;
-  min-width: 150px;
-  margin: 0 auto;
-}
-
-/* Список карточек шаблонов — вертикальная колонка. */
-.tpl-card-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
 }
 
 /* Карточка одного шаблона: слева имя/мета, справа действия. */
@@ -5387,37 +4175,6 @@ select.field__input {
   animation: fadeIn .28s ease;
 }
 
-/* Левая часть карточки: имя + тип/кол-во. Занимает всё свободное место. */
-.tpl-card__info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.tpl-card__name {
-  font-weight: 700;
-  font-size: 15px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Мета: тип шаблона · число блюд. */
-.tpl-card__meta {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-/* Правая часть: кнопки «Добавить» и «✕». */
-.tpl-card__actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
 /* Кнопка «Добавить» (применить шаблон) — компактный CTA. */
 .tpl-card__apply {
   width: auto;
@@ -5425,34 +4182,6 @@ select.field__input {
   min-height: 44px;
   padding: 0 16px;
   font-size: 14px;
-}
-
-/* Кнопка «✕» — удалить шаблон (мягкий круглый «опасный» акцент). */
-.tpl-card__del {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  flex-shrink: 0;
-  border: none;
-  border-radius: 50%;
-  background: rgba(192, 57, 43, .12);
-  color: var(--danger);
-  font-size: 15px;
-  line-height: 1;
-  cursor: pointer;
-  transition: background .15s ease, transform .08s ease;
-}
-
-.tpl-card__del:active {
-  transform: scale(.94);
-  background: rgba(192, 57, 43, .2);
-}
-
-.tpl-card__del:disabled {
-  opacity: .55;
-  cursor: default;
 }
 
 /* ============================================================
@@ -5472,12 +4201,6 @@ select.field__input {
    убираем фон/паддинг, чтобы блок paywall выглядел самостоятельно. */
 .rep-card {
   display: block;
-}
-
-.rep-card.rep-gate {
-  background: transparent;
-  box-shadow: none;
-  padding: 0;
 }
 
 /* Подсказка над кнопкой генерации. */
@@ -6348,12 +5071,6 @@ select.field__input {
   display: block;
 }
 
-.prog-card.prog-gate {
-  background: transparent;
-  box-shadow: none;
-  padding: 0;
-}
-
 /* Приватная пометка (замок). */
 .prog-privacy {
   font-size: 12.5px;
@@ -6545,7 +5262,7 @@ select.field__input {
 }
 
 .prog-compare__handle::before {
-  content: "⇆";
+  content: "";
   position: absolute;
   top: 50%;
   left: 50%;
@@ -7163,24 +5880,10 @@ button.cal-cell--selected:active {
   transition: background .18s ease, transform .1s ease, box-shadow .18s ease;
 }
 
-.acc-fab:active {
-  transform: scale(.94);
-  background: var(--cta-press);
-}
-
 /* ---------- 2) Группы в листе настроек ---------- */
 /* Лист переиспользует .diary-sheet*; здесь — внутренние секции. */
 .acc-set-group + .acc-set-group {
   margin-top: 20px;
-}
-
-.acc-set-group__title {
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .04em;
-  color: var(--muted);
-  margin: 0 4px 10px;
 }
 
 /* ---------- 3) Кнопка-тумблер (активировать / деактивировать) ---------- */
@@ -7221,13 +5924,6 @@ button.cal-cell--selected:active {
 .wt-open {
   display: block;
   margin-top: 8px;
-}
-
-.wt-open__label {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--muted);
-  margin: 0 0 10px;
 }
 
 /* ---------- 5) Календарь истории (цель достигнута / нет) ---------- */
@@ -7525,14 +6221,6 @@ body::-webkit-scrollbar-thumb:hover {
   margin: 0;
 }
 
-.onb-field__label {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--muted);
-  margin-bottom: 6px;
-}
-
 /* Ввод внутри шага — как .field__input. */
 .onb-field__input {
   width: 100%;
@@ -7544,11 +6232,6 @@ body::-webkit-scrollbar-thumb:hover {
   color: var(--text);
   outline: none;
   transition: border-color .18s ease, box-shadow .18s ease;
-}
-
-.onb-field__input:focus {
-  border-color: var(--cta);
-  box-shadow: 0 0 0 3px rgba(47, 111, 78, .18);
 }
 
 /* Стрелка для select внутри шага (как select.field__input). */
@@ -7590,12 +6273,6 @@ select.onb-field__input {
 
 .onb-choice:active {
   transform: scale(.98);
-}
-
-/* Крупная эмодзи-иконка над подписью. */
-.onb-choice__icon {
-  font-size: 30px;
-  line-height: 1;
 }
 
 /* Выбранная кнопка пола — зелёная рамка/подсветка (--cta). */
@@ -7798,20 +6475,6 @@ select.onb-field__input {
   background: var(--card);
 }
 
-/* Крупная иконка камеры в плейсхолдере. */
-.scan-cam-enable__icon {
-  font-size: 44px;
-  line-height: 1;
-  opacity: .7;
-}
-
-/* Подпись под иконкой. */
-.scan-cam-enable__text {
-  font-size: 14px;
-  line-height: 1.5;
-  max-width: 260px;
-}
-
 /* «Кнопка»-CTA внутри плейсхолдера (визуально как .btn--cta, но inline). */
 .scan-cam-enable__btn {
   display: inline-flex;
@@ -7956,22 +6619,6 @@ select.onb-field__input {
   cursor: pointer;
 }
 
-/* ============================================================
-   ВОССТАНОВЛЕНИЕ ПОСЛЕ ТРЕНИРОВОК (карточка .rec-card)
-   ============================================================ */
-.rec-card__title {
-  margin: 0 0 4px;
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.rec-hint {
-  margin: 0 0 10px;
-  font-size: 13px;
-  color: var(--muted);
-}
-
 /* Сетка зон тела: авто-заполнение, чтобы влезало и на узких экранах. */
 .rec-zones {
   display: grid;
@@ -7980,32 +6627,11 @@ select.onb-field__input {
   margin-bottom: 12px;
 }
 
-.rec-zone {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  padding: 8px 2px;
-  border: 1.5px solid var(--accent);
-  border-radius: 12px;
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-  transition: background .16s ease, border-color .16s ease, transform .1s ease;
-}
-
-.rec-zone:active { transform: scale(.96); }
-
 .rec-zone.is-active {
   background: var(--cta);
   border-color: var(--cta);
   color: var(--white);
 }
-
-.rec-zone__icon { font-size: 18px; line-height: 1; }
-.rec-zone__label { font-size: 11px; font-weight: 600; }
-
-.rec-field { margin-bottom: 12px; }
 
 /* --- Результат совета --- */
 .rec-answer { margin-top: 14px; }
@@ -8073,7 +6699,6 @@ select.onb-field__input {
 }
 
 @media (max-width: 360px) {
-  .rec-zones { grid-template-columns: repeat(3, 1fr); }
 }
 
 /* Кнопки под карточкой AI-совета по добавке: «Заполнить форму» + «Купить». */

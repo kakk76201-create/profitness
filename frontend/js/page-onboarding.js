@@ -16,7 +16,10 @@
  *      (чтобы daily_goal_kcal / target_* точно сохранились);
  *   3) обновляет App.state.profile и переходит на «Рацион» (diary).
  *
- * Есть ссылка «Пропустить» — просто уводит в дневник без сохранения.
+ * «Пропустить» ТОЖЕ СОХРАНЯЕТ профиль: либо считает цель по уже введённым
+ * параметрам, либо ставит разумную норму по умолчанию. Иначе мастер выходил
+ * бесконечным — App.init решает по daily_goal_kcal == null и открывал его
+ * заново при каждом запуске, сколько бы раз человек ни нажал «Пропустить».
  *
  * Локализация: весь видимый текст через App.pick(ru, en) НА МОМЕНТ рендера.
  * Классы: onb-* (onb-wizard, onb-step, onb-title, onb-field, onb-actions,
@@ -51,6 +54,16 @@
 
   // Время вечерней сводки по умолчанию.
   var SUMMARY_TIME = "21:00";
+
+  // Норма калорий, которую ставим при пропуске мастера, если параметров для
+  // честного расчёта не хватило. Значение заведомо приблизительное — оно лишь
+  // закрывает онбординг; человек меняет его в профиле одной кнопкой.
+  var DEFAULT_GOAL_KCAL = 2000;
+
+  /** Иконка из общего набора (js/icons.js). */
+  function icon(name, opts) {
+    return App.icon ? App.icon(name, opts) : "";
+  }
 
   // Черновик введённых пользователем данных (переживает перерисовку шагов).
   var draft = null;
@@ -236,7 +249,9 @@
       '" id="onbSummary" aria-pressed="' +
       (on ? "true" : "false") +
       '">' +
-      '<span class="onb-toggle__emoji" aria-hidden="true">🌙</span>' +
+      '<span class="onb-toggle__emoji" aria-hidden="true">' +
+      icon("moon") +
+      "</span>" +
       '<span class="onb-toggle__text">' +
       '<span class="onb-toggle__title">' +
       App.escapeHtml(L("Вечерняя сводка в 21:00", "Evening summary at 9:00 PM")) +
@@ -248,7 +263,7 @@
       "</span>" +
       "</span>" +
       '<span class="onb-toggle__mark" aria-hidden="true">' +
-      (on ? "✓" : "") +
+      (on ? icon("check", { size: 18 }) : "") +
       "</span>" +
       "</button>" +
       "</div>"
@@ -367,14 +382,111 @@
       nextBtn.addEventListener("click", onNext);
     }
 
-    // «Пропустить» — сразу в дневник, без сохранения.
+    // «Пропустить» — закрываем онбординг, сохранив цель (см. onSkip).
     var skipBtn = rootEl.querySelector("#onbSkip");
     if (skipBtn) {
       skipBtn.addEventListener("click", function () {
-        App.haptic("light");
-        App.navigate("diary");
+        onSkip(skipBtn);
       });
     }
+  }
+
+  /**
+   * «Пропустить»: закрывает мастер НАВСЕГДА, а не только на этот раз.
+   *
+   * Раньше кнопка просто уводила в дневник без сохранения — и App.init,
+   * который решает по profile.daily_goal_kcal == null, открывал мастер при
+   * следующем же запуске. Получался круг, из которого нельзя выйти, не
+   * заполнив анкету.
+   *
+   * Теперь: если человек успел ввести пол, вес, рост и возраст — считаем
+   * настоящую цель тем же серверным расчётом, что и «Готово». Если нет —
+   * сохраняем норму по умолчанию: цель перестаёт быть пустой, мастер больше
+   * не появляется, а точное значение человек задаёт в профиле, когда захочет.
+   * @param {HTMLElement} btn кнопка «Пропустить» (блокируем на время запроса)
+   */
+  function onSkip(btn) {
+    App.haptic("light");
+    // Забираем то, что уже введено на текущем шаге (его могли не подтвердить).
+    collectStep();
+
+    var w = Number(draft.weight);
+    var h = Number(draft.height);
+    var a = Number(draft.age);
+    // Для честного расчёта нужны все четыре параметра.
+    var canCalc = !!draft.gender && w > 0 && h > 0 && a > 0;
+
+    if (btn) btn.disabled = true;
+    App.showLoading();
+
+    var request;
+    if (canCalc) {
+      var payload = {
+        weight: w,
+        height: h,
+        age: Math.round(a),
+        gender: draft.gender,
+        activity_level: Number(draft.activity_level) || 1.375,
+        diet_goal: draft.diet_goal
+      };
+      // calculateGoal сам сохраняет цель в профиль; следом фиксируем параметры.
+      request = App.api.calculateGoal(payload).then(function (goal) {
+        return App.api.saveProfile(payload).then(function () {
+          var p = App.state.profile || {};
+          p.weight = payload.weight;
+          p.height = payload.height;
+          p.age = payload.age;
+          p.gender = payload.gender;
+          p.activity_level = payload.activity_level;
+          p.diet_goal = payload.diet_goal;
+          if (goal && typeof goal === "object") {
+            if (goal.daily_goal_kcal != null) p.daily_goal_kcal = goal.daily_goal_kcal;
+            if (goal.target_proteins != null) p.target_proteins = goal.target_proteins;
+            if (goal.target_fats != null) p.target_fats = goal.target_fats;
+            if (goal.target_carbs != null) p.target_carbs = goal.target_carbs;
+            if (goal.diet_goal) p.diet_goal = goal.diet_goal;
+          }
+          App.state.profile = p;
+        });
+      });
+    } else {
+      request = App.api
+        .saveProfile({ daily_goal_kcal: DEFAULT_GOAL_KCAL })
+        .then(function (profile) {
+          if (profile && typeof profile === "object") {
+            App.state.profile = profile;
+          } else {
+            var p = App.state.profile || {};
+            p.daily_goal_kcal = DEFAULT_GOAL_KCAL;
+            App.state.profile = p;
+          }
+          App.toast(
+            L(
+              "Поставили ориентир " + DEFAULT_GOAL_KCAL + " ккал — измените его в профиле",
+              "Set a placeholder goal of " + DEFAULT_GOAL_KCAL + " kcal — change it in your profile"
+            )
+          );
+        });
+    }
+
+    request
+      .catch(function (err) {
+        // Сохранить не удалось — честно предупреждаем: без цели мастер
+        // откроется снова при следующем запуске.
+        App.toast(
+          err && err.message
+            ? err.message
+            : L(
+                "Не удалось сохранить цель — мастер откроется снова",
+                "Failed to save the goal — the wizard will open again"
+              )
+        );
+      })
+      .then(function () {
+        App.hideLoading();
+        if (btn) btn.disabled = false;
+        App.navigate("diary");
+      });
   }
 
   /** Валидирует шаг 1: пол обязателен, числовые поля — положительные. */

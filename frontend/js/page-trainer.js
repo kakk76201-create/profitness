@@ -4,18 +4,29 @@
  * Регистрирует контроллер через App.registerPage("trainer", {...}).
  * Публичная ссылка — window.PageTrainer.
  *
+ * Это КОРЕНЬ раздела (вкладка «Тренировка» в нижней навигации), а не
+ * подстраница: шапка без кнопки «Назад», переход к программе/прогрессу/
+ * библиотеке — сегментами вверху, настройки — иконкой в углу заголовка.
+ * Раньше здесь был список из четырёх ссылок внизу экрана: раздел выглядел
+ * оглавлением, хотя вся работа происходит на нём самом.
+ *
  * Сценарий onShow (ТЗ §2.1, §2.4):
- *   requirePremium → GET /trainer/overview →
+ *   GET /trainer/overview →
+ *     • 402 (нет подписки) → paywall тренера с бесплатным входом в анкету;
  *     • профиля нет / onboarding_completed=false → App.navigate("trainer-onboarding");
  *     • нет активной программы → экран «Программа не создана» + «Собрать программу»;
  *     • иначе — экран «Сегодня»: карточка дня (в процессе / по плану / отдых /
- *       неделя закрыта), лента недели, стрик, «Питание сегодня» (лениво),
- *       баннер разбора, быстрые ссылки.
+ *       неделя закрыта), лента недели, стрик, «Самочувствие», «Питание сегодня».
+ *
+ * «Самочувствие» — совет по восстановлению (POST /recovery/advice): переехал
+ * сюда из удалённого раздела «Тренировки». Место естественное: зону тела
+ * выбирают либо перед тренировкой, либо сразу после неё.
  *
  * Побочный эффект: после overview заполняет App.state.trainerBrief — текст
  * вкладки «Тренировка» в нижней навигации.
  *
- * Зависимости: window.Trainer (trainer-common.js), App.api.trainer*.
+ * Зависимости: window.Trainer (trainer-common.js), App.api.trainer*,
+ * App.api.getRecoveryAdvice, App.icon (js/icons.js).
  * Локализация: все строки — App.pick(ru, en) в момент рендера.
  */
 (function () {
@@ -35,13 +46,34 @@
     return document.getElementById(id);
   }
 
+  function icon(name, opts) {
+    return T.icon(name, opts);
+  }
+
+  // Зоны тела для «Самочувствия». Ключ уходит на бэкенд как есть
+  // (backend/schemas.py: legs|back|shoulders|arms|chest|core|neck|knees).
+  // Иконок здесь нет намеренно: в прежней версии зоны кодировались эмодзи,
+  // и половину из них («шея», «колени») картинка не изображала вовсе.
+  var RECOVERY_ZONES = [
+    { key: "legs", ru: "Ноги", en: "Legs" },
+    { key: "back", ru: "Спина", en: "Back" },
+    { key: "shoulders", ru: "Плечи", en: "Shoulders" },
+    { key: "arms", ru: "Руки", en: "Arms" },
+    { key: "chest", ru: "Грудь", en: "Chest" },
+    { key: "core", ru: "Пресс", en: "Core" },
+    { key: "neck", ru: "Шея", en: "Neck" },
+    { key: "knees", ru: "Колени", en: "Knees" }
+  ];
+
   // Внутреннее состояние контроллера.
   var state = {
     viewEl: null,       // корневой элемент (#view)
     overview: null,     // последний TrainerOverviewOut
     loading: false,     // идёт загрузка overview (защита от гонок)
     starting: false,    // идёт старт сессии
-    nutritionReq: 0     // счётчик запросов совета (игнорируем устаревшие ответы)
+    nutritionReq: 0,    // счётчик запросов совета (игнорируем устаревшие ответы)
+    recoveryZone: null, // выбранная зона тела в «Самочувствии»
+    recoveryBusy: false // идёт запрос совета по восстановлению
   };
 
   /* =====================================================================
@@ -185,12 +217,48 @@
    * ===================================================================== */
 
   /**
-   * Каркас страницы: шапка + контейнер тела (#trBody).
+   * Сегменты раздела. «Сегодня» — текущий экран, остальные три ведут на свои
+   * страницы. Переключатель стоит вверху, сразу под заголовком: так видно,
+   * что у раздела есть несколько видов, и не нужно скроллить к оглавлению.
+   */
+  function segmentsHtml() {
+    var items = [
+      { key: "today", label: pick("Сегодня", "Today") },
+      { key: "program", label: pick("Программа", "Program") },
+      { key: "progress", label: pick("Прогресс", "Progress") },
+      { key: "exercise", label: pick("Упражнения", "Exercises") }
+    ];
+    var html = "";
+    for (var i = 0; i < items.length; i++) {
+      var active = items[i].key === "today";
+      html +=
+        '<button type="button" class="tr-segment' + (active ? " is-active" : "") +
+        '" data-link="' + items[i].key + '"' + (active ? ' aria-current="page"' : "") + ">" +
+        esc(items[i].label) +
+        "</button>";
+    }
+    return '<nav class="tr-segments" aria-label="' + esc(pick("Разделы тренера", "Coach sections")) + '">' + html + "</nav>";
+  }
+
+  /**
+   * Каркас страницы: шапка корня раздела (без «Назад», с иконкой настроек),
+   * сегменты и контейнер тела (#trBody).
    */
   function shellHtml(subtitle) {
+    var settings =
+      '<button type="button" class="tr-head__action" id="trHeadSettings" ' +
+      'aria-label="' + esc(pick("Настройки тренера", "Coach settings")) + '">' +
+      icon("settings", { size: 22 }) +
+      "</button>";
     return (
-      '<section class="page sub-page tr-page tr-today">' +
-      T.headHtml({ icon: "🧑‍🏫", title: pick("Тренер", "Coach"), subtitle: subtitle || "" }) +
+      '<section class="page tr-page tr-today">' +
+      T.headHtml({
+        back: false,
+        title: pick("Тренировка", "Workout"),
+        subtitle: subtitle || "",
+        actions: settings
+      }) +
+      segmentsHtml() +
       '<div id="trBody"></div>' +
       "</section>"
     );
@@ -208,7 +276,9 @@
     if (ov.active_session_id) {
       var pr = sessionProgress(session);
       var meta = [];
-      if (pr.elapsed) meta.push(pr.elapsed + " " + pick("мин", "min"));
+      // Длительность — только через fmtDuration: брошенная неделю назад
+      // сессия иначе показывает «9532 мин».
+      if (pr.elapsed) meta.push(T.fmtDuration(pr.elapsed));
       if (pr.total) meta.push(pr.done + "/" + pr.total);
       return (
         '<section class="card tr-today-card tr-today-card--progress">' +
@@ -264,7 +334,9 @@
         '<span class="tr-day-badge tr-day-badge--today">' +
         esc(skipped ? pick("Сегодня пропущено", "Skipped today") : pick("Сегодня сделано", "Done today")) +
         "</span>" +
-        '<h2 class="tr-today-card__title">' + esc((skipped ? "" : "✓ ") + (day.title || pick("Тренировка", "Workout"))) + "</h2>" +
+        '<h2 class="tr-today-card__title">' +
+        (skipped ? "" : icon("check", { size: 20, cls: "tr-today-card__check" })) +
+        esc(day.title || pick("Тренировка", "Workout")) + "</h2>" +
         (nextText ? '<p class="tr-today-card__meta">' + esc(nextText) + "</p>" : "") +
         '<div class="tr-today-card__actions">' +
         '<button type="button" class="btn btn-ghost btn-block" id="trDoneProgress">' +
@@ -280,7 +352,7 @@
       return (
         '<section class="card tr-today-card tr-today-card--rest">' +
         '<span class="tr-day-badge tr-day-badge--today">' + esc(pick("План недели выполнен", "Weekly plan complete")) + "</span>" +
-        '<h2 class="tr-today-card__title">' + esc(pick("Неделя закрыта 🎉", "Week complete 🎉")) + "</h2>" +
+        '<h2 class="tr-today-card__title">' + esc(pick("Неделя закрыта", "Week complete")) + "</h2>" +
         '<p class="tr-today-card__meta">' +
         esc(pick("Все тренировки недели сделаны. Отдых — тоже часть плана.", "All workouts this week are done. Rest is part of the plan too.")) +
         "</p>" +
@@ -302,7 +374,7 @@
     return (
       '<section class="card tr-today-card tr-today-card--rest">' +
       '<span class="tr-day-badge tr-day-badge--rest">' + esc(pick("Отдых", "Rest")) + "</span>" +
-      '<h2 class="tr-today-card__title">' + esc(pick("День отдыха 😌", "Rest day 😌")) + "</h2>" +
+      '<h2 class="tr-today-card__title">' + esc(pick("День отдыха", "Rest day")) + "</h2>" +
       (nextLine ? '<p class="tr-today-card__meta">' + esc(nextLine) + "</p>" : "") +
       (day
         ? '<button type="button" class="tr-today-card__link" id="trStart" data-day-id="' + esc(day.id) + '">' +
@@ -336,21 +408,22 @@
       if (status === "today") status = "planned";
       var cls = "tr-week-day tr-week-day--" + status;
       if (date === today) cls += " tr-week-day--today";
-      var mark = String(parseInt(date.split("-")[2], 10));
-      if (status === "done") mark = "✓";
-      else if (status === "skipped") mark = "×";
+      // Выполнено/пропущено читается иконкой, остальные дни — числом месяца.
+      var mark = esc(String(parseInt(date.split("-")[2], 10)));
+      if (status === "done") mark = icon("check", { size: 16 });
+      else if (status === "skipped") mark = icon("close", { size: 14 });
       var title = it && it.title ? it.title : T.label("dayStatus", status);
       html +=
         '<div class="' + cls + '" title="' + esc(title) + '">' +
         '<span class="tr-week-day__label">' + esc(T.label("weekday", i)) + "</span>" +
-        '<span class="tr-week-day__dot">' + esc(mark) + "</span>" +
+        '<span class="tr-week-day__dot">' + mark + "</span>" +
         "</div>";
     }
     return '<div class="tr-week-strip">' + html + "</div>";
   }
 
   /**
-   * Стрик: «🔥 3 недели подряд · 2 из 3 на этой неделе» + прогресс-бар.
+   * Стрик: «3 недели подряд · 2 из 3 на этой неделе» + прогресс-бар.
    */
   function streakHtml(ov) {
     var s = ov.streak || {};
@@ -367,7 +440,7 @@
     return (
       '<section class="card tr-streak">' +
       '<div class="tr-streak__row">' +
-      '<span class="tr-streak__icon" aria-hidden="true">🔥</span>' +
+      '<span class="tr-streak__icon" aria-hidden="true">' + icon("flame", { size: 22 }) + "</span>" +
       '<span class="tr-streak__text">' + esc(main) +
       (sub ? '<span class="tr-streak__sub">' + esc(sub) + "</span>" : "") +
       "</span>" +
@@ -386,11 +459,11 @@
     if (!ov.pending_review) return "";
     return (
       '<button type="button" class="card tr-review-banner" id="trReviewBanner">' +
-      '<span class="tr-review-banner__icon" aria-hidden="true">📝</span>' +
+      '<span class="tr-review-banner__icon" aria-hidden="true">' + icon("chartLine", { size: 22 }) + "</span>" +
       '<span class="tr-review-banner__text">' +
       esc(pick("Недельный разбор готов к запуску", "Your weekly review is ready to run")) +
       "</span>" +
-      '<span class="tr-review-banner__arrow" aria-hidden="true">›</span>' +
+      '<span class="tr-review-banner__arrow" aria-hidden="true">' + icon("chevron", { size: 18 }) + "</span>" +
       "</button>"
     );
   }
@@ -411,24 +484,93 @@
   }
 
   /**
-   * Быстрые ссылки: Программа · Прогресс · Упражнения · Настройки.
+   * Карточка «Самочувствие» — совет по восстановлению (POST /recovery/advice).
+   * Зоны тела — обычные текстовые чипы: список из восьми пунктов читается
+   * быстрее без картинок, а половину зон («шея», «колени») эмодзи и вовсе
+   * не изображают.
    */
-  function linksHtml() {
-    var items = [
-      { key: "program", icon: "📋", label: pick("Программа", "Program") },
-      { key: "progress", icon: "📈", label: pick("Прогресс", "Progress") },
-      { key: "exercise", icon: "📚", label: pick("Упражнения", "Exercises") },
-      { key: "settings", icon: "⚙️", label: pick("Настройки", "Settings") }
-    ];
-    var html = "";
-    for (var i = 0; i < items.length; i++) {
-      html +=
-        '<button type="button" class="tr-link" data-link="' + items[i].key + '">' +
-        '<span class="tr-link__icon" aria-hidden="true">' + items[i].icon + "</span>" +
-        '<span class="tr-link__label">' + esc(items[i].label) + "</span>" +
+  function recoveryCardHtml() {
+    var chips = "";
+    for (var i = 0; i < RECOVERY_ZONES.length; i++) {
+      var z = RECOVERY_ZONES[i];
+      chips +=
+        '<button type="button" class="chip tr-zone' +
+        (state.recoveryZone === z.key ? " chip--active" : "") +
+        '" data-zone="' + z.key + '" aria-pressed="' +
+        (state.recoveryZone === z.key ? "true" : "false") + '">' +
+        esc(pick(z.ru, z.en)) +
         "</button>";
     }
-    return '<div class="tr-links">' + html + "</div>";
+    return (
+      '<section class="card tr-recovery" id="trRecovery">' +
+      '<h3 class="tr-recovery__title">' +
+      icon("heart", { size: 20 }) +
+      "<span>" + esc(pick("Самочувствие", "How you feel")) + "</span>" +
+      "</h3>" +
+      '<p class="tr-recovery__hint">' +
+      esc(pick("Что беспокоит после тренировки?", "What bothers you after training?")) +
+      "</p>" +
+      '<div class="tr-recovery__zones">' + chips + "</div>" +
+      '<label class="field tr-recovery__field">' +
+      '<span class="field__label">' + esc(pick("Подробнее", "More details")) +
+      ' <span class="field__hint">' + esc(pick("(необязательно)", "(optional)")) + "</span></span>" +
+      '<input class="field__input" id="trRecComplaint" type="text" maxlength="200" ' +
+      'placeholder="' + esc(pick(
+        "напр. тянет заднюю поверхность после становой",
+        "e.g. hamstrings feel tight after deadlifts"
+      )) + '">' +
+      "</label>" +
+      '<button type="button" class="btn btn-ghost btn-block" id="trRecGo"' +
+      (state.recoveryZone ? "" : " disabled") + ">" +
+      esc(pick("Получить совет", "Get advice")) +
+      "</button>" +
+      '<div id="trRecResult" class="tr-recovery__result"></div>' +
+      "</section>"
+    );
+  }
+
+  /**
+   * Ответ по восстановлению. «Красные флаги» и дисклеймер обязательны:
+   * тренер не врач, и ответ сервера прямо об этом пишет.
+   */
+  function recoveryResultHtml(res) {
+    function listHtml(title, items, cls, iconName) {
+      if (!items || !items.length) return "";
+      var li = "";
+      for (var i = 0; i < items.length; i++) li += "<li>" + esc(items[i]) + "</li>";
+      return (
+        '<div class="rec-block ' + cls + '">' +
+        '<div class="rec-block__title">' +
+        (iconName ? icon(iconName, { size: 16 }) : "") +
+        "<span>" + esc(title) + "</span>" +
+        "</div><ul>" + li + "</ul></div>"
+      );
+    }
+    var badge = res.is_typical_soreness
+      ? '<span class="rec-badge rec-badge--ok">' +
+        esc(pick("Похоже на обычную крепатуру", "Looks like ordinary soreness")) + "</span>"
+      : '<span class="rec-badge rec-badge--warn">' +
+        esc(pick("Требует осторожности", "Needs caution")) + "</span>";
+    return (
+      '<div class="rec-answer">' +
+      badge +
+      (res.likely_cause ? '<p class="rec-cause">' + esc(res.likely_cause) + "</p>" : "") +
+      listHtml(pick("Сегодня", "Today"), res.today, "rec-block--today") +
+      listHtml(pick("Избегать", "Avoid"), res.avoid, "rec-block--avoid") +
+      (res.training
+        ? '<div class="rec-block rec-block--training">' +
+          '<div class="rec-block__title"><span>' + esc(pick("Когда тренироваться", "When to train")) + "</span></div>" +
+          "<p>" + esc(res.training) + "</p></div>"
+        : "") +
+      listHtml(pick("К врачу, если", "See a doctor if"), res.red_flags, "rec-block--flags", "warning") +
+      '<p class="rec-disclaimer">' +
+      esc(res.disclaimer || pick(
+        "Не является медицинской рекомендацией, проконсультируйтесь со специалистом",
+        "This is not medical advice, consult a specialist"
+      )) +
+      "</p>" +
+      "</div>"
+    );
   }
 
   /**
@@ -437,7 +579,7 @@
   function emptyProgramHtml() {
     return (
       '<section class="card wk-empty tr-empty">' +
-      '<div class="wk-empty__icon" aria-hidden="true">📋</div>' +
+      '<div class="wk-empty__icon" aria-hidden="true">' + icon("list", { size: 36 }) + "</div>" +
       '<p class="wk-empty__title">' + esc(pick("Программа не создана", "No program yet")) + "</p>" +
       '<p class="wk-empty__text">' +
       esc(pick(
@@ -475,9 +617,10 @@
       '<h3 class="tr-section-title">' + esc(pick("Эта неделя", "This week")) + "</h3>" +
       '<section class="card">' + weekStripHtml(ov) + "</section>" +
       streakHtml(ov) +
-      nutritionCardHtml() +
-      linksHtml();
+      recoveryCardHtml() +
+      nutritionCardHtml();
     bindToday(ov);
+    bindRecovery();
     loadNutrition();
   }
 
@@ -557,14 +700,28 @@
         T.go("trainer-progress");
       });
     }
-    var links = state.viewEl ? state.viewEl.querySelectorAll(".tr-link") : [];
-    for (var i = 0; i < links.length; i++) {
-      links[i].addEventListener("click", onLink);
+  }
+
+  /**
+   * Сегменты и кнопка настроек живут в каркасе, а не в теле: вешаем
+   * обработчики один раз при onShow, а не на каждой перерисовке #trBody.
+   */
+  function bindShell() {
+    if (!state.viewEl) return;
+    var segs = state.viewEl.querySelectorAll(".tr-segment");
+    for (var i = 0; i < segs.length; i++) segs[i].addEventListener("click", onLink);
+    var settings = byId("trHeadSettings");
+    if (settings) {
+      settings.addEventListener("click", function () {
+        App.haptic("light");
+        openSettings();
+      });
     }
   }
 
   function onLink(ev) {
     var key = ev.currentTarget.getAttribute("data-link");
+    if (key === "today") return; // уже здесь
     App.haptic("light");
     if (key === "program") {
       App.state.trainerProgramMode = null;
@@ -575,9 +732,85 @@
     } else if (key === "exercise") {
       App.state.trainerExerciseId = null;
       T.go("trainer-exercise");
-    } else if (key === "settings") {
-      openSettings();
     }
+  }
+
+  /* =====================================================================
+   *  САМОЧУВСТВИЕ (совет по восстановлению)
+   * ===================================================================== */
+
+  function bindRecovery() {
+    var box = byId("trRecovery");
+    if (!box) return;
+    var zones = box.querySelector(".tr-recovery__zones");
+    var go = byId("trRecGo");
+    if (zones) {
+      zones.addEventListener("click", function (ev) {
+        var btn = ev.target.closest(".tr-zone");
+        if (!btn) return;
+        state.recoveryZone = btn.getAttribute("data-zone");
+        App.haptic("selection");
+        var all = zones.querySelectorAll(".tr-zone");
+        for (var i = 0; i < all.length; i++) {
+          var on = all[i].getAttribute("data-zone") === state.recoveryZone;
+          all[i].classList.toggle("chip--active", on);
+          all[i].setAttribute("aria-pressed", on ? "true" : "false");
+        }
+        if (go) go.disabled = false;
+      });
+    }
+    if (go) {
+      go.addEventListener("click", function () {
+        var input = byId("trRecComplaint");
+        requestRecovery(state.recoveryZone, input ? input.value : "", go);
+      });
+    }
+  }
+
+  function requestRecovery(zone, complaint, btn) {
+    if (!zone || state.recoveryBusy) return;
+    if (!(App.api && typeof App.api.getRecoveryAdvice === "function")) return;
+    var out = byId("trRecResult");
+    state.recoveryBusy = true;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = pick("Думаем…", "Thinking…");
+    }
+    if (out) out.innerHTML = '<div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line short"></div>';
+    App.haptic("light");
+
+    App.api
+      .getRecoveryAdvice({ zone: zone, complaint: (complaint || "").trim() || null })
+      .then(function (res) {
+        App.haptic("success");
+        var box = byId("trRecResult");
+        if (!box || !res) return;
+        box.innerHTML = recoveryResultHtml(res);
+        // Карточка лежит в середине длинной страницы: без подкрутки ответ
+        // появляется ниже края экрана, и человек его просто не видит.
+        try {
+          box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        } catch (e) {
+          /* старый WebView без опций scrollIntoView — не критично */
+        }
+      })
+      .catch(function (err) {
+        App.haptic("error");
+        var box = byId("trRecResult");
+        if (!box) return;
+        box.innerHTML =
+          '<p class="rec-error">' +
+          esc(T.errMessage(err, pick("Не удалось получить совет", "Failed to get advice"))) +
+          "</p>";
+      })
+      .finally(function () {
+        state.recoveryBusy = false;
+        var b = byId("trRecGo");
+        if (b) {
+          b.disabled = false;
+          b.textContent = pick("Получить совет", "Get advice");
+        }
+      });
   }
 
   /** Настройки = онбординг в режиме редактирования. */
@@ -782,11 +1015,29 @@
         state.loading = false;
         if (!byId("trBody")) return;
         if (err && err.status === 402) {
-          App.paywall(state.viewEl, T.paywallOpts());
+          showPaywall();
           return;
         }
         renderError(err);
       });
+  }
+
+  /**
+   * Paywall раздела. Анкету оставляем открытой: ответы на девять вопросов —
+   * единственное, что человек может сделать до оплаты, и именно они дают
+   * понять, за что он платит. Всё остальное закрыто бэкендом (каждый
+   * маршрут /trainer/* требует подписки), поэтому дальше анкеты без неё
+   * пройти нельзя.
+   */
+  function showPaywall() {
+    if (!state.viewEl) return;
+    var opts = T.paywallOpts();
+    opts.extraLabel = pick("Заполнить анкету", "Fill in the profile");
+    opts.onExtra = function () {
+      App.state.trainerEdit = false;
+      App.navigate("trainer-onboarding");
+    };
+    T.paywall(state.viewEl, opts);
   }
 
   /* =====================================================================
@@ -796,11 +1047,16 @@
   var controller = {
     onShow: function (viewEl) {
       state.viewEl = viewEl;
-      if (!App.requirePremium(viewEl, T.paywallOpts())) return;
       // Первый вход извне раздела — запоминаем, куда возвращаться.
       if (!App.state.trainerOrigin) App.state.trainerOrigin = "today";
+      // Без подписки не ходим за overview вовсе: ответ всё равно 402,
+      // а лишний запрос задерживает показ paywall на время сети.
+      if (!T.isPro()) {
+        showPaywall();
+        return;
+      }
       viewEl.innerHTML = shellHtml("");
-      T.bindBack(viewEl);
+      bindShell();
       load();
     },
 
@@ -809,6 +1065,7 @@
       state.loading = false;
       state.starting = false;
       state.nutritionReq++;
+      state.recoveryBusy = false;
       T.closeSheet(true);
     },
 

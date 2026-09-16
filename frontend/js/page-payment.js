@@ -1,5 +1,5 @@
 /*
- * page-payment.js — страница «Оплата» (💳).
+ * page-payment.js — страница «Оплата».
  *
  * Регистрирует контроллер через App.registerPage("payment", {...}).
  * Публичная ссылка — window.PagePayment.
@@ -13,7 +13,10 @@
  *   2. Карточку выбранного тарифа: иконка, название, срок, цена в рублях,
  *      для годового — «≈ N ₽/мес · экономия M%», честная строка про разовый
  *      платёж без автопродления и заметку для действующего премиума.
- *   3. Что входит в подписку (5 коротких пунктов).
+ *   3. Что входит в подписку — ЕДИНЫЙ список выгод (window.PageSubscription
+ *      .benefits()), тот же, что на витрине подписки: раньше здесь были свои
+ *      пять пунктов, а на витрине — другие восемь, и среди них не было
+ *      AI-тренера.
  *   4. Способ оплаты — банковская карта; текст зависит от провайдера
  *      (cloudpayments / yookassa / none).
  *   5. Итог и кнопку «Оплатить N ₽» -> App.payCard(tariff).
@@ -52,6 +55,11 @@
     return App.escapeHtml(s == null ? "" : String(s));
   }
 
+  /** Иконка из общего набора (js/icons.js). Возвращает строку <svg …>. */
+  function icon(name, opts) {
+    return App.icon ? App.icon(name, opts) : "";
+  }
+
   function haptic(kind) {
     if (App && typeof App.haptic === "function") App.haptic(kind);
   }
@@ -65,32 +73,56 @@
 
   // Оформление тарифов: иконка, название и срок «по умолчанию» (если сервер
   // не прислал days). Тексты — парами [ru, en], перевод при рендере.
+  // icon — имя из общего набора js/icons.js; имена совпадают с витриной
+  // подписки, чтобы один и тот же тариф выглядел одинаково на обоих экранах.
   var TARIFF_META = {
     monthly: {
-      icon: "📅",
+      icon: "calendar",
       title: ["Месячный", "Monthly"],
       term: ["30 дней доступа", "30 days of access"]
     },
     yearly: {
-      icon: "🗓️",
+      icon: "trophy",
       title: ["Годовой", "Yearly"],
       term: ["365 дней доступа", "365 days of access"]
     },
     lifetime: {
-      icon: "♾️",
+      icon: "infinity",
       title: ["Вечный", "Lifetime"],
       term: ["Навсегда", "Forever"]
     }
   };
 
-  // Что входит в подписку — 5 коротких пунктов (пары [ru, en]).
-  var INCLUDES = [
+  // Что входит в подписку. Единственный источник — страница подписки
+  // (window.PageSubscription.benefits): список выгод должен быть ОДИН, иначе
+  // человек видит на витрине одно, а на оплате другое и не понимает, за что
+  // платит. Локальный список — аварийный фолбэк, если скрипт витрины почему-то
+  // не загрузился; AI-тренер и в нём стоит первым.
+  var INCLUDES_FALLBACK = [
+    [
+      "AI-тренер: программа под вас и разбор каждой тренировки",
+      "AI trainer: a program built for you and a review of every workout"
+    ],
     ["Фото и голос без лимита", "Unlimited photo and voice input"],
-    ["AI-тренер и программа тренировок", "AI trainer and workout program"],
     ["Добавки и напоминания", "Supplements and reminders"],
     ["Планировщик меню и «Что съесть?»", "Meal planner and “What to eat?”"],
     ["Недельный отчёт и прогресс", "Weekly report and progress"]
   ];
+
+  /**
+   * Список выгод подписки на текущем языке (единый для всего приложения).
+   * @returns {string[]}
+   */
+  function includesList() {
+    var PS = window.PageSubscription;
+    if (PS && typeof PS.benefits === "function") {
+      var list = PS.benefits();
+      if (list && list.length) return list;
+    }
+    return INCLUDES_FALLBACK.map(function (it) {
+      return pick(it[0], it[1]);
+    });
+  }
 
   // Сколько миллисекунд после нажатия «Оплатить» страница готова показать
   // экран «Подписка активна». Окно нужно, потому что доступ выдаёт ВЕБХУК:
@@ -334,13 +366,20 @@
       '<button type="button" class="sub-back" id="payBack" aria-label="' +
       esc(backLabel) +
       '">' +
-      '<span class="sub-back__arrow" aria-hidden="true">←</span>' +
+      '<span class="sub-back__arrow" aria-hidden="true">' +
+      icon("arrow", { size: 18, rotate: 180 }) +
+      "</span>" +
       "<span>" +
       esc(backLabel) +
       "</span>" +
       "</button>" +
-      '<h1 class="page-title sub-title">💳 ' +
+      '<h1 class="page-title sub-title">' +
+      '<span class="sub-title__icon" aria-hidden="true">' +
+      icon("card", { size: 24 }) +
+      "</span>" +
+      "<span>" +
       esc(pick("Оплата", "Payment")) +
+      "</span>" +
       "</h1>" +
       '<p class="page-subtitle sub-subtitle">' +
       esc(pick("Подписка «Калории»", "«Calories» subscription")) +
@@ -419,7 +458,7 @@
       '<article class="card pay-plan">' +
       '<div class="pay-plan__head">' +
       '<span class="pay-plan__icon" aria-hidden="true">' +
-      esc(meta.icon) +
+      icon(meta.icon, { size: 24 }) +
       "</span>" +
       '<div class="pay-plan__info">' +
       '<div class="pay-plan__title">' +
@@ -451,16 +490,20 @@
    * Блок «Что входит» — короткий список с галочками.
    */
   function includesHtml() {
-    var items = INCLUDES.map(function (it) {
-      return (
-        '<li class="pay-include">' +
-        '<span class="pay-include__check" aria-hidden="true">✓</span>' +
-        '<span class="pay-include__text">' +
-        esc(pick(it[0], it[1])) +
-        "</span>" +
-        "</li>"
-      );
-    }).join("");
+    var items = includesList()
+      .map(function (text) {
+        return (
+          '<li class="pay-include">' +
+          '<span class="pay-include__check" aria-hidden="true">' +
+          icon("check", { size: 18 }) +
+          "</span>" +
+          '<span class="pay-include__text">' +
+          esc(text) +
+          "</span>" +
+          "</li>"
+        );
+      })
+      .join("");
 
     return (
       '<section class="card pay-includes">' +
@@ -513,7 +556,9 @@
       "</h2>" +
       '<div class="pay-method__option pay-method__option--active" role="radio" aria-checked="true" tabindex="-1">' +
       '<span class="pay-method__mark" aria-hidden="true"></span>' +
-      '<span class="pay-method__icon" aria-hidden="true">💳</span>' +
+      '<span class="pay-method__icon" aria-hidden="true">' +
+      icon("card", { size: 22 }) +
+      "</span>" +
       '<span class="pay-method__body">' +
       '<span class="pay-method__title">' +
       esc(pick("Банковская карта", "Bank card")) +
@@ -706,7 +751,9 @@
 
     return (
       '<section class="card pay-success">' +
-      '<div class="pay-success__icon" aria-hidden="true">✅</div>' +
+      '<div class="pay-success__icon" aria-hidden="true">' +
+      icon("check", { size: 28 }) +
+      "</div>" +
       '<div class="pay-success__title">' +
       esc(pick("Подписка активна", "Subscription active")) +
       "</div>" +

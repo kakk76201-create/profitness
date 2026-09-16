@@ -38,6 +38,10 @@
     return document.getElementById(id);
   }
 
+  function icon(name, opts) {
+    return T.icon(name, opts);
+  }
+
   // Метрики графика: ключ точки → подпись.
   var METRICS = ["est_1rm", "max_weight", "volume"];
   // Периоды графика (совпадают с параметром period маршрута /trainer/progress).
@@ -132,7 +136,7 @@
   function shellHtml() {
     return (
       '<section class="page sub-page tr-page tr-progress">' +
-      T.headHtml({ icon: "📈", title: pick("Прогресс", "Progress"), subtitle: "" }) +
+      T.headHtml({ icon: "chartLine", title: pick("Прогресс", "Progress"), subtitle: "" }) +
       '<div id="trProgBody"></div>' +
       '<div id="trProgHistory"></div>' +
       '<div id="trProgReview"></div>' +
@@ -399,18 +403,23 @@
     for (var i = 0; i < items.length; i++) {
       var s = items[i];
       var meta = [];
-      if (s.duration_min) meta.push(s.duration_min + " " + pick("мин", "min"));
+      if (s.duration_min) meta.push(T.fmtDuration(s.duration_min));
       if (s.total_volume_kg) meta.push(fmtVolume(s.total_volume_kg));
       if (s.total_sets) meta.push(s.total_sets + " " + setWord(s.total_sets));
       if (s.calories_burned) meta.push(App.fmt(s.calories_burned) + " " + pick("ккал", "kcal"));
-      if (s.prs_count) meta.push("🏆 " + s.prs_count);
+      // Рекорды — отдельным значком с числом: внутри meta их пришлось бы
+      // склеивать с текстом и экранировать, а иконка в esc() не выживает.
+      var prBadge = s.prs_count
+        ? '<span class="tr-history-item__pr">' + icon("trophy", { size: 14 }) +
+          "<span>" + esc(String(s.prs_count)) + "</span></span>"
+        : "";
       var title = (s.date ? T.shortDate(s.date) : "") + (s.title ? " · " + s.title : "");
       rows +=
         '<div class="tr-history-item" data-session="' + esc(s.id) + '">' +
         '<button type="button" class="tr-history-item__head">' +
         '<span class="tr-history-item__title">' + esc(title) + "</span>" +
-        '<span class="tr-history-item__meta">' + esc(meta.join(" · ")) + "</span>" +
-        '<span class="tr-history-item__chevron" aria-hidden="true">▾</span>' +
+        '<span class="tr-history-item__meta">' + esc(meta.join(" · ")) + prBadge + "</span>" +
+        '<span class="tr-history-item__chevron" aria-hidden="true">' + icon("chevron", { size: 18, rotate: 90 }) + "</span>" +
         "</button>" +
         '<div class="tr-history-item__body" hidden></div>' +
         "</div>";
@@ -447,15 +456,18 @@
         if (!st.is_done) continue;
         var text = T.fmtSet(st.weight_kg, st.reps, st.time_sec);
         if (st.set_type === "warmup") text = pick("Р ", "W ") + text;
-        if (st.is_pr) text = "🏆 " + text;
-        parts.push(text);
+        // Рекорд помечаем иконкой рядом со значением: символ внутри строки
+        // попадал бы в esc() вместе с текстом и печатался кубком-эмодзи.
+        parts.push((st.is_pr ? icon("trophy", { size: 13, cls: "tr-pr-mark" }) : "") + esc(text));
       }
       if (!parts.length && sex.status !== "skipped") continue;
       rows +=
         '<div class="tr-history-set">' +
         '<span class="tr-history-set__name">' + esc(T.exName(sex)) + "</span>" +
         '<span class="tr-history-set__vals">' +
-        esc(sex.status === "skipped" && !parts.length ? pick("пропущено", "skipped") : parts.join(", ")) +
+        (sex.status === "skipped" && !parts.length
+          ? esc(pick("пропущено", "skipped"))
+          : parts.join(", ")) +
         "</span>" +
         "</div>";
     }
@@ -905,7 +917,7 @@
         state.loading = false;
         if (reqId !== state.reqId || !byId("trProgBody")) return;
         if (err && err.status === 402) {
-          App.paywall(state.viewEl, T.paywallOpts());
+          T.paywall(state.viewEl, T.paywallOpts());
           return;
         }
         renderError(err);
@@ -987,7 +999,10 @@
   var controller = {
     onShow: function (viewEl) {
       state.viewEl = viewEl;
-      if (!App.requirePremium(viewEl, T.paywallOpts())) return;
+      if (!T.isPro()) {
+        T.paywall(viewEl, T.paywallOpts());
+        return;
+      }
       state.scrollToReview = App.state.trainerProgressSection === "review";
       App.state.trainerProgressSection = null;
       state.data = null;

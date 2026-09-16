@@ -1,0 +1,616 @@
+/* ============================================================
+   ЭКРАН «ОПРЕДЕЛЕНИЕ» — камера, распознавание, голосовой ввод
+   (js/page-scan.js). Всё оформление берётся из css/tokens.css:
+   литеральных цветов, произвольных кеглей и отступов вне сетки
+   здесь быть не должно.
+
+   Правило поверхностей: фон экрана --bg, карточка = --surface +
+   1px --border БЕЗ тени, вложенный блок внутри карточки =
+   --surface-2 без границы и тени. Тень (--shadow-2) — только у
+   по-настоящему приподнятого: здесь это единственная кнопка
+   спуска затвора, которая физически лежит «над» видоискателем.
+
+   Многие правила ниже ПЕРЕКРЫВАЮТ старые из style.css: селекторы
+   намеренно уточнены до .page-scan, чтобы не трогать другие
+   экраны, использующие те же классы (.field__input, .meal-chip).
+   ============================================================ */
+
+/* ============================================================
+   1. КАМЕРА: рамка видоискателя и ряд управления
+   ============================================================ */
+
+/* Карточка камеры — обычная карточка приложения. Прежняя версия выносила
+   её за края экрана отрицательными полями; теперь ширина общая со всеми
+   экранами, а место под рамку освобождается компактными отступами. */
+.page-scan .scan-cam-card {
+  padding: var(--s3);
+  text-align: center;
+}
+
+/* Видоискатель — вложенный блок внутри карточки: заливка --surface-2,
+   без собственной границы и тени (иначе рамка в рамке). */
+.page-scan .scan-cam-window {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  /* Ограничиваем высоту, чтобы затвор и счётчик влезали без прокрутки. */
+  max-height: 46vh;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  box-shadow: none;
+  overflow: hidden;
+}
+
+/* Запасная пропорция для вебвью без aspect-ratio: 3/4 = 133.33%. */
+@supports not (aspect-ratio: 3 / 4) {
+  .page-scan .scan-cam-window {
+    height: 0;
+    padding-bottom: 133.33%;
+  }
+}
+
+.page-scan .scan-cam-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  background: var(--surface-2);
+}
+
+/* Подпись «Включаем камеру…» поверх пустой рамки, пока ждём getUserMedia. */
+.scan-cam-boot {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+/* --- Объяснение доступа ВНУТРИ рамки (не отдельным экраном) --- */
+.scan-cam-ask {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s3);
+  padding: var(--s4);
+  text-align: center;
+}
+
+.scan-cam-ask__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--accent);
+}
+
+.scan-cam-ask__text {
+  max-width: 280px;
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--muted);
+}
+
+/* Кнопка выдачи доступа: обычная CTA, но по ширине содержимого. */
+.scan-cam-ask__btn {
+  width: auto;
+  min-height: var(--tap-min);
+  padding: 0 var(--s5);
+}
+
+/* --- Ряд управления: галерея | затвор | голос --- */
+.scan-controls {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--s3);
+  margin-top: var(--s4);
+}
+
+/* Боковое действие: иконка и подпись столбиком, зона нажатия 44px. */
+.scan-control {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s1);
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+  padding: var(--s2);
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.scan-control:active {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.scan-control__icon {
+  display: inline-flex;
+}
+
+.scan-control__label {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+}
+
+/* СПУСК ЗАТВОРА — главная кнопка экрана. Единственный по-настоящему
+   приподнятый элемент страницы, поэтому только у него есть --shadow-2
+   (заливка + тень, без границы: три слоя сразу — визуальный шум). */
+.scan-shutter {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  box-shadow: var(--shadow-2);
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease),
+    opacity var(--dur-fast) var(--ease);
+}
+
+/* Белое кольцо внутри — узнаваемая метафора кнопки спуска. */
+.scan-shutter__ring {
+  position: absolute;
+  inset: 6px;
+  border: 2.5px solid var(--on-accent);
+  border-radius: var(--radius-pill);
+}
+
+.scan-shutter:not(:disabled):active {
+  background: var(--accent-press);
+  transform: scale(.94);
+}
+
+/* Пока поток не подключён, снимать нечего — кнопка явно недоступна. */
+.scan-shutter:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+/* Подсказка под рядом управления. */
+.page-scan .scan-cam-hint {
+  margin: var(--s3) 0 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--muted);
+}
+
+/* Строка целевой даты («Добавится в день: …») над карточкой камеры. */
+.page-scan .scan-cam-date {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  margin: 0 0 var(--s3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--muted);
+}
+
+.page-scan .scan-cam-date .icon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   2. СЧЁТЧИК БЕСПЛАТНЫХ СКАНИРОВАНИЙ
+   ============================================================ */
+
+.page-scan .scan-counter {
+  margin: var(--s3) 0 0;
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+}
+
+.page-scan .scan-counter--premium {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: var(--fw-semibold);
+}
+
+.page-scan .scan-counter--free {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.page-scan .scan-counter--empty {
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-weight: var(--fw-semibold);
+}
+
+/* ============================================================
+   3. ФОЛБЭК-ДРОПЗОНА (камера не поддерживается окружением)
+   ============================================================ */
+
+.page-scan .scan-dropzone__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: var(--s3);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.page-scan .scan-dropzone__hint {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--muted);
+  margin-bottom: var(--s4);
+}
+
+/* ============================================================
+   4. ПРЕВЬЮ И РЕЗУЛЬТАТ
+   ============================================================ */
+
+.page-scan .scan-preview {
+  padding: 0;
+  overflow: hidden;
+}
+
+.page-scan .scan-preview__img,
+.page-scan .result-card__img {
+  display: block;
+  width: 100%;
+  max-height: 320px;
+  object-fit: cover;
+}
+
+.page-scan .scan-preview__status {
+  padding: var(--s3) var(--s4);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+/* Бейдж уверенности ИИ — вложенная плашка, без границы и тени. */
+.page-scan .scan-edit-confidence {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  margin-bottom: var(--s4);
+  padding: var(--s1) var(--s3);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.page-scan .scan-edit-confidence--low {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.page-scan .scan-edit-confidence--medium {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.page-scan .scan-edit-confidence--high {
+  background: var(--accent-soft);
+  color: var(--success);
+}
+
+/* --- Редактируемые поля результата ---
+   Результат распознавания ВСЕГДА правится руками: ИИ ошибается в весе
+   и названии чаще, чем кажется. Поля крупные (зона нажатия 44+),
+   контур — --border-strong (3:1 к белому), фокус подсвечивается акцентом. */
+.page-scan .field__input {
+  min-height: var(--tap-min);
+  padding: 0 var(--s3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-body);
+}
+
+.page-scan .field__input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.page-scan .field__label {
+  margin-bottom: var(--s1);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--muted);
+}
+
+.page-scan .scan-edit-field {
+  margin-bottom: var(--s3);
+}
+
+.page-scan .scan-edit-field--macro {
+  margin-bottom: 0;
+}
+
+.page-scan .scan-edit-macros {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--s2);
+  margin-bottom: var(--s3);
+}
+
+.page-scan .scan-edit-hint {
+  margin: 0 0 var(--s3);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+  color: var(--muted);
+}
+
+/* Чипы приёма пищи: контур волосяной, выбранный — заливка акцентом. */
+.page-scan .meal-chip {
+  min-height: var(--tap-min);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+}
+
+.page-scan .meal-chip.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+/* ============================================================
+   5. ЭКРАН ЛИМИТА: пейволл ПОВЕРХ сохранённого кадра
+   ============================================================ */
+
+/* Снятый кадр не выбрасывается при 402 — он лежит под пейволлом и ждёт
+   подписки. Приглушаем его яркостью (а не цветной плёнкой поверх),
+   чтобы текст читался, а кадр оставался узнаваемым. */
+.scan-hold {
+  position: relative;
+  margin-bottom: var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.scan-hold__img {
+  display: block;
+  width: 100%;
+  max-height: 200px;
+  object-fit: cover;
+  filter: brightness(.45) saturate(.85);
+}
+
+.scan-hold__veil {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  padding: var(--s4);
+  text-align: center;
+  color: var(--on-accent);
+  text-shadow: 0 1px 3px var(--text);
+}
+
+.scan-hold__icon {
+  display: inline-flex;
+}
+
+.scan-hold__text {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-normal);
+}
+
+/* ============================================================
+   6. ПЕЙВОЛЛ (собственный рендер страницы, классы .paywall*)
+   ============================================================ */
+
+.page-scan .paywall-card {
+  padding: var(--s5) var(--s4);
+  text-align: center;
+}
+
+.page-scan .paywall-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto var(--s3);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: none;
+}
+
+.page-scan .paywall-title {
+  font-size: var(--fs-h2);
+  font-weight: var(--fw-bold);
+  margin-bottom: var(--s2);
+}
+
+.page-scan .paywall-desc {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--muted);
+  margin-bottom: var(--s4);
+}
+
+.page-scan .paywall-bullet-mark {
+  width: 24px;
+  height: 24px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.page-scan .paywall-bullet-text {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+}
+
+/* Плашка «нужна подписка»: заливка без границы (фон + граница + тень
+   одновременно — запрещённое сочетание). */
+.page-scan .paywall-lock {
+  margin-bottom: var(--s3);
+  padding: var(--s3);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+}
+
+.page-scan .paywall-lock-icon {
+  display: inline-flex;
+  color: var(--danger);
+}
+
+.page-scan .paywall-lock-text {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--danger);
+}
+
+/* ============================================================
+   7. ОШИБКИ И ЗАГЛУШКИ
+   ============================================================ */
+
+.page-scan .error-card__icon,
+.page-scan .scan-voice-unavailable__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: var(--s3);
+  border-radius: var(--radius-pill);
+}
+
+.page-scan .error-card__icon {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.page-scan .scan-voice-unavailable__icon {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.page-scan .error-card__msg {
+  font-size: var(--fs-body);
+  line-height: var(--lh-normal);
+  margin-bottom: var(--s4);
+}
+
+/* Раскрывающийся отладочный блок (виден только при DEBUG_AI). Его заголовок —
+   тоже кнопка, поэтому доводим зону нажатия до общего минимума; display не
+   меняем, чтобы у <summary> остался системный треугольник раскрытия. */
+.page-scan .ai-debug__sum {
+  box-sizing: border-box;
+  min-height: var(--tap-min);
+  padding: var(--s3) var(--s4);
+  font-size: var(--fs-sm);
+}
+
+/* ============================================================
+   8. ГОЛОСОВОЙ ВВОД
+   ============================================================ */
+
+/* Иконка микрофона в индикаторе записи (внутри пульсирующего круга). */
+.page-scan .scan-voice-rec__mic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+
+.page-scan .scan-voice-transcript {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--muted);
+}
+
+/* Строка распознанного блюда — вложенный блок карточки. */
+.page-scan .scan-voice-item {
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  padding: var(--s3);
+}
+
+/* Удаление строки: зона нажатия 44px (была 36px — мимо пальца). */
+.page-scan .scan-voice-item__remove {
+  width: var(--tap-min);
+  height: var(--tap-min);
+  min-height: var(--tap-min);
+  border-radius: var(--radius);
+  color: var(--danger);
+}
+
+.page-scan .scan-voice-item__remove:active {
+  background: var(--danger-soft);
+}
+
+/* Компактные числовые поля Ккал/Б/Ж/У: ниже обычного поля, но не ниже
+   минимальной зоны нажатия. */
+.page-scan .scan-voice-input--num {
+  min-height: var(--tap-min);
+  padding: 0 var(--s2);
+}
+
+.page-scan .scan-voice-num__label {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  color: var(--muted);
+}
+
+.page-scan .scan-voice-item__qty {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  color: var(--muted);
+}
+
+/* ============================================================
+   9. УЗКИЕ ЭКРАНЫ
+   ============================================================ */
+@media (max-width: 360px) {
+  .page-scan .scan-cam-window {
+    max-height: 40vh;
+  }
+
+  .scan-shutter {
+    width: 64px;
+    height: 64px;
+  }
+
+  .scan-controls {
+    gap: var(--s2);
+  }
+
+  .page-scan .scan-edit-macros {
+    gap: var(--s1);
+  }
+}

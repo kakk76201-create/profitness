@@ -1,0 +1,789 @@
+/* ============================================================
+   Раздел «profile» — стили компонентов, появившихся при редизайне.
+   Сюда же входят экраны подписки (sub-*), добавок (sup-*) и мастера
+   онбординга (onb-*): ими владеет тот же набор страниц.
+
+   Всё оформление берётся из css/tokens.css: литеральных цветов,
+   произвольных кеглей и отступов вне сетки здесь быть не должно.
+   Старые правила этих разделов пока живут в style.css и вытесняются
+   по мере переписывания экранов.
+
+   Файл подключается ПОСЛЕ style.css, поэтому правила с той же
+   специфичностью здесь перекрывают прежние — этим и пользуемся,
+   чтобы не трогать style.css.
+
+   ГЛАВНОЕ ИЗМЕНЕНИЕ: экран профиля больше не выкладывает семь секций
+   и лист настроек одновременно. Всё разложено по группам ОДНОСТРОЧНЫХ
+   разделов (.acc-sec), которые раскрываются по нажатию.
+   ============================================================ */
+
+/* ============================================================
+   ГРУППЫ РАЗДЕЛОВ
+   ============================================================ */
+
+/* Атрибут hidden должен побеждать раскладку, которую мы задаём классам.
+   В style.css общего правила нет, поэтому у элемента с display:flex
+   (форма ввода веса, кнопка .btn) атрибут hidden не срабатывал вовсе:
+   форма замера висела на экране всегда, а «Записать вес» не пряталась. */
+.page-account [hidden] {
+  display: none !important;
+}
+
+.acc-group {
+  margin-bottom: var(--s5);
+}
+
+/* Надзаголовок группы: называет роль строк под ним, а не их содержимое. */
+.acc-group__title {
+  margin: 0 var(--s1) var(--s2);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+}
+
+/* Карточка-список: строки разделяются волосяной линией, а не зазором —
+   иначе каждая строка читалась бы как отдельная карточка. */
+.acc-list {
+  padding: 0;
+  overflow: hidden;
+  margin-bottom: 0;
+}
+
+/* ============================================================
+   РАЗДЕЛ-СТРОКА
+   ============================================================ */
+
+.acc-sec + .acc-sec {
+  border-top: 1px solid var(--border);
+}
+
+/* Скрытый раздел (например, трекинг цикла в мужском профиле)
+   не должен «побеждать» атрибут hidden своей раскладкой. */
+.acc-sec[hidden] {
+  display: none !important;
+}
+
+/* Шапка — во всю ширину строки, тап-таргет выше минимального. */
+.acc-sec__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  width: 100%;
+  min-height: 60px;
+  padding: var(--s3) var(--s4);
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.acc-sec__head:active {
+  background: var(--surface-2);
+}
+
+/* Иконка раздела на мягкой подложке — вложенный блок внутри карточки,
+   поэтому без границы и тени. */
+.acc-sec__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* Закрытый раздел не притворяется активным: подложка нейтральная. */
+.acc-sec--locked .acc-sec__icon {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.acc-sec__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  flex: 1;
+  min-width: 0;
+}
+
+.acc-sec__title {
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+
+.acc-sec__hint {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+/* Пустая подпись не должна занимать высоту строки. */
+.acc-sec__hint:empty {
+  display: none;
+}
+
+/* Шеврон смотрит вправо, у раскрытого — вниз. Поворот делаем в CSS,
+   а не второй иконкой: набор от этого не растёт. */
+.acc-sec__mark {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: transform var(--dur) var(--ease);
+}
+
+.acc-sec--open .acc-sec__mark {
+  transform: rotate(90deg);
+}
+
+/* У закрытого раздела на месте шеврона замок — его не крутим. */
+.acc-sec--locked .acc-sec__mark {
+  transform: none;
+}
+
+.acc-sec__body {
+  padding: 0 var(--s4) var(--s4);
+}
+
+/* Первый элемент тела не должен прижиматься к шапке вплотную. */
+.acc-sec__body > *:first-child {
+  margin-top: 0;
+}
+
+/* ============================================================
+   ШАПКА ПРОФИЛЯ И КАРТОЧКА ПОДПИСКИ
+   ============================================================ */
+
+/* Заглушка аватара: раньше кегль 30px держал эмодзи, теперь внутри SVG. */
+.acc-avatar--empty {
+  color: var(--on-accent);
+  background: var(--accent);
+  font-size: 0;
+}
+
+/* Иконка и стрелка карточки подписки наследуют цвет, а не рисуются
+   эмодзи: прежний кегль 22px больше ничего не держит. */
+.acc-sub-card__icon {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0;
+}
+
+.acc-sub-card__arrow {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0;
+}
+
+/* ============================================================
+   ВЕС: ЗАПИСЬ ЗАМЕРА РЯДОМ С ГРАФИКОМ
+   Раньше график ничего не предлагал, а вес вводился единственным полем
+   внутри свёрнутой формы «Мои параметры» — связь была неочевидна.
+   ============================================================ */
+
+/* Кнопка, форма и график идут в колонку с одинаковым зазором. Зазор задаём
+   здесь, а не отступами у детей: скрытые (hidden) кнопка и форма не должны
+   оставлять после себя пустое место. */
+.acc-wt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.acc-wt__add {
+  width: 100%;
+}
+
+/* Компактный ввод: поле и кнопка в одну строку. */
+.acc-wt__form {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s2);
+}
+
+.acc-wt__field {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.acc-wt__save {
+  flex-shrink: 0;
+  width: auto;
+  min-height: 52px;
+}
+
+/* Собственный отступ графика из style.css сложился бы с зазором колонки. */
+.acc-wt .wt-chart-wrap {
+  margin-top: 0;
+}
+
+/* Пустое состояние графика — КНОПКА, а не инструкция «зайдите в другой
+   раздел»: до этой правки человеку некуда было нажать. */
+.wt-empty__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin: 0 auto var(--s3);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0;
+}
+
+.wt-empty__btn {
+  width: auto;
+  min-width: 180px;
+  margin: var(--s4) auto 0;
+}
+
+/* ============================================================
+   УВЕДОМЛЕНИЯ — ОДИН ЭКРАН
+   Еда, тренировка, добавки, вечерняя сводка и недельный разбор —
+   одинаковыми строками. Прежде это были четыре разных вида на четырёх
+   экранах, и человеку приходилось помнить, где что лежит.
+   ============================================================ */
+
+/* Список строк уведомлений: строки разделяются волосяной линией,
+   поэтому именно колонка без зазора, а не сетка с промежутками. */
+.acc-nlist {
+  display: flex;
+  flex-direction: column;
+}
+
+.acc-nrow {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-height: 56px;
+  padding: var(--s2) 0;
+  border-top: 1px solid var(--border);
+}
+
+.acc-nrow:first-child {
+  border-top: none;
+}
+
+.acc-nrow__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.acc-nrow__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  flex: 1;
+  min-width: 0;
+}
+
+.acc-nrow__title {
+  font-size: var(--fs-body);
+  font-weight: var(--fw-medium);
+  color: var(--text);
+}
+
+.acc-nrow__hint {
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+  color: var(--muted);
+}
+
+/* Переход в чужие настройки (например, к анкете тренера). */
+.acc-nrow__go {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.acc-nrow__go:active {
+  background: var(--surface-2);
+}
+
+/* Дополнительные поля строки (времена) — с отступом под иконку,
+   чтобы визуально принадлежать своей строке. */
+.acc-nrow__extra {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: 0 0 var(--s3) calc(32px + var(--s3));
+}
+
+/* ---------- Тумблер ---------- */
+
+.acc-switch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+/* Геометрия дорожки и бегунка кратна 4px. box-sizing здесь content-box
+   намеренно: при border-box рамка съедала бы 2px высоты, и одинаковые
+   отступы бегунка сверху и снизу перестали бы быть одинаковыми. */
+.acc-switch__track {
+  position: relative;
+  display: block;
+  box-sizing: content-box;
+  width: 44px;
+  height: 24px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.acc-switch__knob {
+  position: absolute;
+  top: var(--s1);
+  left: var(--s1);
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+  transition: transform var(--dur) var(--ease);
+}
+
+.acc-switch--on .acc-switch__track {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.acc-switch--on .acc-switch__knob {
+  transform: translateX(20px);
+}
+
+/* ---------- Времена приёмов пищи ---------- */
+
+.acc-time {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.acc-time__input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Зона нажатия удаления — 44px: соседнее поле времени стоит вплотную,
+   и промах по мелкой мишени стирал не то время. */
+.acc-time__del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.acc-time__del:active {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.acc-time__add {
+  min-height: var(--tap-min);
+}
+
+.acc-time__field {
+  margin-bottom: 0;
+}
+
+/* ============================================================
+   ТОЧЕЧНЫЕ ПРАВКИ ПОД ИКОНКИ (бывшие эмодзи)
+   Всюду гасим кегль, которым держался эмодзи, и даём иконке цвет.
+   ============================================================ */
+
+/* ---------- История по дням ---------- */
+
+.hist-cal__nav {
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+  width: var(--tap-min);
+  height: var(--tap-min);
+  color: var(--text);
+  font-size: 0;
+}
+
+.hist-cal__nav:disabled {
+  opacity: .4;
+  cursor: default;
+}
+
+/* Легенда: плашка + подпись. В style.css каждому span легенды подставляется
+   квадрат ::before, а вложенная .hist-cal__cell тянет высоту ячейки
+   календаря (36px) — легенда превращалась в два больших блока с пустым
+   квадратом перед каждым. Гасим лишние псевдоэлементы и ужимаем плашку. */
+.hist-cal__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.hist-cal__legend .hist-cal__legend-item::before,
+.hist-cal__legend .hist-cal__cell::before {
+  display: none;
+}
+
+.hist-cal__legend .hist-cal__cell {
+  width: 12px;
+  height: 12px;
+  min-height: 0;
+  border-radius: var(--s1);
+}
+
+/* ---------- Трекинг цикла ---------- */
+
+.cyc-phase__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--data-cycle);
+  font-size: 0;
+}
+
+.cyc-fact__icon,
+.cyc-tip__icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0;
+}
+
+/* ---------- Недельный AI-отчёт ---------- */
+
+.rep-insight__mark {
+  display: inline-flex;
+  align-items: center;
+  height: calc(var(--fs-sm) * var(--lh-normal));
+  color: var(--accent);
+  font-size: 0;
+}
+
+.rep-focus__icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent);
+  font-size: 0;
+}
+
+/* Подпись кнопки — отдельный узел: её текст подменяется на «Формируем…»,
+   а иконка остаётся на месте. min-width позволяет длинной русской строке
+   сжиматься внутри кнопки, а не распирать её за край экрана. */
+.rep-gen-btn__label,
+.sup-ai-btn__label {
+  min-width: 0;
+}
+
+.rep-empty__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin: 0 auto var(--s3);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0;
+}
+
+/* ---------- Фото-прогресс ---------- */
+
+.prog-privacy {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+/* «До» — нижний слой шторки сравнения; «после» лежит поверх (z-index:1
+   в style.css) и обрезается слайдером. Явный слой избавляет от зависимости
+   от порядка узлов в разметке. */
+.prog-compare__before {
+  z-index: 0;
+}
+
+.prog-empty__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin: 0 auto var(--s3);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0;
+}
+
+/* Удаление фото: 44px вместо прежних 26×26. Кнопка лежит поверх
+   миниатюры, и на такой мишени промах был почти гарантирован.
+   Подложка — плотная поверхность из палитры, а не полупрозрачная заливка:
+   тёмная плёнка поверх фото не описана ни одним токеном, а на светлом
+   снимке белый крестик на ней всё равно терялся. */
+.prog-item__del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  top: 0;
+  right: 0;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  border-radius: 0 var(--radius-sm) 0 var(--radius);
+  background: var(--surface);
+  color: var(--danger);
+  font-size: 0;
+}
+
+/* ============================================================
+   ЭКРАН ПОДПИСКИ (sub-*)
+   ============================================================ */
+
+/* Заголовок с иконкой: раньше эмодзи стоял прямо в тексте заголовка
+   и попадал в переводимую строку. */
+.sub-title {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.sub-title__icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.sub-back__arrow {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0;
+}
+
+.sub-benefit__check {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0;
+}
+
+.sub-status__icon,
+.sub-tariff__icon {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0;
+}
+
+/* Бесплатный и истёкший статусы — нейтральная подложка: зелёный кружок
+   на них обещал бы доступ, которого нет. */
+.sub-status--free .sub-status__icon,
+.sub-status--expired .sub-status__icon {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+/* ============================================================
+   МАСТЕР ОНБОРДИНГА (onb-*)
+   ============================================================ */
+
+.onb-toggle__emoji {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0;
+}
+
+.onb-toggle__mark {
+  color: var(--accent);
+  font-size: 0;
+}
+
+.onb-toggle--on .onb-toggle__mark {
+  color: var(--on-accent);
+}
+
+/* «Пропустить» — текстовая ссылка высотой 29px: промахнуться по ней было
+   проще, чем попасть. Текст не увеличиваем, растим только зону нажатия. */
+.onb-skip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-min);
+  padding: 0 var(--s3);
+}
+
+/* ============================================================
+   ДОБАВКИ (sup-*)
+   ============================================================ */
+
+/* Зоны удаления — 44px вместо прежних 32×32. */
+.sup-item__del,
+.sup-rem-item__del {
+  width: var(--tap-min);
+  height: var(--tap-min);
+  min-height: var(--tap-min);
+  color: var(--muted);
+  font-size: 0;
+}
+
+.sup-item__del:active,
+.sup-rem-item__del:active {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* Пока идёт запрос на удаление — кнопка приглушена, но иконка на месте
+   (подменять содержимое текстом нельзя: внутри SVG). */
+.sup-item__del.is-busy,
+.sup-rem-item__del.is-busy {
+  opacity: .5;
+}
+
+.sup-item__badge {
+  gap: var(--s1);
+}
+
+.sup-ai-chip__icon {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0;
+}
+
+/* Чипы целей и «Использовать» у AI-совета наследуют 40px из style.css —
+   до минимальных 44px не дотягивали. Кегль подписи не трогаем. */
+.sup-ai-chip,
+.sup-ai-suggest__use {
+  min-height: var(--tap-min);
+}
+
+/* Строки с галочкой («Напоминать о приёме», выбор добавок в напоминании):
+   нажимается весь label, но он был высотой 20 и 40px. Сам квадратик
+   чекбокса не трогаем — растёт только строка. */
+.sup-form__check,
+.sup-rem-pick {
+  min-height: var(--tap-min);
+}
+
+.sup-empty__icon,
+.sup-rem-empty__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin: 0 auto var(--s3);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0;
+}
+
+.sup-error__icon,
+.sup-rem-error__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin: 0 auto var(--s3);
+  border-radius: var(--radius-pill);
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: 0;
+}
+
+/* Дисклеймер БАД: иконка предупреждения и текст в одну строку. */
+.sup-ai-disclaimer {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  color: var(--text);
+}
+
+.sup-ai-disclaimer .icon {
+  flex-shrink: 0;
+  color: var(--danger);
+}
+
+/* Кнопка «Купить» — иконка корзины рядом с подписью. */
+.sup-ai-suggest__buy {
+  gap: var(--s2);
+}
+
+/* ============================================================
+   УЗКИЕ ЭКРАНЫ (360px и меньше)
+   ============================================================ */
+
+@media (max-width: 360px) {
+  .acc-sec__head {
+    gap: var(--s2);
+    padding: var(--s3);
+  }
+
+  .acc-sec__body {
+    padding: 0 var(--s3) var(--s3);
+  }
+
+  /* Ввод веса не помещается в строку — складываем вертикально. */
+  .acc-wt__form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .acc-wt__save {
+    width: 100%;
+  }
+
+  .acc-nrow__extra {
+    padding-left: 0;
+  }
+}

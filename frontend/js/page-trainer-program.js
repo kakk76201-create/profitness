@@ -10,7 +10,7 @@
  *     генерации: шапка с названием и «Почему так», лента недель с фазами,
  *     раскрывающиеся дни, кнопки «Начать программу» и «Пересобрать»;
  *   • обычный — та же страница как «Программа»: прогресс-бар текущей недели,
- *     статусы дней (✓ / пропущено / план), «Архивировать и создать новую».
+ *     статусы дней (выполнено / пропущено / план), «Архивировать и создать новую».
  *
  * Источник данных: App.state.trainerProgram (положила страница, вызвавшая
  * Trainer.openProgram) либо GET /trainer/program. 404 → «Программа не создана».
@@ -33,6 +33,10 @@
 
   function byId(id) {
     return document.getElementById(id);
+  }
+
+  function icon(name, opts) {
+    return T.icon(name, opts);
   }
 
   // Внутреннее состояние контроллера.
@@ -121,7 +125,7 @@
   function shellHtml() {
     return (
       '<section class="page sub-page tr-page tr-program">' +
-      T.headHtml({ icon: "📋", title: pick("Программа", "Program"), subtitle: "" }) +
+      T.headHtml({ icon: "list", title: pick("Программа", "Program"), subtitle: "" }) +
       '<div id="trPgmBody"></div>' +
       "</section>"
     );
@@ -198,7 +202,10 @@
   }
 
   /**
-   * Лента недель с фазами (База · Рост · Пик · Разгрузка). Тап — выбор недели.
+   * Недели с фазами (База · Рост · Пик · Разгрузка). Тап — выбор недели.
+   * Раньше это была горизонтальная лента: недель максимум восемь, все они
+   * помещаются на экран переносом, а прокрутка внутри вертикальной страницы
+   * прячет часть выбора и конфликтует с жестом самой страницы.
    */
   function weeksStripHtml(p) {
     var weeks = parseInt(p.weeks, 10) || 0;
@@ -220,7 +227,7 @@
     return (
       '<section class="card tr-program-weeks">' +
       '<h3 class="tr-section-title">' + esc(pick("Недели", "Weeks")) + "</h3>" +
-      '<div class="tr-week-strip tr-week-strip--weeks">' + html + "</div>" +
+      '<div class="tr-week-grid">' + html + "</div>" +
       "</section>"
     );
   }
@@ -290,13 +297,15 @@
     if (muscles.length) meta.push(T.labels("muscle", muscles));
 
     var cls = "card acc-fold tr-plan-day";
+    // Статус дня несёт иконка перед названием, а не символ внутри текста:
+    // так он не попадает в переводимую строку и не ломает её при переносе.
     var mark = "";
     if (day.status === "done") {
       cls += " tr-plan-day--done";
-      mark = "✓ ";
+      mark = icon("check", { size: 16, cls: "tr-plan-day__mark" });
     } else if (day.status === "skipped") {
       cls += " tr-plan-day--skipped";
-      mark = "× ";
+      mark = icon("close", { size: 14, cls: "tr-plan-day__mark" });
     }
 
     var when = "";
@@ -304,16 +313,16 @@
     else if (day.weekday != null) when = T.label("weekday", day.weekday);
 
     var title =
-      mark + pick("День ", "Day ") + (day.day_index || index + 1) +
+      pick("День ", "Day ") + (day.day_index || index + 1) +
       (day.title ? " — " + day.title : "");
 
     return (
       '<section class="' + cls + '" data-day-index="' + index + '">' +
       '<button type="button" class="acc-fold__head" data-fold>' +
-      '<span class="acc-fold__title">' + esc(title) +
+      '<span class="acc-fold__title">' + mark + esc(title) +
       '<span class="tr-plan-day__meta">' + esc([when].concat(meta).filter(Boolean).join(" · ")) + "</span>" +
       "</span>" +
-      '<span class="acc-fold__chevron" aria-hidden="true">▾</span>' +
+      '<span class="acc-fold__chevron" aria-hidden="true">' + icon("chevron", { size: 18, rotate: 90 }) + "</span>" +
       "</button>" +
       '<div class="acc-fold__body" hidden>' +
       planBlockHtml(pick("Разминка", "Warm-up"), day.warmup) +
@@ -369,7 +378,7 @@
   function emptyHtml() {
     return (
       '<section class="card wk-empty tr-empty">' +
-      '<div class="wk-empty__icon" aria-hidden="true">📋</div>' +
+      '<div class="wk-empty__icon" aria-hidden="true">' + icon("list", { size: 36 }) + "</div>" +
       '<p class="wk-empty__title">' + esc(pick("Программа не создана", "No program yet")) + "</p>" +
       '<p class="wk-empty__text">' +
       esc(pick(
@@ -653,7 +662,7 @@
         state.loading = false;
         if (!byId("trPgmBody")) return;
         if (err && err.status === 402) {
-          App.paywall(state.viewEl, T.paywallOpts());
+          T.paywall(state.viewEl, T.paywallOpts());
           return;
         }
         if (err && err.status === 404) {
@@ -671,17 +680,27 @@
   var controller = {
     onShow: function (viewEl) {
       state.viewEl = viewEl;
-      if (!App.requirePremium(viewEl, T.paywallOpts())) return;
       state.mode = App.state.trainerProgramMode === "preview" ? "preview" : null;
       state.busy = false;
       state.loading = false;
-      viewEl.innerHTML = shellHtml();
-      T.bindBack(viewEl);
 
       // Превью после генерации приходит на руки готовым объектом; в обычном
       // режиме всегда читаем свежую программу с сервера (статусы дней).
       var passed = App.state.trainerProgram;
       App.state.trainerProgram = null;
+
+      // Превью показываем БЕЗ проверки подписки: программа уже в руках,
+      // сети не требуется, а платить, не увидев план, никто не должен.
+      // Стена остаётся там, где начинается платная работа, — на старте
+      // сессии и на любом запросе к /trainer/*.
+      if (!(state.mode === "preview" && passed) && !T.isPro()) {
+        T.paywall(viewEl, T.paywallOpts());
+        return;
+      }
+
+      viewEl.innerHTML = shellHtml();
+      T.bindBack(viewEl);
+
       if (state.mode === "preview" && passed) {
         state.week = passed.current_week || 1;
         renderProgram(passed);

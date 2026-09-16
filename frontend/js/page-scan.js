@@ -1,5 +1,5 @@
 /*
- * page-scan.js — страница «Определение» (📷)
+ * page-scan.js — страница «Определение» (камера и распознавание еды)
  * Контроллер window.PageScan, регистрируется через App.registerPage("scan", {...}).
  *
  * Назначение страницы:
@@ -16,12 +16,27 @@
  * Подписка (Этап 1): сканирование РАБОТАЕТ для бесплатных пользователей, но с
  *   дневным лимитом. На экране загрузки показываем счётчик «Осталось N из 3
  *   бесплатных сканирований» (для premium — «Безлимит»/скрыт). Если бэкенд
- *   отвечает 402 про исчерпанный лимит — вместо экрана ошибки показываем единый
- *   App.paywall (контроль доступа серверный, фронт лишь показывает).
+ *   отвечает 402 про исчерпанный лимит — вместо экрана ошибки показываем пейволл
+ *   над сохранённым кадром (контроль доступа серверный, фронт лишь показывает).
  *
  * Локализация (RU/EN): весь видимый пользователю текст оборачивается в
  *   App.pick("рус","eng") В МОМЕНТ РЕНДЕРА, чтобы смена языка давала нужный
  *   текст после перерисовки. Идентификаторы/ключи/console — НЕ переводятся.
+ *
+ * ТРИ ПРАВИЛА, КОТОРЫЕ ЗДЕСЬ НЕЛЬЗЯ НАРУШАТЬ (каждое чинит реальную потерю
+ * пользовательских данных, см. историю правок):
+ *   1. СПУСК ЗАТВОРА — кнопка на самом экране (#scan-shutter). Центральная
+ *      кнопка таббара (app.js -> PageScan.capture) НИЧЕГО НЕ РАЗРУШАЕТ: если
+ *      результат или снимок уже на экране, она молча подсказывает, а не
+ *      сбрасывает состояние. Раньше повторный тап звал reset() и стирал кадр
+ *      вместе со всеми правками полей.
+ *   2. ИСЧЕРПАННЫЙ ЛИМИТ (402) НЕ СТИРАЕТ КАДР. renderScanLimit сохраняет
+ *      файл и превью (pending), а пейволл рисует поверх снимка. Кадр переживает
+ *      уход на страницу подписки и возврат — после оплаты анализ продолжается
+ *      с тем же фото.
+ *   3. ЗАПИСЬ УХОДИТ В ВЫБРАННЫЙ ДЕНЬ. Перед переходом в дневник выставляем
+ *      App.state.diaryReturnDate = дата записи: дневник откроется на том дне,
+ *      куда реально легла еда, а не на «сегодня».
  */
 (function () {
   "use strict";
@@ -32,6 +47,14 @@
   function L(ru, en) {
     if (App && typeof App.pick === "function") return App.pick(ru, en);
     return ru;
+  }
+
+  // Иконка из общего набора (js/icons.js) — ВОЗВРАЩАЕТ СТРОКУ '<svg …>'.
+  // Иконки собираются отдельно от подписей: раньше они были зашиты внутрь
+  // App.pick("<эмодзи> Оценить", ...) и попадали в переводимый текст.
+  function icon(name, opts) {
+    if (App && typeof App.icon === "function") return App.icon(name, opts);
+    return "";
   }
 
   // ===== Внутреннее состояние контроллера =====
@@ -45,6 +68,7 @@
     edited: null,          // текущие отредактированные значения формы { dish_name, weight, calories, proteins, fats, carbs }
     mealType: "breakfast", // выбранный приём пищи по умолчанию
     scans: null,           // последний ответ getScansRemaining { used, limit, remaining, is_premium } или null
+    analyzing: false,      // идёт ли сейчас запрос анализа (для точных подсказок)
   };
 
   // ===== Внутреннее состояние ГОЛОСОВОГО ввода (Этап 2) =====
@@ -76,7 +100,24 @@
     video: null,          // ссылка на <video> элемент текущего экрана
     starting: false,      // идёт ли сейчас запрос getUserMedia (защита от гонок)
     token: 0,             // монотонный токен запроса камеры (отбрасываем устаревшие)
+    live: false,          // подключён ли поток к <video> (готов ли спуск затвора)
   };
+
+  // ===== ОТЛОЖЕННЫЙ КАДР (снимок, упёршийся в лимит 402) =====
+  // Человек снял блюдо, бэкенд ответил «лимит исчерпан». Кадр НЕ выбрасываем:
+  // он ждёт здесь, пока пользователь ходит на страницу подписки и обратно.
+  // active=true заставляет onShow/onHide обходить обычную зачистку состояния,
+  // иначе возвращаться после оплаты было бы не к чему.
+  var pending = {
+    active: false,  // есть ли отложенный кадр, ждущий подписки
+    date: null,     // целевая дата записи на момент съёмки (App.state.scanDate)
+  };
+
+  // Сбрасывает отложенный кадр (кадр отснят заново / добавлен / отменён).
+  function pendingClear() {
+    pending.active = false;
+    pending.date = null;
+  }
 
   // Ключ localStorage: пользователь хотя бы раз успешно включил камеру.
   // Пока флаг НЕ выставлен — первый визит НЕ дёргает getUserMedia автоматически,
@@ -120,6 +161,7 @@
     cam.token += 1;
     cam.starting = false;
     cam.active = false;
+    cam.live = false;
     if (cam.video) {
       try {
         cam.video.srcObject = null;
@@ -178,6 +220,7 @@
   function reset() {
     revokePreview();
     camStopStream();
+    pendingClear();
     state.file = null;
     state.result = null;
     state.base = null;
@@ -275,9 +318,11 @@
     if (d === App.todayStr()) return "";
     return (
       '<p class="scan-cam-date">' +
-        "📅 " +
-        esc(L("Добавится в день: ", "Will be added to: ")) +
-        esc(humanScanDate(d)) +
+        icon("calendar", { size: 16 }) +
+        "<span>" +
+          esc(L("Добавится в день: ", "Will be added to: ")) +
+          esc(humanScanDate(d)) +
+        "</span>" +
       "</p>"
     );
   }
@@ -431,12 +476,16 @@
   }
 
   // --- Экран 1: ГЛАВНЫЙ экран сканера ---
-  // По умолчанию показываем ЖИВУЮ камеру ВСТРОЕННУЮ в страницу (renderCamera +
-  // startCamera через getUserMedia). Разрешение на камеру Telegram/браузер
-  // спрашивает ОДИН раз при первом использовании: после «Разрешить» доступ
-  // запоминается и больше не запрашивается — камера сразу открывается встроенной.
-  // Если камера не поддерживается / доступ запрещён / поток не удалось получить —
-  // мягкий фолбэк на системный выбор файла (renderUploadFallback, без превью).
+  // Камера с НАСТОЯЩИМ спуском затвора на самом экране: рамка с живым видео,
+  // под ней ряд управления «галерея — круглая кнопка съёмки — голос».
+  // Разрешение на камеру объясняем ВНУТРИ рамки, а не отдельным полноэкранным
+  // шагом: объяснение стоит ровно там, где появится картинка, и не заслоняет
+  // остальной экран.
+  // Режимы renderCamera:
+  //   "live"   — поток запрашивается/подключён: в рамке <video>, затвор активен;
+  //   "ask"    — доступ ещё ни разу не выдавался: в рамке объяснение + кнопка;
+  //   "denied" — доступ отклонён или поток не получен: причина + «Попробовать снова».
+  // Если камера не поддерживается окружением — renderUploadFallback (дропзона).
   function renderUpload() {
     // Перед любым повторным показом главного экрана гасим прошлый поток камеры,
     // чтобы не держать два потока одновременно.
@@ -447,20 +496,18 @@
       return;
     }
     // ПЕРВЫЙ ВИЗИТ (флаг scan_cam_ok не выставлен): не дёргаем getUserMedia сами —
-    // показываем каркас камеры с нейтральной заглушкой и кнопкой «Включить
-    // камеру». Поток запросим только по явному тапу пользователя (task 1).
+    // рисуем рамку с объяснением доступа. Поток запросим по явному тапу.
     if (!camPreviouslyGranted()) {
-      renderCamera(true);
+      renderCamera("ask");
       return;
     }
-    // Камера уже разрешалась ранее — рисуем каркас и сразу запрашиваем поток.
-    // При отказе/ошибке — переключаемся на фолбэк.
-    renderCamera(false);
+    // Камера уже разрешалась ранее — рисуем экран и сразу запрашиваем поток.
+    renderCamera("live");
     startCamera();
   }
 
-  // --- Экран 1a: ФОЛБЭК главного экрана — прежняя дропзона с выбором файла ---
-  // Используется, если живая камера недоступна/запрещена/не поддерживается.
+  // --- Экран 1a: ФОЛБЭК главного экрана — дропзона с системным выбором файла ---
+  // Используется, если живая камера в принципе не поддерживается окружением.
   function renderUploadFallback() {
     viewEl.innerHTML =
       '<section class="page page-scan">' +
@@ -476,7 +523,7 @@
           "</p>" +
         "</header>" +
         '<div class="card scan-dropzone" id="scan-dropzone">' +
-          '<div class="scan-dropzone__icon" aria-hidden="true">📷</div>' +
+          '<span class="scan-dropzone__icon">' + icon("camera", { size: 28 }) + "</span>" +
           '<p class="scan-dropzone__hint">' +
             esc(L(
               "Чёткое фото одной порции даёт точный результат.",
@@ -486,11 +533,13 @@
           // Скрытый input: открываем камеру/галерею кнопкой.
           '<input type="file" id="scan-file" accept="image/*" capture="environment" hidden>' +
           '<button type="button" class="btn btn-cta btn-block" id="scan-pick">' +
-            esc(L("Сфотографировать / Загрузить", "Take photo / Upload")) +
+            icon("camera", { size: 18 }) +
+            "<span>" + esc(L("Сфотографировать / Загрузить", "Take photo / Upload")) + "</span>" +
           "</button>" +
           // Голосовой ввод (Этап 2, премиум). Отдельная кнопка под фото.
           '<button type="button" class="btn btn-ghost btn-block scan-voice-btn" id="scan-voice-pick">' +
-            "🎤 " + esc(L("Записать голосом", "Record by voice")) +
+            icon("mic", { size: 18 }) +
+            "<span>" + esc(L("Записать голосом", "Record by voice")) + "</span>" +
           "</button>" +
           // Счётчик бесплатных сканирований (заполняется асинхронно из state.scans).
           '<div id="scan-counter-slot">' + scanCounterHtml() + "</div>" +
@@ -526,53 +575,56 @@
     loadScansRemaining();
   }
 
-  // --- Экран 1b: ЖИВАЯ камера (видеопоток + подсказка + голос + галерея) ---
-  // Рисует каркас: видео-окно с нейтральной подложкой (поток подключается в
-  // startCamera), подсказку «нажмите 📷 в меню», счётчик, кнопку голоса и
-  // вторичную ссылку «Загрузить из галереи» (открывает скрытый input).
-  //   needsEnable=true — первый визит: показываем заглушку + кнопку «Включить
-  //   камеру» вместо автозапуска потока (task 1). Иначе — обычный живой экран.
-  function renderCamera(needsEnable) {
+  // Содержимое рамки, когда видео ещё нет: зачем нужен доступ к камере и кнопка,
+  // выдающая его (task 6 — объяснение живёт В РАМКЕ, а не отдельным экраном).
+  //   denied=true — доступ был запрошен и отклонён: меняем текст и подпись кнопки.
+  function camAskHtml(denied) {
+    return (
+      '<div class="scan-cam-ask" id="scan-cam-ask">' +
+        '<span class="scan-cam-ask__icon">' + icon("camera", { size: 28 }) + "</span>" +
+        '<p class="scan-cam-ask__text">' +
+          esc(
+            denied
+              ? L(
+                  "Доступ к камере не выдан. Разрешите его в настройках телефона или загрузите фото из галереи.",
+                  "Camera access was denied. Allow it in your phone settings or upload a photo from the gallery."
+                )
+              : L(
+                  "Нужен доступ к камере: видоискатель остаётся на устройстве, на сервер уходит только снятый вами кадр.",
+                  "Camera access is needed: the viewfinder stays on your device, only the frame you take is sent to the server."
+                )
+          ) +
+        "</p>" +
+        '<button type="button" class="btn btn-cta scan-cam-ask__btn" id="scan-cam-enable">' +
+          icon("camera", { size: 18 }) +
+          "<span>" +
+            esc(denied ? L("Попробовать снова", "Try again") : L("Включить камеру", "Enable camera")) +
+          "</span>" +
+        "</button>" +
+      "</div>"
+    );
+  }
+
+  // --- Экран 1b: ЖИВАЯ камера (рамка + спуск затвора + галерея и голос) ---
+  function renderCamera(mode) {
     cam.active = true;
+    // Затвор активируется только когда поток реально подключён к <video>
+    // (revealCameraLive). Кнопка, стреляющая в пустоту, читается как сломанная.
+    cam.live = false;
 
     // Целевая дата добавления (task 5): если отличается от сегодня — показываем
     // подсказку прямо на главном экране камеры, чтобы пользователь понимал,
     // что снимок уйдёт в другой день.
     var dateHintHtml = scanDateHintHtml();
 
-    // Окно камеры. На ПЕРВОМ визите (needsEnable) вместо живого видео рисуем
-    // нейтральную заглушку .scan-cam-enable с кнопкой «Включить камеру» (task 1);
-    // <video> добавим динамически после успешного getUserMedia (revealCameraLive).
-    // При активной камере — сразу окно с <video> и круглый затвор под ним (task 2).
-    var windowHtml = needsEnable
-      ? '<div class="scan-cam-enable" id="scan-cam-enable">' +
-          '<div class="scan-cam-enable__icon" aria-hidden="true">📷</div>' +
-          '<p class="scan-cam-enable__text">' +
-            esc(L(
-              "Включите камеру, чтобы снять блюдо прямо в приложении.",
-              "Enable the camera to capture your dish right in the app."
-            )) +
-          "</p>" +
-          '<span class="scan-cam-enable__btn">' +
-            "📷 " + esc(L("Включить камеру", "Enable camera")) +
-          "</span>" +
-        "</div>"
-      : '<div class="scan-cam-window">' +
-          '<video class="scan-cam-video" id="scan-cam-video" autoplay playsinline muted></video>' +
-        "</div>";
-    // Отдельного круглого затвора под превью НЕТ: спуск — центральная
-    // кнопка-камера в нижней панели (повторный тап по ней снимает кадр).
-
-    // Подсказка под окном: при активной камере указываем на нижнюю кнопку-камеру;
-    // на первом визите вспомогательный текст уже внутри заглушки — не дублируем.
-    var hintHtml = needsEnable
-      ? ""
-      : '<p class="scan-cam-hint">' +
-          esc(L(
-            "Наведите на блюдо и нажмите кнопку камеры внизу, чтобы снять",
-            "Point at your dish and tap the camera button below to capture"
-          )) +
-        "</p>";
+    // Содержимое рамки: видео (ждём поток) либо объяснение доступа.
+    var frameInner =
+      mode === "live"
+        ? '<video class="scan-cam-video" id="scan-cam-video" autoplay playsinline muted></video>' +
+          '<span class="scan-cam-boot" id="scan-cam-boot">' +
+            esc(L("Включаем камеру…", "Starting the camera…")) +
+          "</span>"
+        : camAskHtml(mode === "denied");
 
     viewEl.innerHTML =
       '<section class="page page-scan">' +
@@ -583,40 +635,52 @@
         "</header>" +
         dateHintHtml +
         '<div class="card scan-cam-card">' +
-          windowHtml +
-          hintHtml +
+          '<div class="scan-cam-window">' + frameInner + "</div>" +
           // Счётчик бесплатных сканирований (заполняется асинхронно из state.scans).
           '<div id="scan-counter-slot">' + scanCounterHtml() + "</div>" +
-          '<div class="scan-cam-actions">' +
-            // Голосовой ввод (Этап 2, премиум). Та же кнопка, что и в фолбэке.
-            '<button type="button" class="btn btn-ghost btn-block scan-voice-btn" id="scan-voice-pick">' +
-              "🎤 " + esc(L("Записать голосом", "Record by voice")) +
+          // Ряд управления камерой: галерея слева, спуск по центру, голос справа.
+          '<div class="scan-controls">' +
+            '<button type="button" class="scan-control" id="scan-cam-gallery">' +
+              '<span class="scan-control__icon">' + icon("inbox", { size: 20 }) + "</span>" +
+              '<span class="scan-control__label">' +
+                esc(L("Галерея", "Gallery")) +
+              "</span>" +
             "</button>" +
-            // Вторичная ссылка: системный выбор фото (камера/галерея).
-            '<button type="button" class="scan-cam-gallery" id="scan-cam-gallery">' +
-              esc(L("Загрузить из галереи", "Upload from gallery")) +
+            '<button type="button" class="scan-shutter" id="scan-shutter" disabled ' +
+              'aria-label="' + esc(L("Снять кадр", "Take a photo")) + '">' +
+              '<span class="scan-shutter__ring" aria-hidden="true"></span>' +
+            "</button>" +
+            '<button type="button" class="scan-control scan-voice-btn" id="scan-voice-pick">' +
+              '<span class="scan-control__icon">' + icon("mic", { size: 20 }) + "</span>" +
+              '<span class="scan-control__label">' +
+                esc(L("Голос", "Voice")) +
+              "</span>" +
             "</button>" +
           "</div>" +
+          '<p class="scan-cam-hint" id="scan-cam-hint">' +
+            esc(
+              mode === "live"
+                ? L("Наведите на блюдо и нажмите круглую кнопку", "Point at your dish and tap the round button")
+                : L("Снимок можно сделать после доступа к камере", "You can take a photo once the camera is allowed")
+            ) +
+          "</p>" +
           // Скрытый input для выбора файла из галереи/камеры системы.
           '<input type="file" id="scan-file" accept="image/*" capture="environment" hidden>' +
         "</div>" +
       "</section>";
 
-    // Заглушка «Включить камеру» (первый визит): по тапу превращаем плейсхолдер
-    // в живое окно с <video> + затвором, затем запрашиваем поток. При успехе
-    // startCamera запомнит разрешение (scan_cam_ok) — дальше камера сразу.
+    // Кнопка выдачи доступа внутри рамки: показываем видео и запрашиваем поток.
     var enableBtn = viewEl.querySelector("#scan-cam-enable");
     if (enableBtn) {
       enableBtn.addEventListener("click", function () {
         haptic("light");
-        revealCameraLive();
         startCamera();
       });
     }
 
     var fileInput = viewEl.querySelector("#scan-file");
 
-    // Вторичная ссылка «Загрузить из галереи» открывает системный выбор файла.
+    // «Галерея» открывает системный выбор файла.
     var galleryBtn = viewEl.querySelector("#scan-cam-gallery");
     if (galleryBtn) {
       galleryBtn.addEventListener("click", function () {
@@ -634,6 +698,14 @@
       });
     }
 
+    // СПУСК ЗАТВОРА на самом экране — главная кнопка этой страницы.
+    var shutterBtn = viewEl.querySelector("#scan-shutter");
+    if (shutterBtn) {
+      shutterBtn.addEventListener("click", function () {
+        shutter();
+      });
+    }
+
     // Голосовой ввод — отдельный поток (премиум-гейтинг внутри).
     var voiceBtn = viewEl.querySelector("#scan-voice-pick");
     if (voiceBtn) {
@@ -647,10 +719,38 @@
     loadScansRemaining();
   }
 
+  // Спуск затвора: снимает кадр с живого видео. Вызывается кнопкой на экране
+  // (#scan-shutter) и центральной кнопкой таббара, когда снимать действительно
+  // нечего другого (см. PageScan.capture).
+  function shutter() {
+    haptic("medium");
+
+    // Доступ ещё не выдан (рамка показывает объяснение) либо поток так и не
+    // дошёл до <video> (cam.live) — запрашиваем камеру заново.
+    if (!cam.active || !cam.stream || !cam.live) {
+      // Запрос уже идёт: второй getUserMedia отменил бы первый и начал всё
+      // заново — человек ждал бы доступ дважды.
+      if (cam.starting) {
+        toast(L("Запрашиваем доступ к камере…", "Requesting camera access…"));
+        return;
+      }
+      startCamera();
+      return;
+    }
+    if (captureFromVideo()) return;
+
+    // Поток есть, но кадров ещё нет: молчаливая кнопка читается как сломанная.
+    toast(L(
+      "Камера ещё готовится — попробуйте через секунду",
+      "The camera is still warming up — try again in a second"
+    ));
+  }
+
   // Запрашивает видеопоток камеры и подключает его к <video> главного экрана.
   // Защита от гонок: каждый вызов получает свой token; если за время запроса
-  // экран сменился (token устарел) — поток сразу останавливается. При любом
-  // отказе/ошибке — мягкий фолбэк на дропзону.
+  // экран сменился (token устарел) — поток сразу останавливается. При отказе
+  // остаёмся на экране камеры и показываем причину прямо в рамке (не уводим
+  // человека на другой экран).
   function startCamera() {
     if (!cameraSupported()) {
       renderUploadFallback();
@@ -659,6 +759,7 @@
     cam.token += 1;
     var myToken = cam.token;
     cam.starting = true;
+    cam.active = true;
 
     var constraints = { video: { facingMode: "environment" }, audio: false };
 
@@ -675,8 +776,12 @@
         cam.starting = false;
 
         // Успешно получили поток — запоминаем разрешение камеры, чтобы при
-        // следующих визитах открывать её сразу, без кнопки «Включить» (task 1).
+        // следующих визитах открывать её сразу, без кнопки «Включить».
         markCamGranted();
+
+        // Заменяем объяснение доступа живым видео (затвор включим ниже, когда
+        // поток будет реально привязан к <video>).
+        revealCameraLive();
 
         var videoEl = viewEl && viewEl.querySelector("#scan-cam-video");
         if (!videoEl) {
@@ -687,9 +792,6 @@
         }
         cam.video = videoEl;
 
-        // Если поток запросили по кнопке «Включить камеру» (первый визит) —
-        // прячем заглушку и показываем круглый затвор поверх живого видео.
-        revealCameraLive();
         try {
           videoEl.srcObject = stream;
         } catch (e) {
@@ -702,6 +804,9 @@
             return;
           }
         }
+        // Поток подключён — только теперь затвор имеет смысл.
+        cam.live = true;
+        camShutterReady();
         // play() может вернуть промис, который отклоняется в фоне — гасим.
         try {
           var p = videoEl.play();
@@ -711,44 +816,51 @@
         }
       })
       .catch(function () {
-        // Доступ запрещён/нет камеры/не поддерживается — фолбэк на дропзону.
-        // Останавливать нечего (поток не получен), но сбросим флаги через
-        // camStopStream для единообразия и инвалидации токена.
+        // Доступ запрещён / камера занята / нет устройства. Остаёмся на своём
+        // экране: причина и повтор показываются в рамке, галерея рядом.
         if (myToken !== cam.token) return; // экран уже сменился — не трогаем
         camStopStream();
-        renderUploadFallback();
+        if (!viewEl) return;
+        renderCamera("denied");
       });
   }
 
-  // Превращает заглушку первого визита (.scan-cam-enable) в живое окно камеры:
-  // окно с <video> + подсказка + круглый затвор (task 1/2). Идемпотентна: если
-  // заглушки нет (камера уже была активна) — ничего не делает. <video> получит
-  // поток в startCamera; сам поток здесь не запрашиваем.
+  // Превращает рамку с объяснением доступа в живое окно камеры: ставит <video>.
+  // Идемпотентна: если видео уже стоит (режим "live"), просто снимает заглушку
+  // «Включаем камеру…».
+  // ЗАТВОР ЗДЕСЬ НЕ ВКЛЮЧАЕМ: рамка готова раньше, чем поток реально привязан
+  // к <video>, и в ветке «видео-узел исчез» привязки не будет вовсе. Кнопку
+  // оживляет camShutterReady() — ровно там, где выставляется cam.live.
   function revealCameraLive() {
     if (!viewEl) return;
-    var placeholder = viewEl.querySelector("#scan-cam-enable");
-    if (!placeholder || !placeholder.parentNode) return; // уже в живом режиме
+    var win = viewEl.querySelector(".scan-cam-window");
+    if (!win) return;
 
-    // Собираем окно с видео.
-    var win = document.createElement("div");
-    win.className = "scan-cam-window";
-    win.innerHTML =
-      '<video class="scan-cam-video" id="scan-cam-video" autoplay playsinline muted></video>';
+    if (!win.querySelector("#scan-cam-video")) {
+      win.innerHTML =
+        '<video class="scan-cam-video" id="scan-cam-video" autoplay playsinline muted></video>';
+    } else {
+      var boot = win.querySelector("#scan-cam-boot");
+      if (boot && boot.parentNode) boot.parentNode.removeChild(boot);
+    }
+  }
 
-    // Подсказка под окном: спуск — нижняя кнопка-камера (отдельного круглого
-    // затвора под превью нет).
-    var hint = document.createElement("p");
-    hint.className = "scan-cam-hint";
-    hint.textContent = L(
-      "Наведите на блюдо и нажмите кнопку камеры внизу, чтобы снять",
-      "Point at your dish and tap the camera button below to capture"
-    );
+  // Включает спуск затвора и меняет подсказку под рядом управления.
+  // Вызывается ТОЛЬКО когда поток уже подключён к <video> (cam.live === true):
+  // кнопка, стреляющая в пустоту, читается как сломанная.
+  function camShutterReady() {
+    if (!viewEl) return;
 
-    // Заменяем заглушку окном + подсказкой (в том же месте).
-    var parent = placeholder.parentNode;
-    parent.insertBefore(win, placeholder);
-    parent.insertBefore(hint, placeholder);
-    parent.removeChild(placeholder);
+    var shutterBtn = viewEl.querySelector("#scan-shutter");
+    if (shutterBtn) shutterBtn.disabled = false;
+
+    var hint = viewEl.querySelector("#scan-cam-hint");
+    if (hint) {
+      hint.textContent = L(
+        "Наведите на блюдо и нажмите круглую кнопку",
+        "Point at your dish and tap the round button"
+      );
+    }
   }
 
   // Останавливает «сырой» MediaStream (когда он не сохранён в cam.stream).
@@ -947,10 +1059,14 @@
         // Подсказка о целевой дате (task 5) — только если она отличается от сегодня.
         scanDateHintHtml() +
         '<button type="button" class="btn btn-cta btn-block" id="scan-add">' +
-          esc(L("Добавить в рацион", "Add to diary")) +
+          icon("plus", { size: 18 }) +
+          "<span>" + esc(L("Добавить в рацион", "Add to diary")) + "</span>" +
         "</button>" +
+        // Пересъёмка — ЯВНОЕ действие пользователя. Никакой другой путь
+        // (в том числе кнопка таббара) не имеет права стереть этот результат.
         '<button type="button" class="btn btn-ghost btn-block" id="scan-reset">' +
-          esc(L("Отмена", "Cancel")) +
+          icon("camera", { size: 18 }) +
+          "<span>" + esc(L("Снять заново", "Retake")) + "</span>" +
         "</button>" +
       "</section>";
 
@@ -977,7 +1093,7 @@
       addToDiary();
     });
 
-    // Отмена — полный сброс к экрану загрузки.
+    // Пересъёмка — полный сброс к экрану камеры (только по явному тапу).
     viewEl.querySelector("#scan-reset").addEventListener("click", function () {
       haptic("light");
       reset();
@@ -1065,11 +1181,12 @@
           "</h1>" +
         "</header>" +
         '<div class="card error-card">' +
-          '<div class="error-card__icon" aria-hidden="true">⚠️</div>' +
+          '<span class="error-card__icon">' + icon("warning", { size: 28 }) + "</span>" +
           // Текст в прокручиваемом блоке: при DEBUG_AI сюда приходит и сырой ответ.
           '<div class="error-card__msg">' + esc(message) + "</div>" +
           '<button type="button" class="btn btn-cta btn-block" id="scan-retry">' +
-            esc(L("Повторить", "Retry")) +
+            icon("refresh", { size: 18 }) +
+            "<span>" + esc(L("Повторить", "Retry")) + "</span>" +
           "</button>" +
           '<button type="button" class="btn btn-ghost btn-block" id="scan-back">' +
             esc(L("Выбрать другое фото", "Choose another photo")) +
@@ -1094,42 +1211,158 @@
     });
   }
 
-  // --- Экран лимита сканирований (единый paywall) ---
-  // Вместо экрана ошибки при HTTP 402 (исчерпан лимит) показываем заблокированную
-  // фичу через App.paywall. Контроль доступа серверный — фронт лишь показывает.
-  // Освобождаем превью и сбрасываем выбранный файл, чтобы не зависнуть на превью.
+  // ===== Пейволл страницы =====
+  // Собственный рендер вместо App.paywall: тот вставляет иконки эмодзи
+  // и затирает контейнер целиком, а на экране лимита рядом с пейволлом обязан
+  // уцелеть снятый кадр. Классы намеренно те же (.paywall*), чтобы оформление
+  // осталось единым с остальными заглушками приложения.
+  //   opts: { iconName, title, desc, bullets:[...] }
+  function paywallCardHtml(opts) {
+    opts = opts || {};
+    var bullets = Array.isArray(opts.bullets) ? opts.bullets : [];
+    var bulletsHtml = "";
+    if (bullets.length) {
+      var items = "";
+      for (var i = 0; i < bullets.length; i++) {
+        items +=
+          '<li class="paywall-bullet">' +
+            '<span class="paywall-bullet-mark">' + icon("check", { size: 16 }) + "</span>" +
+            '<span class="paywall-bullet-text">' + esc(bullets[i]) + "</span>" +
+          "</li>";
+      }
+      bulletsHtml = '<ul class="paywall-bullets">' + items + "</ul>";
+    }
+
+    return (
+      '<div class="card paywall-card">' +
+        '<span class="paywall-icon">' + icon(opts.iconName || "lock", { size: 28 }) + "</span>" +
+        '<h2 class="paywall-title">' + esc(opts.title || L("Премиум-функция", "Premium feature")) + "</h2>" +
+        '<p class="paywall-desc">' +
+          esc(opts.desc || L(
+            "Эта возможность доступна по подписке",
+            "This feature is available with a subscription"
+          )) +
+        "</p>" +
+        bulletsHtml +
+      "</div>" +
+      '<div class="paywall-lock">' +
+        '<span class="paywall-lock-icon">' + icon("lock", { size: 16 }) + "</span>" +
+        '<span class="paywall-lock-text">' +
+          esc(L("Недоступно — нужна подписка", "Unavailable — subscription required")) +
+        "</span>" +
+      "</div>"
+    );
+  }
+
+  // HTML кнопки перехода на подписку (бинд — bindPaywallCta).
+  function paywallCtaHtml() {
+    return (
+      '<button type="button" class="btn btn-cta btn-block paywall-cta" id="scan-paywall-cta">' +
+        icon("gem", { size: 18 }) +
+        "<span>" + esc(L("Оформить подписку", "Get subscription")) + "</span>" +
+      "</button>"
+    );
+  }
+
+  // Навешивает переход на страницу подписки (App.goSubscription помнит, откуда
+  // пришли, поэтому «Назад» там вернёт на сканер — и к отложенному кадру).
+  function bindPaywallCta() {
+    var btn = viewEl && viewEl.querySelector("#scan-paywall-cta");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      haptic("light");
+      if (App && typeof App.goSubscription === "function") {
+        App.goSubscription();
+      } else if (App && typeof App.navigate === "function") {
+        App.navigate("subscription");
+      }
+    });
+  }
+
+  // --- Экран лимита сканирований (пейволл ПОВЕРХ снятого кадра) ---
+  // HTTP 402 приходит уже ПОСЛЕ съёмки: человек навёл камеру, снял блюдо и ждал
+  // ответа. Выбрасывать кадр здесь — значит заставить его снимать тарелку заново
+  // после оплаты, а еда к тому моменту уже съедена. Поэтому кадр и состояние
+  // остаются в памяти (pending), пейволл рисуется над затемнённым снимком, и
+  // возврат со страницы подписки продолжает работу с тем же фото (см. onShow).
   function renderScanLimit() {
     if (App && typeof App.scrollTop === "function") App.scrollTop();
 
-    revokePreview();
-    state.file = null;
-    state.result = null;
-    state.base = null;
-    state.edited = null;
+    // Камеру гасим (мы не на экране съёмки), но ФАЙЛ И ПРЕВЬЮ НЕ ТРОГАЕМ.
+    camStopStream();
 
-    if (App && typeof App.paywall === "function") {
-      App.paywall(viewEl, {
-        icon: "📷",
-        title: L("Лимит сканирований", "Scan limit reached"),
-        desc: L(
-          "На сегодня бесплатные сканирования закончились",
-          "You've used all free scans for today"
-        ),
-        bullets: [
-          L("Безлимитные сканирования по подписке", "Unlimited scans with a subscription"),
-          L("AI-распознавание еды по фото", "AI food recognition from photos"),
-        ],
-      });
-      return;
+    var src = state.previewUrl || "";
+    var hasShot = !!(state.file && src);
+    if (hasShot) {
+      pending.active = true;
+      pending.date = targetDate();
     }
-    // Запасной вариант, если единый paywall недоступен — обычный экран ошибки.
-    renderError(
-      L(
-        "На сегодня бесплатные сканирования закончились. Оформите подписку для безлимита.",
-        "You've used all free scans for today. Subscribe for unlimited access."
-      ),
-      "upload"
-    );
+
+    // Снимок под пейволлом: приглушён, с подписью «кадр сохранён» — видно, что
+    // работа не пропала и после подписки продолжится ровно с него.
+    var shotHtml = hasShot
+      ? '<div class="scan-hold">' +
+          '<img class="scan-hold__img" src="' + esc(src) + '" alt="' +
+            esc(L("Снятый кадр", "Captured photo")) + '">' +
+          '<div class="scan-hold__veil">' +
+            '<span class="scan-hold__icon">' + icon("lock", { size: 20 }) + "</span>" +
+            '<span class="scan-hold__text">' +
+              esc(L("Кадр сохранён — продолжим с него", "Photo saved — we'll continue with it")) +
+            "</span>" +
+          "</div>" +
+        "</div>"
+      : "";
+
+    viewEl.innerHTML =
+      '<section class="page page-scan">' +
+        '<header class="page-head">' +
+          '<h1 class="page-title">' +
+            esc(L("Лимит сканирований", "Scan limit reached")) +
+          "</h1>" +
+        "</header>" +
+        shotHtml +
+        paywallCardHtml({
+          iconName: "camera",
+          title: L("Лимит сканирований", "Scan limit reached"),
+          desc: L(
+            "На сегодня бесплатные сканирования закончились",
+            "You've used all free scans for today"
+          ),
+          bullets: [
+            L("Безлимитные сканирования по подписке", "Unlimited scans with a subscription"),
+            L("AI-распознавание еды по фото", "AI food recognition from photos"),
+          ],
+        }) +
+        paywallCtaHtml() +
+        // Повтор нужен на случай, если подписка оформлена в этом же сеансе:
+        // кадр на месте, остаётся просто отправить его ещё раз.
+        (hasShot
+          ? '<button type="button" class="btn btn-ghost btn-block" id="scan-limit-retry">' +
+              icon("refresh", { size: 18 }) +
+              "<span>" + esc(L("Повторить анализ", "Retry analysis")) + "</span>" +
+            "</button>"
+          : "") +
+        '<button type="button" class="btn btn-ghost btn-block" id="scan-limit-back">' +
+          icon("camera", { size: 18 }) +
+          "<span>" + esc(L("Снять другое фото", "Take another photo")) + "</span>" +
+        "</button>" +
+      "</section>";
+
+    bindPaywallCta();
+
+    var retryBtn = viewEl.querySelector("#scan-limit-retry");
+    if (retryBtn) {
+      retryBtn.addEventListener("click", function () {
+        haptic("medium");
+        renderPreview();
+        analyze();
+      });
+    }
+
+    viewEl.querySelector("#scan-limit-back").addEventListener("click", function () {
+      haptic("light");
+      reset();
+    });
   }
 
   // ===== Логика =====
@@ -1143,6 +1376,8 @@
     }
     // Уходим с главного экрана — освобождаем камеру (не держим поток в фоне).
     camStopStream();
+    // Новый кадр заменяет отложенный: ждать больше нечего.
+    pendingClear();
     // Освобождаем предыдущее превью и готовим новое.
     revokePreview();
     state.file = file;
@@ -1165,6 +1400,9 @@
       return;
     }
     var fileAtStart = state.file; // фиксируем, чтобы не показать чужой результат
+    // Флаг нужен подсказкам (hintBusy): «анализируем» и «снимок выбран,
+    // но анализ уже завершён ошибкой» — это разные состояния для человека.
+    state.analyzing = true;
 
     if (App && typeof App.showLoading === "function") App.showLoading();
 
@@ -1173,6 +1411,13 @@
       .then(function (res) {
         // Если за время запроса пользователь сбросил/сменил файл — игнорируем ответ.
         if (state.file !== fileAtStart) return;
+
+        // Кадр дошёл до результата — он больше НЕ «отложен из-за лимита».
+        // Иначе pending.active пережил бы успешный повтор анализа (кнопка
+        // «Повторить анализ» на экране лимита), и следующий возврат на вкладку
+        // ушёл бы в ветку onShow для отложенного кадра: повторный анализ поверх
+        // готового результата — потраченное сканирование и стёртые правки полей.
+        pendingClear();
 
         var weight = res && res.weight_grams != null ? num(res.weight_grams) : 0;
         state.result = {
@@ -1234,6 +1479,7 @@
         renderError(msg, "analyze");
       })
       .finally(function () {
+        state.analyzing = false;
         if (App && typeof App.hideLoading === "function") App.hideLoading();
       });
   }
@@ -1244,6 +1490,8 @@
   function goToDiaryAfterAdd() {
     revokePreview();
     camStopStream();
+    // Кадр отработан — отложенный снимок больше не нужен.
+    pendingClear();
     state.file = null;
     state.result = null;
     state.base = null;
@@ -1304,6 +1552,11 @@
         if (App.state && App.state.diaryByDate) {
           delete App.state.diaryByDate[entry.date];
         }
+        // КОНТРАКТ С ДНЕВНИКОМ: запись легла в entry.date (это может быть НЕ
+        // сегодня — день выбирают в дневнике перед съёмкой). Дневник читает
+        // diaryReturnDate и открывается на этом дне; без флага он открывался на
+        // «сегодня», и добавленное блюдо выглядело пропавшим.
+        if (App.state) App.state.diaryReturnDate = entry.date;
         // Цель использована — очищаем, чтобы следующий скан шёл в сегодня.
         if (App.state) App.state.scanDate = null;
         // МОСТ СКАН -> ДНЕВНИК (task 3): вместо тихого возврата к камере ведём
@@ -1329,7 +1582,7 @@
 
   /* =====================================================================
    *  ГОЛОСОВОЙ ВВОД ЕДЫ (Этап 2)
-   *  Отдельный от фото поток. Премиум-фича: гейтинг через App.paywall.
+   *  Отдельный от фото поток. Премиум-фича: гейтинг через showVoicePaywall.
    *  Поддержка записи проверяется по navigator.mediaDevices + MediaRecorder.
    *  При отсутствии поддержки/доступа — фолбэк «отправьте голосовое боту».
    * ===================================================================== */
@@ -1387,7 +1640,7 @@
   // Параметры paywall голосового ввода (контракт задачи).
   function voicePaywallOpts() {
     return {
-      icon: "🎤",
+      iconName: "mic",
       title: L("Голосовой ввод", "Voice input"),
       desc: L(
         "Опишите еду голосом — ИИ распознает блюда и калории",
@@ -1402,11 +1655,35 @@
   }
 
   // Показывает paywall голосового ввода в текущем контейнере.
+  // Рисуем своим рендером (paywallCardHtml), а не App.paywall: тот подставляет
+  // эмодзи вместо иконок. Кнопка «Назад» возвращает к камере — без неё с
+  // пейволла можно было уйти только через таббар.
   function showVoicePaywall() {
+    if (!viewEl) return;
     if (App && typeof App.scrollTop === "function") App.scrollTop();
-    if (App && typeof App.paywall === "function") {
-      App.paywall(viewEl, voicePaywallOpts());
-    }
+
+    viewEl.innerHTML =
+      '<section class="page page-scan">' +
+        '<header class="page-head">' +
+          '<h1 class="page-title">' +
+            esc(L("Голосовой ввод", "Voice input")) +
+          "</h1>" +
+        "</header>" +
+        paywallCardHtml(voicePaywallOpts()) +
+        paywallCtaHtml() +
+        '<button type="button" class="btn btn-ghost btn-block" id="scan-voice-paywall-back">' +
+          icon("camera", { size: 18 }) +
+          "<span>" + esc(L("К камере", "Back to camera")) + "</span>" +
+        "</button>" +
+      "</section>";
+
+    bindPaywallCta();
+
+    viewEl.querySelector("#scan-voice-paywall-back").addEventListener("click", function () {
+      haptic("light");
+      voiceReset();
+      render();
+    });
   }
 
   // Похоже ли на ошибку «нужен премиум» (402) для голосового потока.
@@ -1677,7 +1954,7 @@
         '<div class="card scan-voice-rec">' +
           '<div class="scan-voice-rec__indicator" aria-hidden="true">' +
             '<span class="scan-voice-rec__pulse"></span>' +
-            '<span class="scan-voice-rec__mic">🎤</span>' +
+            '<span class="scan-voice-rec__mic">' + icon("mic", { size: 32 }) + "</span>" +
           "</div>" +
           '<p class="scan-voice-rec__status">' +
             esc(L("Идёт запись…", "Recording…")) +
@@ -1687,7 +1964,8 @@
           "</div>" +
         "</div>" +
         '<button type="button" class="btn btn-cta btn-block scan-voice-stop" id="scan-voice-stop">' +
-          esc(L("■ Стоп", "■ Stop")) +
+          icon("stop", { size: 18 }) +
+          "<span>" + esc(L("Стоп", "Stop")) + "</span>" +
         "</button>" +
         '<button type="button" class="btn btn-ghost btn-block scan-voice-cancel" id="scan-voice-cancel">' +
           esc(L("Отмена", "Cancel")) +
@@ -1732,7 +2010,7 @@
           "</h1>" +
         "</header>" +
         '<div class="card scan-voice-unavailable">' +
-          '<div class="scan-voice-unavailable__icon" aria-hidden="true">🎤</div>' +
+          '<span class="scan-voice-unavailable__icon">' + icon("mic", { size: 28 }) + "</span>" +
           '<p class="scan-voice-unavailable__msg">' +
             esc(L(
               "Запись недоступна. Отправьте голосовое сообщение боту — он распознает и добавит еду.",
@@ -1765,10 +2043,11 @@
           "</h1>" +
         "</header>" +
         '<div class="card error-card scan-voice-error">' +
-          '<div class="error-card__icon" aria-hidden="true">⚠️</div>' +
+          '<span class="error-card__icon">' + icon("warning", { size: 28 }) + "</span>" +
           '<div class="error-card__msg">' + esc(message) + "</div>" +
           '<button type="button" class="btn btn-cta btn-block" id="scan-voice-retry">' +
-            esc(L("Повторить", "Retry")) +
+            icon("refresh", { size: 18 }) +
+            "<span>" + esc(L("Повторить", "Retry")) + "</span>" +
           "</button>" +
           '<button type="button" class="btn btn-ghost btn-block" id="scan-voice-error-back">' +
             esc(L("Назад", "Back")) +
@@ -1803,8 +2082,9 @@
               esc(L("Голосовой ввод", "Voice input")) +
             "</h1>" +
           "</header>" +
+          // Пустой результат — без декоративной картинки: объяснение и действие
+          // важнее иллюстрации.
           '<div class="card scan-voice-empty">' +
-            '<div class="scan-voice-empty__icon" aria-hidden="true">🤷</div>' +
             (voice.result && voice.result.transcript
               ? '<p class="scan-voice-transcript">' + esc(voice.result.transcript) + "</p>"
               : "") +
@@ -1944,8 +2224,11 @@
             'value="' + esc(it.dish_name == null ? "" : it.dish_name) + '" ' +
             'placeholder="' + esc(L("Название блюда", "Dish name")) + '" maxlength="120">' +
           qtyHtml +
+          // Кнопка удаления строки: иконка вместо текстового крестика, зона нажатия 44px.
           '<button type="button" class="scan-voice-item__remove" data-idx="' + idx + '" ' +
-            'aria-label="' + esc(L("Удалить", "Remove")) + '">✕</button>' +
+            'aria-label="' + esc(L("Удалить", "Remove")) + '">' +
+            icon("close", { size: 18 }) +
+          "</button>" +
         "</div>" +
         '<div class="scan-voice-item__nums">' +
           voiceNumFieldHtml(L("Ккал", "Kcal"), "calories", idx, it.calories, "1") +
@@ -2063,6 +2346,9 @@
         if (App.state && App.state.diaryByDate) {
           delete App.state.diaryByDate[date];
         }
+        // КОНТРАКТ С ДНЕВНИКОМ (тот же, что в фото-потоке): открыть день,
+        // в который реально легли записи, а не «сегодня».
+        if (App.state) App.state.diaryReturnDate = date;
         // Цель использована — очищаем, чтобы следующий скан шёл в сегодня.
         if (App.state) App.state.scanDate = null;
         // МОСТ ГОЛОС -> ДНЕВНИК (task 3): после добавления ведём в дневник,
@@ -2140,12 +2426,72 @@
     return true;
   }
 
+  // Подсказка вместо разрушения: центральная кнопка таббара на экране, где уже
+  // есть снимок/результат/запись, НЕ сбрасывает состояние (раньше сбрасывала).
+  // Говорим, что делать дальше, и оставляем всё как есть.
+  function hintBusy() {
+    if (state.result) {
+      toast(L(
+        "Результат готов. Нажмите «Снять заново», чтобы переснять",
+        "The result is ready. Tap “Retake” to shoot again"
+      ));
+      return;
+    }
+    if (pending.active) {
+      toast(L(
+        "Кадр сохранён — оформите подписку или снимите другое фото",
+        "The photo is saved — subscribe or take another one"
+      ));
+      return;
+    }
+    if (state.analyzing) {
+      toast(L("Анализируем снимок…", "Analyzing the photo…"));
+      return;
+    }
+    if (state.file) {
+      toast(L(
+        "Снимок уже выбран — повторите анализ или выберите другое фото",
+        "A photo is already selected — retry the analysis or choose another one"
+      ));
+      return;
+    }
+    if (voice.recording) {
+      toast(L("Идёт запись голоса", "Voice recording in progress"));
+      return;
+    }
+    toast(L(
+      "Сначала закончите с распознанными блюдами",
+      "Finish with the recognized dishes first"
+    ));
+  }
+
   // ===== Контроллер страницы =====
   window.PageScan = {
     // Вызывается при показе вкладки. Получаем контейнер и рисуем главный экран
     // (живую камеру или фолбэк-дропзону).
     onShow: function (el) {
       viewEl = el;
+
+      // ОТЛОЖЕННЫЙ КАДР: вернулись со страницы подписки (или просто переключили
+      // вкладку), а снимок ждёт анализа. Обычную зачистку состояния пропускаем —
+      // иначе кадр, ради которого человек и уходил оформлять подписку, исчезнет.
+      if (pending.active && state.file) {
+        camStopStream();
+        voiceReset();
+        // Возвращаем целевую дату записи, снятую в onHide.
+        if (App.state && pending.date) App.state.scanDate = pending.date;
+        if (isPremium()) {
+          // Подписка оформлена — продолжаем ровно с того же кадра.
+          pendingClear();
+          renderPreview();
+          analyze();
+        } else {
+          renderScanLimit();
+        }
+        return;
+      }
+      pendingClear();
+
       // Каждый показ начинаем «с чистого листа», освобождая прошлое превью.
       revokePreview();
       // На всякий случай гасим прошлый видеопоток камеры (не плодим потоки).
@@ -2180,55 +2526,53 @@
     },
     // Вызывается при уходе с вкладки — освобождаем ресурсы превью, камеру и микрофон.
     onHide: function () {
-      revokePreview();
       // Останавливаем видеопоток камеры при уходе со страницы (важно: иначе
       // индикатор камеры останется гореть).
       camStopStream();
       // Останавливаем активную запись/поток (микрофон) при уходе со страницы.
       voiceStopStream();
+
+      if (pending.active && state.file) {
+        // Кадр ждёт подписки: НЕ освобождаем превью (иначе возвращаться будет
+        // не к чему) и запоминаем целевую дату — её сейчас обнулят ниже.
+        pending.date = pending.date || targetDate();
+      } else {
+        revokePreview();
+      }
+
       // Целевую дату используем один раз: чистим при уходе, чтобы следующий
       // вход на сканер (без FAB) добавлял записи в сегодня (task 5).
       if (App.state) App.state.scanDate = null;
     },
-    // ПУБЛИЧНЫЙ СПУСК ЗАТВОРА. Вызывается из app.js при повторном тапе по уже
-    // активной центральной кнопке-камере. Поведение:
-    //   - живой поток готов и мы на главном экране -> снять кадр и анализировать;
-    //   - поток не готов, но есть фолбэк-input (#scan-file) -> открыть выбор файла;
-    //   - мы НЕ на главном экране (превью/результат/голос/ошибка) -> вернуться
-    //     на главный экран камеры (reset переоткроет камеру).
+    // СПУСК ЗАТВОРА ЖИВЁТ НА ЭКРАНЕ (#scan-shutter). Этот метод — только
+    // обработка повторного тапа по центральной кнопке таббара (app.js), и он
+    // НИЧЕГО НЕ РАЗРУШАЕТ: раньше здесь стоял reset(), который молча стирал
+    // снимок вместе со всеми правками полей результата.
     capture: function () {
       if (!viewEl) return;
 
-      // Не на главном экране сканера (идёт превью/результат/голос/ошибка) —
-      // возвращаемся на главный экран камеры. reset() переоткроет поток.
+      // На экране уже есть работа пользователя (снимок, результат, запись,
+      // распознанные блюда) — только подсказываем, как переснять.
       if (state.file || state.result || voice.recording || voice.result) {
-        reset();
+        hintBusy();
         return;
       }
 
-      // Главный экран с живой камерой: пробуем снять кадр.
+      // Главный экран с камерой — снимаем (та же функция, что и у кнопки).
       if (cam.active) {
-        if (captureFromVideo()) return;
-        // Поток ещё не готов (нет кадров) — открываем системный выбор файла,
-        // если на экране есть скрытый input (камера/галерея).
-        var inputEl = viewEl.querySelector("#scan-file");
-        if (inputEl) {
-          inputEl.click();
-          return;
-        }
-        // Совсем нечего снять — мягко переоткрываем главный экран.
-        reset();
+        shutter();
         return;
       }
 
-      // Главный экран в режиме фолбэка (камеры нет) — открываем выбор файла.
+      // Режим фолбэка/пейволла: открываем системный выбор файла, если он есть.
       var fallbackInput = viewEl.querySelector("#scan-file");
       if (fallbackInput) {
+        haptic("light");
         fallbackInput.click();
         return;
       }
 
-      // Прочие экраны без камеры и без выбора файла (paywall голоса, экран
+      // Прочие экраны без камеры и без выбора файла (пейволл голоса, экран
       // ошибки/«пусто» голоса) — возвращаемся на главный экран сканера.
       reset();
     },

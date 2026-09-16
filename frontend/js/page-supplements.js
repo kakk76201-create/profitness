@@ -1,5 +1,5 @@
 /*
- * page-supplements.js — страница «Добавки» (💊).
+ * page-supplements.js — страница «Добавки».
  *
  * Регистрирует контроллер страницы через App.registerPage("supplements", {...}).
  * Публичная ссылка — window.PageSupplements.
@@ -44,17 +44,20 @@
     return ru;
   }
 
-  // Пресеты цели улучшения (чипы AI-советов): эмодзи + ключ для локализации.
-  // Значение, отправляемое серверу (improvement_goal), и подпись чипа берутся
-  // на момент рендера через presetValue()/presetLabel() — на текущем языке.
+  // Пресеты цели улучшения (чипы AI-советов): ключ для локализации.
+  // Значение, отправляемое серверу (improvement_goal), берётся на момент
+  // рендера через presetValue() — на текущем языке.
   var IMPROVEMENT_PRESETS = ["sleep", "recovery", "strength", "energy", "immunity"];
 
-  var PRESET_EMOJI = {
-    sleep: "😴",
-    recovery: "🔄",
-    strength: "💪",
-    energy: "⚡",
-    immunity: "🛡️"
+  // Имена иконок из общего набора. Точных «молнии» и «щита» в нём нет:
+  // для энергии берём пламя (тот же смысл — «горючее»), для иммунитета —
+  // сердце (здоровье). Выдумывать эмодзи ради двух чипов не стоит.
+  var PRESET_ICON = {
+    sleep: "moon",
+    recovery: "refresh",
+    strength: "dumbbell",
+    energy: "flame",
+    immunity: "heart"
   };
 
   /**
@@ -94,12 +97,40 @@
     return App.escapeHtml(s == null ? "" : String(s));
   }
 
+  /** Иконка из общего набора (js/icons.js). Возвращает строку <svg …>. */
+  function icon(name, opts) {
+    return App.icon ? App.icon(name, opts) : "";
+  }
+
   function haptic(kind) {
     if (App && typeof App.haptic === "function") App.haptic(kind);
   }
 
   function toast(msg) {
     if (App && typeof App.toast === "function") App.toast(msg);
+  }
+
+  /* =====================================================================
+   *  PAYWALL: ЕДИНЫЙ СПИСОК ВЫГОД
+   *  Буллеты берём у страницы подписки (window.PageSubscription): список
+   *  выгод в приложении ОДИН, и AI-тренер в нём первый.
+   *  Цену и пробный период сюда НЕ дописываем — их печатает сам App.paywall
+   *  отдельной строкой, и в описании они дублировались бы слово в слово.
+   * ===================================================================== */
+
+  /** Первые пункты единого списка выгод — буллеты paywall. */
+  function paywallBullets() {
+    var PS = window.PageSubscription;
+    if (PS && typeof PS.benefits === "function") {
+      var list = PS.benefits();
+      if (list && list.length) return list.slice(0, 4);
+    }
+    // Фолбэк, если страница подписки почему-то не загрузилась.
+    return [
+      pick("AI-тренер и программа тренировок", "AI trainer and workout program"),
+      pick("Фото и голос без лимита", "Unlimited photo and voice input"),
+      pick("Добавки, напоминания и AI-советы", "Supplements, reminders and AI tips")
+    ];
   }
 
   /**
@@ -274,7 +305,9 @@
       return (
         '<button type="button" class="chip sup-ai-chip" ' +
         'data-goal="' + esc(value) + '">' +
-        '<span class="sup-ai-chip__emoji" aria-hidden="true">' + (PRESET_EMOJI[key] || "") + "</span>" +
+        '<span class="sup-ai-chip__icon" aria-hidden="true">' +
+        icon(PRESET_ICON[key] || "target", { size: 18 }) +
+        "</span>" +
         '<span class="sup-ai-chip__label">' + esc(value) + "</span>" +
         "</button>"
       );
@@ -306,7 +339,10 @@
       "</label>" +
 
       '<button type="button" class="btn btn-cta btn-block sup-ai-btn" id="supAiBtn">' +
-      "🤖 " + esc(pick("Получить совет", "Get advice")) +
+      icon("robot") +
+      '<span class="sup-ai-btn__label">' +
+      esc(pick("Получить совет", "Get advice")) +
+      "</span>" +
       "</button>" +
 
       '<div id="supAiBox" class="sup-ai-box"></div>' +
@@ -319,8 +355,22 @@
    * отдельными функциями после монтирования.
    */
   function pageTemplate() {
+    var backLabel = pick("Профиль", "Profile");
     return (
       '<section class="page page-supplements">' +
+      // Экрана нет в нижней навигации: открывается строкой «Добавки» на
+      // «Профиле». Без явной кнопки «Назад» единственным выходом остаётся
+      // таб внизу — на экране-списке это не очевидно.
+      '<button type="button" class="sub-back" id="supBack" aria-label="' +
+      esc(backLabel) +
+      '">' +
+      '<span class="sub-back__arrow" aria-hidden="true">' +
+      icon("arrow", { size: 18, rotate: 180 }) +
+      "</span>" +
+      "<span>" +
+      esc(backLabel) +
+      "</span>" +
+      "</button>" +
       '<h1 class="page__title">' + esc(pick("Добавки", "Supplements")) + "</h1>" +
 
       // Раздел «Мои добавки».
@@ -350,7 +400,11 @@
     var meta = parts.join(" · ");
 
     var reminder = s.reminder_enabled
-      ? '<span class="sup-item__badge">🔔 ' + esc(pick("напоминание", "reminder")) + "</span>"
+      ? '<span class="sup-item__badge">' +
+        icon("bell", { size: 14 }) +
+        "<span>" +
+        esc(pick("напоминание", "reminder")) +
+        "</span></span>"
       : "";
 
     return (
@@ -362,7 +416,9 @@
       "</div>" +
       '<button class="sup-item__del" type="button" data-id="' + esc(s.id) + '" ' +
       'aria-label="' + esc(pick("Удалить добавку", "Delete supplement")) + '" ' +
-      'title="' + esc(pick("Удалить", "Delete")) + '">✕</button>' +
+      'title="' + esc(pick("Удалить", "Delete")) + '">' +
+      icon("close", { size: 18 }) +
+      "</button>" +
       "</li>"
     );
   }
@@ -386,7 +442,9 @@
     if (!items.length) {
       box.innerHTML =
         '<div class="sup-empty">' +
-        '<div class="sup-empty__icon" aria-hidden="true">💊</div>' +
+        '<div class="sup-empty__icon" aria-hidden="true">' +
+        icon("pill", { size: 24 }) +
+        "</div>" +
         '<p class="sup-empty__text">' + esc(pick("Добавки пока не добавлены.", "No supplements added yet.")) + "</p>" +
         "</div>";
       return;
@@ -412,7 +470,9 @@
     if (!box) return;
     box.innerHTML =
       '<div class="sup-error">' +
-      '<div class="sup-error__icon" aria-hidden="true">⚠️</div>' +
+      '<div class="sup-error__icon" aria-hidden="true">' +
+      icon("warning", { size: 24 }) +
+      "</div>" +
       '<p class="sup-error__title">' + esc(pick("Не удалось загрузить добавки", "Couldn’t load supplements")) + "</p>" +
       '<p class="sup-error__text">' + esc(message || pick("Неизвестная ошибка", "Unknown error")) + "</p>" +
       '<button class="btn btn-ghost sup-error__retry" type="button">' + esc(pick("Повторить", "Retry")) + "</button>" +
@@ -495,7 +555,9 @@
       "</div>" +
       '<button class="sup-rem-item__del" type="button" data-id="' + esc(r.id) + '" ' +
       'aria-label="' + esc(pick("Удалить напоминание", "Delete reminder")) + '" ' +
-      'title="' + esc(pick("Удалить", "Delete")) + '">✕</button>' +
+      'title="' + esc(pick("Удалить", "Delete")) + '">' +
+      icon("close", { size: 18 }) +
+      "</button>" +
       "</li>"
     );
   }
@@ -513,7 +575,9 @@
     if (!items.length) {
       box.innerHTML =
         '<div class="sup-rem-empty">' +
-        '<div class="sup-rem-empty__icon" aria-hidden="true">🔔</div>' +
+        '<div class="sup-rem-empty__icon" aria-hidden="true">' +
+        icon("bell", { size: 24 }) +
+        "</div>" +
         '<p class="sup-rem-empty__text">' +
         esc(pick(
           "Напоминаний пока нет. Создайте первое с помощью формы ниже.",
@@ -544,7 +608,9 @@
     if (!box) return;
     box.innerHTML =
       '<div class="sup-rem-error">' +
-      '<div class="sup-rem-error__icon" aria-hidden="true">⚠️</div>' +
+      '<div class="sup-rem-error__icon" aria-hidden="true">' +
+      icon("warning", { size: 24 }) +
+      "</div>" +
       '<p class="sup-rem-error__title">' + esc(pick("Не удалось загрузить напоминания", "Couldn’t load reminders")) + "</p>" +
       '<p class="sup-rem-error__text">' + esc(message || pick("Неизвестная ошибка", "Unknown error")) + "</p>" +
       '<button class="btn btn-ghost sup-rem-error__retry" type="button">' + esc(pick("Повторить", "Retry")) + "</button>" +
@@ -577,7 +643,11 @@
     if (!suggestions.length) {
       // Даже при пустых рекомендациях показываем дисклеймер, если он пришёл.
       var emptyDisclaimer = disclaimer
-        ? '<p class="sup-ai-disclaimer">⚠️ ' + esc(disclaimer) + "</p>"
+        ? '<p class="sup-ai-disclaimer">' +
+          icon("warning", { size: 16 }) +
+          "<span>" +
+          esc(disclaimer) +
+          "</span></p>"
         : "";
       box.innerHTML =
         '<div class="sup-ai-box__inner">' +
@@ -605,7 +675,8 @@
           ? '<a class="btn btn-ghost sup-ai-suggest__buy" href="' + esc(s.buy_url) + '" ' +
             'target="_blank" rel="noopener noreferrer nofollow sponsored" ' +
             'data-buy-url="' + esc(s.buy_url) + '">' +
-            esc(pick("🛒 Купить", "🛒 Buy")) + "</a>"
+            icon("cart", { size: 18 }) +
+            "<span>" + esc(pick("Купить", "Buy")) + "</span></a>"
           : "";
 
         return (
@@ -628,7 +699,11 @@
 
     // Дисклеймер ОБЯЗАТЕЛЕН — показываем всегда, когда он пришёл с сервера.
     var disclaimerHtml = disclaimer
-      ? '<p class="sup-ai-disclaimer">⚠️ ' + esc(disclaimer) + "</p>"
+      ? '<p class="sup-ai-disclaimer">' +
+        icon("warning", { size: 16 }) +
+        "<span>" +
+        esc(disclaimer) +
+        "</span></p>"
       : "";
 
     // Если показываем ссылки на магазин — по закону о рекламе (ст. 25 ФЗ-38)
@@ -799,7 +874,7 @@
   }
 
   /**
-   * Удаление добавки по кнопке ✕.
+   * Удаление добавки по кнопке-крестику.
    */
   function onSupplementDelete(ev) {
     var btn = ev.currentTarget;
@@ -807,8 +882,10 @@
     if (isNaN(id)) return;
     if (btn.disabled) return;
 
+    // Кнопку только блокируем: подменять её содержимое текстом нельзя —
+    // внутри иконка, и после отмены её пришлось бы собирать заново.
     btn.disabled = true;
-    btn.textContent = "…";
+    btn.classList.add("is-busy");
     haptic("light");
     App.showLoading();
 
@@ -820,7 +897,7 @@
       })
       .catch(function (err) {
         btn.disabled = false;
-        btn.textContent = "✕";
+        btn.classList.remove("is-busy");
         haptic("error");
         toast((err && err.message) || pick("Не удалось удалить добавку", "Couldn’t delete supplement"));
       })
@@ -906,7 +983,7 @@
   }
 
   /**
-   * Удаление напоминания по кнопке ✕.
+   * Удаление напоминания по кнопке-крестику.
    */
   function onReminderDelete(ev) {
     var btn = ev.currentTarget;
@@ -915,7 +992,7 @@
     if (btn.disabled) return;
 
     btn.disabled = true;
-    btn.textContent = "…";
+    btn.classList.add("is-busy");
     haptic("light");
     App.showLoading();
 
@@ -927,7 +1004,7 @@
       })
       .catch(function (err) {
         btn.disabled = false;
-        btn.textContent = "✕";
+        btn.classList.remove("is-busy");
         haptic("error");
         toast((err && err.message) || pick("Не удалось удалить напоминание", "Couldn’t delete reminder"));
       })
@@ -997,7 +1074,9 @@
 
     if (btn) {
       btn.disabled = true;
-      btn.textContent = pick("Подбираем…", "Finding…");
+      // Меняем только подпись: иконка кнопки остаётся на месте.
+      var busyLabel = btn.querySelector(".sup-ai-btn__label");
+      if (busyLabel) busyLabel.textContent = pick("Подбираем…", "Finding…");
     }
     box.innerHTML =
       '<div class="sup-ai-box__loading">' +
@@ -1026,7 +1105,8 @@
       .finally(function () {
         if (btn) {
           btn.disabled = false;
-          btn.textContent = "🤖 " + pick("Получить совет", "Get advice");
+          var label = btn.querySelector(".sup-ai-btn__label");
+          if (label) label.textContent = pick("Получить совет", "Get advice");
         }
       });
   }
@@ -1107,6 +1187,15 @@
    * Навешивает все обработчики событий после монтирования разметки.
    */
   function bindEvents() {
+    // «Назад» — на «Профиль», откуда открывается этот экран.
+    var back = byId("supBack");
+    if (back) {
+      back.addEventListener("click", function () {
+        haptic("light");
+        App.navigate("account");
+      });
+    }
+
     // Форма добавки.
     var supForm = byId("supForm");
     if (supForm) supForm.addEventListener("submit", onSupplementSubmit);
@@ -1150,20 +1239,20 @@
     onShow: function (viewEl) {
       state.viewEl = viewEl;
 
-      // Гейтинг: добавки — премиум-функция. Если подписки нет,
-      // показываем единый paywall и выходим (доступ контролируется сервером).
+      // Гейтинг: добавки — премиум-функция. Если подписки нет, показываем
+      // единый paywall и выходим (доступ контролируется сервером).
       if (
         App &&
         typeof App.requirePremium === "function" &&
         !App.requirePremium(viewEl, {
-          icon: "💊",
+          // icon — ИМЯ иконки из js/icons.js (App.paywall сам её рисует).
+          icon: "pill",
           title: pick("Добавки", "Supplements"),
-          desc: pick("Спортпит, напоминания и AI-советы", "Sports nutrition, reminders and AI advice"),
-          bullets: [
-            pick("Учёт добавок и дозировок", "Track supplements and dosages"),
-            pick("Напоминания о приёме", "Intake reminders"),
-            pick("AI-подсказки по добавкам под цель", "AI supplement tips for your goal")
-          ]
+          desc: pick(
+            "Спортпит, напоминания и AI-советы под вашу цель",
+            "Sports nutrition, reminders and AI advice for your goal"
+          ),
+          bullets: paywallBullets()
         })
       ) {
         return;
