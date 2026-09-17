@@ -12,6 +12,10 @@
  *   Trainer.fmtDuration(min) — длительность по-человечески («45 мин», «2 ч 15 мин»);
  *   Trainer.humanDate / shortDate / shiftDate / weekdayOf — даты;
  *   Trainer.go(page) / back() — навигация с запоминанием App.state.trainerOrigin;
+ *   Trainer.SEGMENTS / normSegment / openSegment(seg) — вкладки раздела
+ *                            (App.state.trainerSegment, см. page-trainer.js);
+ *   Trainer.openExercise(id, ret) / takeExerciseReturn / returnFromExercise /
+ *   isReturning()            — карточка упражнения и возврат туда, откуда пришли;
  *   Trainer.headHtml / bindBack — шапка страницы (классы .sub-head/.sub-back);
  *   Trainer.sheet(items,onPick,opts) / closeSheet — нижний лист (.tr-sheet*);
  *   Trainer.RestTimer        — таймер отдыха на Date.now() (переживает сворачивание);
@@ -22,7 +26,8 @@
  *   Trainer.paywallOpts() / paywall(viewEl, opts) / isPro() — платный доступ;
  *   Trainer.openProgram(program, mode) / startSession(dayId) / openSession(s)
  *                            — общие сценарии переходов между страницами;
- *   Trainer.cache            — кэш overview/activeSession с invalidate().
+ *   Trainer.cache            — кэш overview/activeSession с invalidate() и
+ *                              счётчиком версии данных cache.version.
  *
  * ИКОНКИ: везде App.icon(name) из js/icons.js. Имя иконки передаётся отдельным
  * полем (headHtml({icon:"coach"}), sheet([{icon:"swap"}])) и НИКОГДА не живёт
@@ -536,6 +541,8 @@
   /**
    * «Назад»: с главной тренера (и первичного онбординга) — выход в origin
    * (по умолчанию «workouts»); с внутренних страниц — на главную тренера.
+   * Какая вкладка раздела откроется, решает App.state.trainerSegment: это
+   * память последнего выбора, поэтому «Назад» возвращает туда, где человек был.
    */
   function back() {
     var cur = App._current;
@@ -549,13 +556,139 @@
     App.navigate("trainer");
   }
 
+  /* =====================================================================
+   *  ВКЛАДКИ РАЗДЕЛА
+   *  «Сегодня / Программа / Прогресс / Упражнения» — вкладки ОДНОГО экрана
+   *  "trainer", а не отдельные страницы: шапка и полоса вкладок стоят на
+   *  месте, меняется только содержимое под ними. Выбор хранится в
+   *  App.state.trainerSegment (контракт между разделами приложения): кто
+   *  хочет открыть конкретную вкладку, ставит флаг и переходит на "trainer".
+   * ===================================================================== */
+
+  var SEGMENTS = ["today", "program", "progress", "exercises"];
+
+  /**
+   * Приводит ключ вкладки к одному из SEGMENTS. Неизвестное значение —
+   * «Сегодня»: флаг приходит из других разделов, и опечатка в нём не должна
+   * оставлять человека перед пустым экраном.
+   * @param {string} key
+   * @returns {string}
+   */
+  function normSegment(key) {
+    return SEGMENTS.indexOf(key) !== -1 ? key : "today";
+  }
+
+  /**
+   * Открывает вкладку раздела. Уже на экране "trainer" — переключает на месте
+   * (без App.navigate: иначе шапка перерисуется и мигнёт), иначе переходит.
+   * @param {string} segment ключ из SEGMENTS
+   * @returns {boolean} состоялся ли переход
+   */
+  function openSegment(segment) {
+    var seg = normSegment(segment);
+    App.state.trainerSegment = seg;
+    var shell = window.PageTrainer;
+    if (App._current === "trainer" && shell && typeof shell.switchTo === "function") {
+      shell.switchTo(seg);
+      return true;
+    }
+    return go("trainer");
+  }
+
+  /* =====================================================================
+   *  КАРТОЧКА УПРАЖНЕНИЯ И ВОЗВРАТ ИЗ НЕЁ
+   *  Карточка — единственный переход ВГЛУБЬ раздела, у неё своя кнопка
+   *  «Назад». Возвращать она должна туда, откуда её открыли, причём в то же
+   *  состояние: к отфильтрованному списку, к раскрытому дню программы, на ту
+   *  же высоту прокрутки. Иначе после каждой карточки человек заново ищет
+   *  место, на котором остановился.
+   * ===================================================================== */
+
+  var exerciseReturn = null; // {exerciseId, page, state, scrollY}
+  var returning = false;     // идёт возврат из карточки (читает оболочка раздела)
+
+  function pageScrollY() {
+    var y = window.pageYOffset;
+    if (y == null && document.documentElement) y = document.documentElement.scrollTop;
+    return Math.max(0, Math.round(Number(y) || 0));
+  }
+
+  /**
+   * Открывает карточку упражнения и запоминает точку возврата.
+   * @param {number} exerciseId
+   * @param {object} [ret] {page:"trainer", state:{ключ App.state: значение}} —
+   *        какую страницу открыть на «Назад» и какие флаги перед этим выставить
+   * @returns {boolean} состоялся ли переход
+   */
+  function openExercise(exerciseId, ret) {
+    var id = parseInt(exerciseId, 10);
+    if (isNaN(id)) return false;
+    ret = ret || {};
+    exerciseReturn = {
+      exerciseId: id,
+      page: ret.page || "trainer",
+      state: ret.state || null,
+      scrollY: pageScrollY()
+    };
+    App.state.trainerExerciseId = id;
+    return go("trainer-exercise");
+  }
+
+  /**
+   * Забирает точку возврата для открытой карточки. Запись одноразовая и
+   * привязана к id: если карточку открыли в обход openExercise, чужая
+   * запись от прошлого захода не должна увести «Назад» не туда.
+   * @returns {object|null}
+   */
+  function takeExerciseReturn(exerciseId) {
+    var r = exerciseReturn;
+    exerciseReturn = null;
+    return r && r.exerciseId === parseInt(exerciseId, 10) ? r : null;
+  }
+
+  /**
+   * «Назад» из карточки: на запомненную страницу с восстановлением прокрутки.
+   * Без записи — обычный Trainer.back().
+   */
+  function returnFromExercise(ret) {
+    if (!ret || !App._pages || !App._pages[ret.page]) {
+      back();
+      return;
+    }
+    if (ret.state) {
+      for (var key in ret.state) {
+        if (Object.prototype.hasOwnProperty.call(ret.state, key)) App.state[key] = ret.state[key];
+      }
+    }
+    returning = true;
+    try {
+      App.navigate(ret.page);
+    } finally {
+      returning = false;
+    }
+    // App.navigate прокручивает наверх ПОСЛЕ onShow, поэтому высоту
+    // возвращаем уже после него. Содержимое из кэша нарисовано синхронно,
+    // так что страница уже нужной высоты и прокрутка не упрётся в низ.
+    var y = ret.scrollY || 0;
+    if (y > 0) window.scrollTo(0, y);
+  }
+
+  /**
+   * true только во время returnFromExercise: страница, которая сейчас
+   * показывается, может взять данные из кэша вместо новой загрузки.
+   */
+  function isReturning() {
+    return returning;
+  }
+
   /**
    * Шапка страницы тренера (переиспользует .sub-head/.sub-back/.sub-title).
    *
    * back:false — шапка КОРНЯ раздела: «Тренировка» теперь вкладка первого
    * уровня, и кнопка «Назад» на её главной вела бы в никуда (ниже таббара
-   * уже ничего нет). Внутренние экраны — программа, прогресс, библиотека,
-   * сессия — кнопку сохраняют: туда приходят именно с главной.
+   * уже ничего нет). Отдельные экраны — предпросмотр новой программы,
+   * карточка упражнения, выбор упражнения в тренировку, сессия — кнопку
+   * сохраняют: туда приходят именно из раздела и туда же возвращаются.
    *
    * @param {object} opts {title, subtitle, icon, backLabel, back, actions}
    *        icon    — ИМЯ иконки из js/icons.js (не эмодзи и не разметка);
@@ -1111,16 +1244,22 @@
   var cache = {
     overview: null,       // последний TrainerOverviewOut
     activeSession: null,  // последняя активная TrainerSessionOut
+    // Версия данных тренера: растёт при каждом сбросе. Вкладки раздела
+    // запоминают версию, с которой загрузились, и по расхождению понимают,
+    // что их содержимое устарело (например, разбор недели применён на
+    // «Прогрессе», а «Программа» ещё показывает старый план).
+    version: 0,
     /**
      * Сброс: без аргумента — всё, с ключом — только его.
      */
     invalidate: function (key) {
+      cache.version++;
       if (!key) {
         cache.overview = null;
         cache.activeSession = null;
         return;
       }
-      if (cache.hasOwnProperty(key)) cache[key] = null;
+      if (key !== "version" && key !== "invalidate" && cache.hasOwnProperty(key)) cache[key] = null;
     }
   };
 
@@ -1129,6 +1268,8 @@
    *
    *  Ключи App.state, которыми страницы тренера обмениваются:
    *    trainerOrigin       — откуда вошли в раздел («workouts»/«diary»);
+   *    trainerSegment      — выбранная вкладка раздела: today|program|progress|
+   *                          exercises (память выбора между заходами);
    *    trainerEdit         — онбординг в режиме редактирования настроек;
    *    trainerBrief        — сводка для карточки-входа на «Тренировках»
    *                          ({has_profile, kind, title, duration_min, in_progress});
@@ -1238,14 +1379,21 @@
   }
 
   /**
-   * Открывает страницу программы. mode="preview" — сразу после генерации
-   * (ТЗ §2.3), иначе обычный режим. Программа кладётся в App.state.trainerProgram,
+   * Открывает программу. mode="preview" — отдельная страница сразу после
+   * генерации (ТЗ §2.3) с «Начать программу» / «Пересобрать»; иначе — вкладка
+   * «Программа» раздела. Программа кладётся в App.state.trainerProgram,
    * режим — в App.state.trainerProgramMode. Если страница ещё не подключена —
    * возвращаемся на главную тренера.
    */
   function openProgram(program, mode) {
+    if (mode !== "preview") {
+      App.state.trainerProgram = null;
+      App.state.trainerProgramMode = null;
+      openSegment("program");
+      return;
+    }
     App.state.trainerProgram = program || null;
-    App.state.trainerProgramMode = mode || null;
+    App.state.trainerProgramMode = mode;
     if (!go("trainer-program")) {
       if (App._pages && App._pages.trainer) App.navigate("trainer");
     }
@@ -1317,6 +1465,13 @@
     isTrainerPage: isTrainerPage,
     go: go,
     back: back,
+    SEGMENTS: SEGMENTS,
+    normSegment: normSegment,
+    openSegment: openSegment,
+    openExercise: openExercise,
+    takeExerciseReturn: takeExerciseReturn,
+    returnFromExercise: returnFromExercise,
+    isReturning: isReturning,
     headHtml: headHtml,
     bindBack: bindBack,
     sheet: sheet,

@@ -612,7 +612,7 @@ class SubscriptionStatusOut(BaseModel):
     Оплата Telegram Stars убрана, поэтому цен в звёздах здесь больше нет.
     """
 
-    subscription_type: str                       # "free" | "monthly" | "yearly" | "lifetime" | "trial"
+    subscription_type: str                       # "free" | "trial" | "monthly" | "quarterly" | "yearly" | "lifetime"
     subscription_until: Optional[str] = None     # ISO-дата окончания подписки (или None)
     is_premium: bool                             # есть ли активный премиум-доступ
     is_owner: bool                               # является ли пользователь владельцем
@@ -651,7 +651,7 @@ class ScansRemainingOut(BaseModel):
 class YookassaCreateIn(BaseModel):
     """Запрос на создание платежа ЮKassa для выбранного тарифа."""
 
-    tariff: str                                  # "monthly" | "yearly" | "lifetime"
+    tariff: str                                  # "monthly" | "quarterly" | "yearly" | "lifetime"
 
 
 class YookassaCreateOut(BaseModel):

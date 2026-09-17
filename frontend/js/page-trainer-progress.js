@@ -1,9 +1,16 @@
 /*
- * page-trainer-progress.js — страница «Прогресс» раздела «AI-тренер»
- * (страница "trainer-progress", ТЗ §2.7, §6.2 блок «Прогресс/упражнения»).
+ * page-trainer-progress.js — вкладка «Прогресс» раздела «AI-тренер»
+ * (ТЗ §2.7, §6.2 блок «Прогресс/упражнения»).
  *
- * Регистрирует контроллер через App.registerPage("trainer-progress", {...}).
- * Публичная ссылка — window.PageTrainerProgress.
+ * Публичный интерфейс — window.TrainerProgress:
+ *   mount(el, opts) / unmount() — рисует прогресс в панели оболочки раздела
+ *     (page-trainer.js), без своей шапки и кнопки «Назад»;
+ *   focusReview()               — прокрутить к недельному разбору.
+ *
+ * Отдельной страницы у прогресса больше нет: это вид раздела, а не шаг
+ * сценария. Имя "trainer-progress" оставлено зарегистрированным как
+ * переадресация на вкладку (App.state.trainerSegment = "progress"), чтобы
+ * старые переходы из других разделов не упирались в пустой экран.
  *
  * Экран собирается из трёх независимых запросов (каждый в своём контейнере,
  * чтобы сбой одного не гасил остальные):
@@ -16,6 +23,10 @@
  *
  * Вход по баннеру «Разбор готов» с «Сегодня»: App.state.trainerProgressSection
  * === "review" — после загрузки прокручиваем страницу к карточке разбора.
+ *
+ * Данные вкладки живут в состоянии модуля, пока открыт раздел: оболочка
+ * монтирует вкладку один раз, а после карточки упражнения просит keep —
+ * тогда всё рисуется из кэша, без скелетона и без новых запросов.
  *
  * Графики — SVG-строкой через Trainer.lineChart, без внешних библиотек.
  * Зависимости: window.Trainer (trainer-common.js), App.api.trainer*.
@@ -47,9 +58,10 @@
   // Периоды графика (совпадают с параметром period маршрута /trainer/progress).
   var PERIODS = ["4w", "3m", "all"];
 
-  // Внутреннее состояние контроллера.
+  // Внутреннее состояние модуля.
   var state = {
-    viewEl: null,           // корневой элемент (#view)
+    host: null,             // панель оболочки, в которую смонтирована вкладка
+    opts: null,             // опции mount: {onPaywall}
     data: null,             // последний TrainerProgressOut
     period: "4w",           // 4w|3m|all
     exerciseId: null,       // упражнение графика (null — самое частое)
@@ -60,6 +72,7 @@
     sessionCache: {},       // id сессии → TrainerSessionOut (детали истории)
     openSession: null,      // раскрытая карточка истории
     review: null,           // последний TrainerWeeklyReviewOut
+    reviewLoaded: false,    // последний разбор уже запрошен (null — его нет)
     reviewBusy: false,      // идёт генерация/применение разбора
     scrollToReview: false,  // вход по баннеру «Разбор готов»
     reqId: 0                // счётчик запросов (игнорируем устаревшие ответы)
@@ -133,21 +146,28 @@
    *  РАЗМЕТКА: КАРКАС
    * ===================================================================== */
 
+  /**
+   * Три независимых контейнера: сводка с графиком, история, разбор. Шапки
+   * нет — заголовок и полоса вкладок принадлежат оболочке раздела.
+   */
   function shellHtml() {
     return (
-      '<section class="page sub-page tr-page tr-progress">' +
-      T.headHtml({ icon: "chartLine", title: pick("Прогресс", "Progress"), subtitle: "" }) +
+      '<div class="tr-progress">' +
       '<div id="trProgBody"></div>' +
       '<div id="trProgHistory"></div>' +
       '<div id="trProgReview"></div>' +
-      "</section>"
+      "</div>"
     );
   }
 
-  function setSubtitle(text) {
-    if (!state.viewEl) return;
-    var el = state.viewEl.querySelector(".sub-subtitle");
-    if (el) el.textContent = text || "";
+  /** 402 посреди работы (подписка кончилась) — paywall на весь экран раздела. */
+  function showPaywall() {
+    if (state.opts && typeof state.opts.onPaywall === "function") {
+      state.opts.onPaywall();
+      return;
+    }
+    var view = document.getElementById("view");
+    if (view) T.paywall(view, T.paywallOpts());
   }
 
   /* =====================================================================
@@ -668,6 +688,19 @@
     host.innerHTML = historyHtml(data);
     var wrap = host.querySelector(".tr-history");
     if (wrap) wrap.addEventListener("click", onHistoryClick);
+    // Перерисовка из кэша (возврат на вкладку) раскрывает ту же тренировку,
+    // что была открыта: детали уже лежат в sessionCache, сеть не нужна.
+    var openId = state.openSession;
+    var cached = openId != null ? state.sessionCache[openId] : null;
+    var item = cached && wrap ? wrap.querySelector('[data-session="' + openId + '"]') : null;
+    var bodyEl = item ? item.querySelector(".tr-history-item__body") : null;
+    if (bodyEl) {
+      item.classList.add("is-open");
+      bodyEl.hidden = false;
+      bodyEl.innerHTML = sessionDetailHtml(cached);
+    } else {
+      state.openSession = null;
+    }
   }
 
   function renderReview() {
@@ -692,8 +725,7 @@
         var id = parseInt(row.getAttribute("data-ex-id"), 10);
         if (isNaN(id)) return;
         App.haptic("light");
-        App.state.trainerExerciseId = id;
-        T.go("trainer-exercise");
+        T.openExercise(id, { page: "trainer", state: { trainerSegment: "progress" } });
       });
     }
   }
@@ -792,6 +824,7 @@
       .then(function (review) {
         state.reviewBusy = false;
         state.review = review || null;
+        state.reviewLoaded = true;
         renderReview();
         App.haptic("success");
         scrollToReview();
@@ -864,10 +897,13 @@
       });
   }
 
-  /** Прокручивает страницу к карточке разбора. */
+  /**
+   * Прокручивает страницу к карточке разбора. Над карточкой остаётся место
+   * под липкую полосу вкладок — отступ задан в CSS (scroll-margin-top).
+   */
   function scrollToReview() {
     var card = byId("trReviewCard");
-    if (!card || typeof card.scrollIntoView !== "function") return;
+    if (!card || card.offsetParent === null || typeof card.scrollIntoView !== "function") return;
     try {
       card.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (e) {
@@ -899,7 +935,6 @@
     state.loading = true;
     var reqId = ++state.reqId;
     body.innerHTML = T.skeleton(3) + T.skeleton(4);
-    setSubtitle(pick("Стрик, объём, рекорды", "Streak, volume, records"));
 
     App.api
       .trainerProgress({ exercise_id: state.exerciseId, period: state.period })
@@ -917,7 +952,7 @@
         state.loading = false;
         if (reqId !== state.reqId || !byId("trProgBody")) return;
         if (err && err.status === 402) {
-          T.paywall(state.viewEl, T.paywallOpts());
+          showPaywall();
           return;
         }
         renderError(err);
@@ -978,59 +1013,106 @@
       .then(function (review) {
         if (!byId("trProgReview")) return;
         state.review = review || null;
+        state.reviewLoaded = true;
         renderReview();
-        if (state.scrollToReview) {
-          state.scrollToReview = false;
-          scrollToReview();
-        }
+        consumeScrollToReview();
       })
       .catch(function () {
         if (!byId("trProgReview")) return;
         // Разбора может не быть — показываем карточку с кнопкой запуска.
         state.review = null;
+        state.reviewLoaded = true;
         renderReview();
+        consumeScrollToReview();
       });
   }
 
+  /** Отложенная прокрутка к разбору (вход по баннеру «Разбор готов»). */
+  function consumeScrollToReview() {
+    if (!state.scrollToReview) return;
+    state.scrollToReview = false;
+    scrollToReview();
+  }
+
   /* =====================================================================
-   *  КОНТРОЛЛЕР
+   *  МОНТИРОВАНИЕ ВКЛАДКИ
    * ===================================================================== */
 
-  var controller = {
-    onShow: function (viewEl) {
-      state.viewEl = viewEl;
-      if (!T.isPro()) {
-        T.paywall(viewEl, T.paywallOpts());
-        return;
+  /**
+   * Рисует прогресс в панели оболочки раздела.
+   * @param {HTMLElement} el панель
+   * @param {object} [opts] {keep: нарисовать из кэша (возврат из карточки
+   *        упражнения), onPaywall()}
+   */
+  function mount(el, opts) {
+    if (!el) return;
+    opts = opts || {};
+    state.host = el;
+    state.opts = opts;
+    state.reqId++;
+    state.loading = false;
+    state.chartLoading = false;
+    state.reviewBusy = false;
+    state.scrollToReview = App.state.trainerProgressSection === "review";
+    App.state.trainerProgressSection = null;
+    el.innerHTML = shellHtml();
+
+    if (opts.keep && state.data) {
+      renderProgress(state.data);
+      if (state.sessions) renderHistory(state.sessions);
+      else loadHistory();
+      if (state.reviewLoaded) {
+        renderReview();
+        consumeScrollToReview();
+      } else {
+        loadReview();
       }
-      state.scrollToReview = App.state.trainerProgressSection === "review";
-      App.state.trainerProgressSection = null;
-      state.data = null;
-      state.sessions = null;
-      state.sessionCache = {};
-      state.openSession = null;
-      state.review = null;
-      state.reviewBusy = false;
-      state.loading = false;
-      state.chartLoading = false;
-      state.exerciseId = null;
-      state.period = "4w";
-      state.metric = "est_1rm";
-      viewEl.innerHTML = shellHtml();
-      T.bindBack(viewEl);
-      load();
-    },
-
-    onHide: function () {
-      state.viewEl = null;
-      state.loading = false;
-      state.chartLoading = false;
-      state.reviewBusy = false;
-      state.reqId++;
-      T.closeSheet(true);
+      return;
     }
-  };
 
-  window.PageTrainerProgress = controller;
-  App.registerPage("trainer-progress", controller);
+    // Свежий заход: после тренировки и сводка, и история уже другие.
+    state.data = null;
+    state.sessions = null;
+    state.sessionCache = {};
+    state.openSession = null;
+    state.review = null;
+    state.reviewLoaded = false;
+    state.exerciseId = null;
+    state.period = "4w";
+    state.metric = "est_1rm";
+    load();
+  }
+
+  /** Снимает вкладку: ответы в полёте больше не рисуются. Кэш данных остаётся. */
+  function unmount() {
+    state.host = null;
+    state.opts = null;
+    state.loading = false;
+    state.chartLoading = false;
+    state.reviewBusy = false;
+    state.scrollToReview = false;
+    state.reqId++;
+  }
+
+  /**
+   * Прокрутить к недельному разбору уже смонтированной вкладки. Если разбор
+   * ещё грузится — прокрутка случится, когда он дорисуется.
+   */
+  function focusReview() {
+    state.scrollToReview = true;
+    if (state.reviewLoaded && byId("trReviewCard")) consumeScrollToReview();
+  }
+
+  window.TrainerProgress = { mount: mount, unmount: unmount, focusReview: focusReview };
+
+  /**
+   * Переадресация со старого имени страницы на вкладку раздела. Обработчики
+   * в других разделах могли сохранить App.navigate("trainer-progress").
+   */
+  App.registerPage("trainer-progress", {
+    onShow: function () {
+      App.state.trainerSegment = "progress";
+      App.navigate("trainer");
+    }
+  });
 })();

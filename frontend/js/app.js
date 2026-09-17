@@ -79,7 +79,7 @@
   /**
    * Переустанавливает подписи вкладок нижней навигации по текущему языку.
    * Подписи в index.html заданы по-русски — здесь они заменяются по App.pick.
-   * Центральная кнопка-камера подписи не имеет (пропускаем).
+   * Подпись есть у всех пяти вкладок, включая центральную «Сегодня».
    * Вызывается в init и в setLang.
    */
   function applyTabLabels() {
@@ -92,8 +92,9 @@
     }
 
     var map = {
-      today: App.pick("Сегодня", "Today"),
+      supplements: App.pick("Добавки", "Supplements"),
       trainer: App.pick("Тренировка", "Workout"),
+      today: App.pick("Сегодня", "Today"),
       diary: App.pick("Питание", "Nutrition"),
       account: App.pick("Профиль", "Profile")
     };
@@ -102,7 +103,7 @@
       var tab = tabs[i];
       var page = tab.getAttribute("data-page");
       if (!page || !map.hasOwnProperty(page)) {
-        continue; // например, центральная кнопка-камера (scan) — без подписи
+        continue; // вкладка без известной подписи (старая разметка из кэша)
       }
       var labelEl = tab.querySelector(".tab-label");
       if (labelEl) {
@@ -587,7 +588,7 @@
 
     // Статус подписки пользователя.
     // Ответ: {subscription_type, subscription_until, is_premium, is_owner,
-    //   tariffs:{monthly:{days,price,currency}, yearly:{...}, lifetime:{...}},
+    //   tariffs:{monthly:{days,price,currency}, quarterly:{...}, yearly:{...}},
     //   card_enabled, card_currency, card_prices, card_provider,
     //   legal:{seller, inn, contact, offer_url, privacy_url}, tribute_url}.
     getSubscription: function () {
@@ -621,7 +622,7 @@
     },
 
     // Создание платежа ЮKassa по выбранному тарифу.
-    // Тело: {tariff:"monthly"|"yearly"|"lifetime"}.
+    // Тело: {tariff:"monthly"|"quarterly"|"yearly"|"lifetime"}.
     // Ответ: {payment_id, confirmation_url} — страницу подтверждения открываем
     // во внешнем браузере; доступ активирует вебхук, а не фронт.
     createYookassaPayment: function (tariff) {
@@ -1015,19 +1016,24 @@
    * Экраны-задачи: пользователь занят одним делом, и нижняя навигация только
    * мешает. Главное — тренировка: с видимым таббаром из неё выходишь случайным
    * тапом, теряя незавершённую сессию без всякого подтверждения.
+   * Камера (scan) — тоже задача: снял, проверил, добавил. С видимым таббаром
+   * случайный тап по вкладке молча выбрасывал снятый кадр вместе с правками.
    * Возврат с таких экранов — только их собственной кнопкой «Назад»/«Закрыть».
    */
   var TASK_PAGES = {
     "trainer-session": true,
     "trainer-onboarding": true,
     onboarding: true,
-    payment: true
+    payment: true,
+    scan: true
   };
 
   /**
    * Вкладка, которую подсвечивать для экрана вне таббара. Без этого при
    * переходе вглубь раздела навигация «гасла» — ни один пункт не активен,
    * и пользователь терял понимание, где находится.
+   * Страницы, совпадающие с вкладкой (today, diary, supplements, account),
+   * сюда не вписываем: для них срабатывает `TAB_OF_PAGE[name] || name`.
    */
   var TAB_OF_PAGE = {
     trainer: "trainer",
@@ -1036,7 +1042,9 @@
     "trainer-exercise": "trainer",
     "trainer-session": "trainer",
     "trainer-onboarding": "trainer",
-    supplements: "account",
+    // Камера открывается из «Питания» (и из «Сегодня»), а снимок в итоге
+    // ложится в дневник — поэтому её раздел — «Питание».
+    scan: "diary",
     subscription: "account",
     payment: "account"
   };
@@ -1260,13 +1268,14 @@
   };
 
   // Тарифы, для которых существует страница оплаты (совпадают с config.TARIFFS).
-  var PAYMENT_TARIFFS = ["monthly", "yearly", "lifetime"];
+  // Порядок — от короткого срока к длинному, как на витрине подписки.
+  var PAYMENT_TARIFFS = ["monthly", "quarterly", "yearly", "lifetime"];
 
   /**
    * Открывает отдельную страницу оплаты для выбранного тарифа.
    * Тариф кладём в App.state.paymentTariff — страница "payment" читает его
    * при onShow (навигация в приложении без параметров в URL).
-   * @param {string} tariff "monthly"|"yearly"|"lifetime"
+   * @param {string} tariff "monthly"|"quarterly"|"yearly"|"lifetime"
    */
   App.goPayment = function (tariff) {
     if (typeof tariff !== "string" || PAYMENT_TARIFFS.indexOf(tariff) === -1) {
@@ -1339,7 +1348,7 @@
 
   /**
    * Оплата подписки банковской картой через виджет CloudPayments.
-   * @param {string} tariff "monthly" | "yearly" | "lifetime"
+   * @param {string} tariff "monthly" | "quarterly" | "yearly" | "lifetime"
    * @returns {Promise}
    */
   function payCardCloudPayments(tariff) {
@@ -1400,7 +1409,7 @@
    * Бэкенд создаёт платёж и отдаёт confirmation_url — открываем его во внешнем
    * браузере (в WebView Telegram платёжная форма может не работать) и ждём
    * активации доступа вебхуком, опрашивая статус подписки.
-   * @param {string} tariff "monthly" | "yearly" | "lifetime"
+   * @param {string} tariff "monthly" | "quarterly" | "yearly" | "lifetime"
    * @returns {Promise}
    */
   function payCardYookassa(tariff) {
@@ -1443,7 +1452,7 @@
    * App.subscription.card_provider и передаёт ему управление.
    * Промис НИКОГДА не реджектится — об ошибках сообщаем тостом, чтобы вызывающая
    * страница могла спокойно разблокировать кнопку в .then/.finally.
-   * @param {string} tariff "monthly" | "yearly" | "lifetime"
+   * @param {string} tariff "monthly" | "quarterly" | "yearly" | "lifetime"
    * @returns {Promise}
    */
   App.payCard = function (tariff) {
@@ -1664,6 +1673,33 @@
     detectLang();
     applyTabLabels();
 
+    // Способ ввода для кольца фокуса (см. «Кольцо фокуса» в style.css).
+    // Часть вебвью Telegram после тапа считает фокус кнопки «видимым», и
+    // одного :focus-visible мало: вокруг нажатой вкладки оставалась рамка.
+    // Касание или клик ставят html.is-pointer — кольцо не рисуется; Tab и
+    // стрелки снимают класс — клавиатурное кольцо возвращается. Прочие
+    // клавиши модальность не меняют: экранная клавиатура телефона тоже шлёт
+    // keydown, и кольцо вокруг поля ввода мигало бы при каждой букве.
+    // touchstart и mousedown — для старых вебвью без Pointer Events;
+    // passive, чтобы слушатель на касание не тормозил прокрутку.
+    var rootEl = document.documentElement;
+    var markPointer = function () {
+      rootEl.classList.add("is-pointer");
+    };
+    ["pointerdown", "mousedown", "touchstart"].forEach(function (type) {
+      document.addEventListener(type, markPointer, { capture: true, passive: true });
+    });
+    document.addEventListener(
+      "keydown",
+      function (ev) {
+        var key = ev && ev.key;
+        if (key === "Tab" || (key && key.indexOf("Arrow") === 0)) {
+          rootEl.classList.remove("is-pointer");
+        }
+      },
+      true
+    );
+
     // Навешиваем обработчики на кнопки нижней навигации.
     var tabs = document.querySelectorAll("#tabbar .tab");
     for (var i = 0; i < tabs.length; i++) {
@@ -1673,22 +1709,6 @@
           if (!page) {
             return;
           }
-          // Повторный тап по УЖЕ активной центральной кнопке-камере (мы уже
-          // находимся на экране сканера) = СПУСК затвора, а не ре-навигация.
-          // Первое нажатие открывает сканер (живую камеру), второе — снимает.
-          if (page === "scan" && App._current === "scan") {
-            App.haptic("medium");
-            if (window.PageScan && typeof window.PageScan.capture === "function") {
-              try {
-                window.PageScan.capture();
-              } catch (e) {
-                // Сбой спуска не должен ломать навигацию — мягко игнорируем.
-                console.error("Ошибка спуска камеры (PageScan.capture)", e);
-              }
-            }
-            return;
-          }
-          // Обычная навигация: первое нажатие открывает целевую страницу.
           App.haptic("light");
           App.navigate(page);
         });

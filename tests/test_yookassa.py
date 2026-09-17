@@ -18,7 +18,9 @@
     "x/../<id>" в сеть не уходят и ключ дедупа не портят;
   * ключ дедупа строится из id, который вернул API (несовпадение — отказ);
   * возвращённый платёж доступ не открывает; переплата засчитывается;
-  * сверка суммы — с ценой, зафиксированной в metadata при создании.
+  * сверка суммы — с ценой, зафиксированной в metadata при создании;
+  * описание платежа — «Fitness Up — <тариф по-русски>», для тарифа «3 месяца»
+    (quarterly, 1790 ₽) в том числе; оплата «3 месяцев» открывает этот тариф.
 
 Запуск:  .venv/Scripts/python.exe tests/test_yookassa.py
 """
@@ -44,6 +46,8 @@ os.environ["OWNER_ID"] = "0"
 os.environ["ALLOW_INSECURE_AUTH"] = "1"
 os.environ["PRICE_MONTHLY_RUB"] = "499"
 os.environ["PRICE_YEARLY_RUB"] = "3990"
+# Цена «3 месяцев» задана явно: тест не должен зависеть от значения по умолчанию.
+os.environ["PRICE_QUARTERLY_RUB"] = "1790"
 # Вечный тариф намеренно без рублёвой цены — проверяем отказ по нему.
 os.environ["PRICE_LIFETIME_RUB"] = "0"
 # Лимит на создание платежей поднимаем: тест делает много вызовов подряд,
@@ -215,7 +219,29 @@ def main():
     check("описание не длиннее 128 символов",
           len(str(sent.get("description") or "")) <= 128, sent.get("description"))
     check("описание содержит название приложения",
-          "Калории" in str(sent.get("description") or ""), sent.get("description"))
+          "Fitness Up" in str(sent.get("description") or ""), sent.get("description"))
+    check("в описании тариф по-русски, а не кодом",
+          "подписка на месяц" in str(sent.get("description") or "")
+          and "monthly" not in str(sent.get("description") or ""), sent.get("description"))
+
+    # Тариф «3 месяца»: сумма из прайса и понятное плательщику описание.
+    captured_q = {}
+    with patch.object(yookassa, "httpx", make_fake_httpx(captured_q)):
+        resp = client.post(CREATE, json={"tariff": "quarterly"})
+    check("создание платежа за 3 месяца -> 200", resp.status_code == 200, resp.text[:300])
+    sent_q = captured_q.get("json") or {}
+    desc_q = str(sent_q.get("description") or "")
+    check("сумма 3 месяцев — 1790.00 из прайса сервера",
+          (sent_q.get("amount") or {}).get("value") == "1790.00", sent_q.get("amount"))
+    check("в metadata тариф quarterly",
+          (sent_q.get("metadata") or {}).get("tariff") == "quarterly", sent_q.get("metadata"))
+    check("описание 3 месяцев: «Fitness Up» и «3 месяца»",
+          "Fitness Up" in desc_q and "3 месяца" in desc_q, desc_q)
+    check("описание 3 месяцев без кода тарифа и старого названия",
+          "quarterly" not in desc_q and "Калории" not in desc_q, desc_q)
+    check("build_description для 3 месяцев",
+          yookassa.build_description("quarterly", 42) == "Fitness Up — подписка на 3 месяца (42)",
+          yookassa.build_description("quarterly", 42))
 
     # Тариф без рублёвой цены и несуществующий тариф — до сети не доходим.
     with patch.object(yookassa, "httpx", make_fake_httpx({})):
@@ -396,6 +422,19 @@ def main():
           get_user(6012) is not None and get_user(6012).subscription_type == "monthly",
           get_user(6012) and get_user(6012).subscription_type)
 
+    # --- 9f. Оплата «3 месяцев» открывает именно этот тариф -----------------
+    quarterly = make_payment("pay-600600", 6013, "quarterly", value="1790.00")
+    with patch.object(yookassa, "fetch_payment", return_value=quarterly):
+        client.post(WEBHOOK, json=notification("pay-600600"))
+    check("оплата 3 месяцев активирует quarterly",
+          get_user(6013) is not None and get_user(6013).subscription_type == "quarterly",
+          get_user(6013) and get_user(6013).subscription_type)
+    # Цена месяца с тарифом «3 месяца» в metadata — недоплата, доступа нет.
+    q_cheap = make_payment("pay-700700", 6014, "quarterly", value="499.00")
+    with patch.object(yookassa, "fetch_payment", return_value=q_cheap):
+        client.post(WEBHOOK, json=notification("pay-700700"))
+    check("цена месяца за 3 месяца -> доступ НЕ выдан", get_user(6014) is None, get_user(6014))
+
     # --- 10. Сбой проверки платежа -> 500 (ЮKassa повторит) ----------------
     with patch.object(yookassa, "fetch_payment",
                       side_effect=RuntimeError("Не удалось проверить платёж")):
@@ -465,7 +504,8 @@ def main():
     print("    тестовый платёж в проде и битая metadata доступ НЕ открывают;")
     print("    сбой проверки платежа отвечает 500, чтобы ЮKassa повторила;")
     print("    секрет в адресе вебхука, строгий формат id, дедуп по id из API,")
-    print("    возврат не открывает доступ, переплата и цена из metadata засчитываются")
+    print("    возврат не открывает доступ, переплата и цена из metadata засчитываются;")
+    print("    описание «Fitness Up — подписка на 3 месяца», оплата 3 месяцев работает")
     return 0
 
 

@@ -11,8 +11,9 @@
  * Что показывает (сверху вниз):
  *   1. Шапка с кнопкой «Назад» -> App.navigate("subscription").
  *   2. Карточку выбранного тарифа: иконка, название, срок, цена в рублях,
- *      для годового — «≈ N ₽/мес · экономия M%», честная строка про разовый
- *      платёж без автопродления и заметку для действующего премиума.
+ *      для тарифов длиннее месяца («3 месяца», год) — «≈ N ₽/мес · экономия
+ *      M%» против месячной цены, честная строка про разовый платёж без
+ *      автопродления и заметку для действующего премиума.
  *   3. Что входит в подписку — ЕДИНЫЙ список выгод (window.PageSubscription
  *      .benefits()), тот же, что на витрине подписки: раньше здесь были свои
  *      пять пунктов, а на витрине — другие восемь, и среди них не было
@@ -69,7 +70,9 @@
   }
 
   // Ключи тарифов, которые умеет показывать страница (порядок — как в подписке).
-  var TARIFF_KEYS = ["monthly", "yearly", "lifetime"];
+  // Тариф не из списка страница не откроет (вернёт к витрине), поэтому новый
+  // тариф с бэкенда нужно добавить и сюда, и в TARIFF_META.
+  var TARIFF_KEYS = ["monthly", "quarterly", "yearly", "lifetime"];
 
   // Оформление тарифов: иконка, название и срок «по умолчанию» (если сервер
   // не прислал days). Тексты — парами [ru, en], перевод при рендере.
@@ -80,6 +83,11 @@
       icon: "calendar",
       title: ["Месячный", "Monthly"],
       term: ["30 дней доступа", "30 days of access"]
+    },
+    quarterly: {
+      icon: "calendar",
+      title: ["3 месяца", "3 months"],
+      term: ["90 дней доступа", "90 days of access"]
     },
     yearly: {
       icon: "trophy",
@@ -257,25 +265,30 @@
   }
 
   /**
-   * «Экономика» годового тарифа относительно месячного:
-   *   perMonth — рублей в месяц по годовому тарифу;
-   *   savePct  — процент экономии против 12 месячных (null, если экономии нет
-   *              или месячной цены нет) — рекламу без основания не показываем.
+   * «Экономика» ЛЮБОГО тарифа длиннее месяца относительно месячного — тот же
+   * расчёт, что на витрине подписки, чтобы цифры на двух экранах совпадали:
+   *   months   — сколько месяцев покрывает тариф (days / дней в месяце,
+   *              округлено: 90 -> 3, 365 -> 12);
+   *   perMonth — рублей в месяц по этому тарифу;
+   *   savePct  — процент экономии против months × месячная цена.
+   * null для месячного/бессрочного тарифа, без месячной цены и когда выгоды
+   * нет — рекламную строку без основания не показываем.
    */
-  function yearlyEconomy(s) {
-    var yearly = tariffPrice(s, "yearly");
-    if (yearly == null) return null;
-    var perMonth = Math.round(yearly / 12);
+  function tariffEconomy(s, key) {
+    if (key === "monthly") return null;
+    var price = tariffPrice(s, key);
     var monthly = tariffPrice(s, "monthly");
-    var savePct = null;
-    if (monthly != null) {
-      var fullYear = monthly * 12;
-      if (fullYear > 0) {
-        savePct = Math.round((1 - yearly / fullYear) * 100);
-        if (savePct <= 0) savePct = null;
-      }
-    }
-    return { perMonth: perMonth, savePct: savePct };
+    var days = tariffDays(s, key);
+    if (price == null || monthly == null || !days) return null;
+
+    // Месяц меряем сроком месячного тарифа с сервера (по умолчанию 30 дней).
+    var monthDays = tariffDays(s, "monthly") || 30;
+    var months = Math.round(days / monthDays);
+    if (months < 2) return null;
+
+    var savePct = Math.round((1 - price / (monthly * months)) * 100);
+    if (!(savePct > 0)) return null;
+    return { perMonth: Math.round(price / months), savePct: savePct };
   }
 
   /**
@@ -382,7 +395,9 @@
       "</span>" +
       "</h1>" +
       '<p class="page-subtitle sub-subtitle">' +
-      esc(pick("Подписка «Калории»", "«Calories» subscription")) +
+      // Название продукта то же, что в описании платежа у провайдера
+      // (config.PAYMENT_PRODUCT_NAME): модератор сверяет витрину с платежом.
+      esc(pick("Подписка Fitness Up", "Fitness Up subscription")) +
       "</p>" +
       "</header>" +
       '<div class="pay-body" id="payBody">' +
@@ -406,22 +421,17 @@
       ? pick(days + " " + daysWordRu(days) + " доступа", days + (days === 1 ? " day" : " days") + " of access")
       : pick(meta.term[0], meta.term[1]);
 
-    // Для годового — «≈ N ₽/мес · экономия M%» (экономия только если есть).
+    // Для тарифов длиннее месяца — «≈ N ₽/мес · экономия M%» (только если
+    // выгода против месячной цены действительно есть).
     var econHtml = "";
-    if (key === "yearly") {
-      var econ = yearlyEconomy(s);
-      if (econ) {
-        var econText = pick(
-          "≈ " + formatPrice(econ.perMonth, currency) + "/мес",
-          "≈ " + formatPrice(econ.perMonth, currency) + "/mo"
-        );
-        if (econ.savePct != null) {
-          econText +=
-            " · " +
-            pick("экономия " + econ.savePct + "%", "save " + econ.savePct + "%");
-        }
-        econHtml = '<div class="pay-plan__econ">' + esc(econText) + "</div>";
-      }
+    var econ = tariffEconomy(s, key);
+    if (econ) {
+      var perMonthShown = formatPrice(econ.perMonth, currency);
+      var econText =
+        pick("≈ " + perMonthShown + "/мес", "≈ " + perMonthShown + "/mo") +
+        " · " +
+        pick("экономия " + econ.savePct + "%", "save " + econ.savePct + "%");
+      econHtml = '<div class="pay-plan__econ">' + esc(econText) + "</div>";
     }
 
     // Заметка о том, как оплата ляжет на текущий доступ.
@@ -889,11 +899,9 @@
   }
 
   /**
-   * Кнопка «Оплатить N ₽» — отдаёт управление App.payCard, который сам
-   * выбирает провайдера (виджет CloudPayments, ссылка ЮKassa или честный
-   * тост «оплата подключается»). Доступ активирует вебхук.
+   * Склонение «день/дня/дней» по числу — для срока тарифа («90 дней
+   * доступа»): срок приходит с сервера из env, поэтому число может быть любым.
    */
-  /** Склонение «день/дня/дней» по числу. */
   function daysWordRu(n) {
     var abs = Math.abs(Math.round(Number(n) || 0));
     var mod10 = abs % 10;
@@ -903,6 +911,11 @@
     return "дней";
   }
 
+  /**
+   * Кнопка «Оплатить N ₽» — отдаёт управление App.payCard, который сам
+   * выбирает провайдера (виджет CloudPayments, ссылка ЮKassa или честный
+   * тост «оплата подключается»). Доступ активирует вебхук.
+   */
   function onSubmit(e) {
     var btn = e && e.currentTarget;
     var key = state.tariff;

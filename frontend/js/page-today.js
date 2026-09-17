@@ -12,13 +12,18 @@
  *
  * ЧТО ПОКАЗЫВАЕТ (сверху вниз, по убыванию важности):
  *   1. Калории за день — кольцо «съедено из нормы» и три полосы БЖУ.
- *   2. Тренировка дня — план, отдых, незаконченная сессия или «сделано»,
+ *   2. Быстрые действия с едой — «Снять еду» и «Добавить вручную». Камеры
+ *      в таббаре больше нет (там теперь сама «Сегодня»), а записать еду
+ *      человек чаще всего хочет именно отсюда, глядя на остаток калорий.
+ *   3. Тренировка дня — план, отдых, незаконченная сессия или «сделано»,
  *      с единственной кнопкой действия.
- *   3. Вес и серия тренировок — две компактные плитки.
+ *   4. Вес и серия тренировок — две компактные плитки.
  *
  * ЧЕГО ЗДЕСЬ НЕТ И НЕ ДОЛЖНО БЫТЬ: форм ввода, списков, настроек. Это
  * витрина состояния и развилка, а не рабочая поверхность. Всё, что требует
- * работы, живёт в своём разделе.
+ * работы, живёт в своём разделе: быстрые действия лишь открывают камеру или
+ * лист ручного ввода в «Питании» (App.state.diaryOpenSheet), а переходы в
+ * тренера выбирают нужный раздел через App.state.trainerSegment.
  *
  * ДАННЫЕ. Три независимых запроса идут параллельно, и каждый блок рисуется,
  * как только пришёл его ответ: экран не ждёт самого медленного. Сбой любого
@@ -195,6 +200,28 @@
   }
 
   /* =====================================================================
+   *  БЛОК: БЫСТРЫЕ ДЕЙСТВИЯ С ЕДОЙ
+   *  Второстепенные по весу кнопки (контур, не заливка): главное на экране —
+   *  кольцо калорий и кнопка тренировки, а эти две — короткий путь в работу,
+   *  который не должен спорить с ними за внимание.
+   * ===================================================================== */
+
+  function quickHtml() {
+    return (
+      '<div class="td-quick">' +
+      '<button type="button" class="td-quick__btn" id="tdQuickScan">' +
+      icon("camera", { size: 18 }) +
+      "<span>" + esc(pick("Снять еду", "Snap food")) + "</span>" +
+      "</button>" +
+      '<button type="button" class="td-quick__btn" id="tdQuickManual">' +
+      icon("edit", { size: 18 }) +
+      "<span>" + esc(pick("Добавить вручную", "Add manually")) + "</span>" +
+      "</button>" +
+      "</div>"
+    );
+  }
+
+  /* =====================================================================
    *  БЛОК: ТРЕНИРОВКА ДНЯ
    * ===================================================================== */
 
@@ -358,6 +385,18 @@
     return "недель";
   }
 
+  /**
+   * Открывает тренера на нужном разделе. Разделы тренера (сегодня, программа,
+   * прогресс, упражнения) переключаются внутри одного экрана, и выбранный
+   * раздел тренер помнит между заходами. Поэтому раздел задаём ЯВНО: иначе
+   * тап по «Серии» открыл бы тот раздел, где человек был в прошлый раз.
+   * @param {string} segment "today" | "program" | "progress" | "exercises"
+   */
+  function openTrainerSegment(segment) {
+    if (App.state) App.state.trainerSegment = segment;
+    App.navigate("trainer");
+  }
+
   /* =====================================================================
    *  РЕНДЕР
    * ===================================================================== */
@@ -378,7 +417,7 @@
     if (!state.viewEl) return;
     var body = document.getElementById("tdBody");
     if (!body) return;
-    body.innerHTML = caloriesHtml() + workoutHtml() + tilesHtml();
+    body.innerHTML = caloriesHtml() + quickHtml() + workoutHtml() + tilesHtml();
     bind();
   }
 
@@ -392,11 +431,31 @@
       });
     }
 
+    // Камера — экран-задача без таббара: запоминаем, куда вернёт её «Закрыть».
+    var quickScan = document.getElementById("tdQuickScan");
+    if (quickScan) {
+      quickScan.addEventListener("click", function () {
+        App.haptic("light");
+        if (App.state) App.state.scanOrigin = "today";
+        App.navigate("scan");
+      });
+    }
+
+    // Ручной ввод живёт листом в «Питании»: просим дневник открыть его сразу.
+    var quickManual = document.getElementById("tdQuickManual");
+    if (quickManual) {
+      quickManual.addEventListener("click", function () {
+        App.haptic("light");
+        if (App.state) App.state.diaryOpenSheet = "manual";
+        App.navigate("diary");
+      });
+    }
+
     var openTrainer = document.getElementById("tdOpenTrainer");
     if (openTrainer) {
       openTrainer.addEventListener("click", function () {
         App.haptic("light");
-        App.navigate("trainer");
+        openTrainerSegment("today");
       });
     }
 
@@ -414,7 +473,7 @@
           );
           return;
         }
-        App.navigate("trainer");
+        openTrainerSegment("today");
       });
     }
 
@@ -426,11 +485,12 @@
       });
     }
 
+    // Серия — это прогресс тренировок: открываем тренера сразу на нём.
     var streak = document.getElementById("tdStreak");
     if (streak) {
       streak.addEventListener("click", function () {
         App.haptic("light");
-        App.navigate("trainer-progress");
+        openTrainerSegment("progress");
       });
     }
   }

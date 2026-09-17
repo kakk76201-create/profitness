@@ -1,11 +1,13 @@
 """
 ИИ-функции раздела «AI-тренер»: промпты (RU/EN) и нормализация ответов модели.
 
-Модуль намеренно «чистый»: не ходит в БД и не импортирует модели/seed —
+Модуль намеренно «чистый»: не ходит в БД и не импортирует модели —
 каталог упражнений приходит ПАРАМЕТРОМ (список dict, dict slug→dict, ORM-объекты
 или уже отформатированная строка каталога «slug | name_en | muscle | equipment |
 measure | difficulty»). Благодаря этому модуль тестируется независимо, а
-параллельные этапы стыкуются только по контракту ТЗ §5.
+параллельные этапы стыкуются только по контракту ТЗ §5. Seed упражнений читается
+только как справочник метаданных (категория, противопоказания), когда каталог
+пришёл одной строкой промпта.
 
 Общий движок — ai_service._run_text_completion (вызывается через модуль, чтобы
 mock.patch.object(ai_service, "_run_text_completion", ...) в тестах подменял и
@@ -14,9 +16,16 @@ mock.patch.object(ai_service, "_run_text_completion", ...) в тестах по�
 обрезаются по диапазонам, незнакомые slug — фаззи-матч по slug/имени, иначе
 отбрасываются (список отброшенных возвращается в поле "unmatched").
 
+Программа тренировок строится по базе знаний (backend/trainer_knowledge.py,
+docs/TRAINER_KNOWLEDGE.md): база задаёт каркас недели и отдаёт его в промпт, ИИ
+подбирает упражнения в этих рамках, аудит выправляет ответ, а при сбое ИИ
+программа собирается из шаблона базы без модели — поэтому generate_program,
+в отличие от остальных функций, AIError почти никогда не выбрасывает.
+
 Публичные функции:
     generate_program(profile, body, catalog, lang="ru", catalog_map=None) -> dict
-        Шаблон недели + периодизация + советы (tag trainer_program, 4000 токенов).
+        Шаблон недели + периодизация + советы (tag trainer_program, 4000 токенов);
+        при сбое ИИ — программа из шаблона базы знаний (ai_model "knowledge-template").
     exercise_technique(exercise, limitations=None, lang="ru") -> dict
         Техника упражнения (tag trainer_technique, 700 токенов). Ограничения
         пользователя в промпт НЕ попадают — кэш техники общий на упражнение и язык.
@@ -42,6 +51,7 @@ import logging
 import re
 
 from backend import ai_service
+from backend import trainer_knowledge as TK
 from backend.ai_service import (
     AIError,
     _coerce_float,
@@ -49,6 +59,7 @@ from backend.ai_service import (
     _normalize_lang,
     _pick_prompt,
 )
+from backend.trainer_exercises_seed import EXERCISES_BY_SLUG as SEED_BY_SLUG
 
 logger = logging.getLogger("trainer_ai")
 
@@ -212,23 +223,30 @@ PROGRAM_SYSTEM_PROMPT = (
     "из этого списка — ни одного выдуманного или изменённого slug. Если нужного "
     "упражнения нет — возьми ближайшее по мышце из каталога.\n\n"
     "ПРАВИЛА ПРОГРАММЫ:\n"
-    "- Ровно столько дней, сколько тренировок в неделю (day_index с 1). Сплит по числу "
-    "дней: не более 3 — full_body, 4 — upper_lower, 5–6 — ppl.\n"
-    "- Основных упражнений в день по длительности сессии: 20 мин → 3–4, 30 → 4–5, "
-    "45 → 5–6, 60 и больше → 6–8. Базовые (многосуставные) раньше изолирующих.\n"
-    "- Баланс тяни/толкай и верх/низ в рамках недели; недельных рабочих сетов на группу "
-    "мышц: 8–12 для новичка, 10–20 для остальных.\n"
-    "- Диапазоны повторов и отдых по цели: strength — 3–6 повт., отдых 120–180 с; "
-    "muscle — 6–12 повт., 60–120 с; loss и tone — 10–15 повт., 45–60 с плюс один "
-    "кардио-блок; endurance — 12–20 повт., 30–45 с плюс кардио-интервалы.\n"
+    "- БАЗА ЗНАНИЙ из запроса пользователя ОБЯЗАТЕЛЬНА: схему недели (сплит и дни), объём "
+    "по мышцам, диапазоны повторов, запас повторов (RIR, rpe = 10 − RIR), отдых и план "
+    "периодизации бери из неё. Отступать можно только из-за ограничений здоровья или "
+    "если нужного оборудования нет в каталоге. Упражнения выбирай из каталога под "
+    "движения (паттерны) слотов из примера недели: пример можно менять только на "
+    "упражнение того же движения.\n"
+    "- Ровно столько дней, сколько тренировок в неделю (day_index с 1); split_type — как "
+    "у схемы из базы знаний.\n"
+    "- Упражнений и подходов столько, чтобы тренировка уложилась в длительность сессии "
+    "(ориентир — пример недели). Базовые (многосуставные) раньше изолирующих; подходов "
+    "тяги за неделю не меньше, чем жимов.\n"
+    "- Если блока базы знаний в запросе нет: до 3 дней — full_body, 4 — upper_lower, "
+    "5–6 — ppl; 10–20 рабочих подходов на мышцу в неделю (новичку 6–10); сила 3–6 "
+    "повторов, остальные цели 6–15, отдых не меньше 60 с.\n"
     "- Всегда разминка 5–8 мин (warmup_general_5min плюс 1–2 специфичных движения) и "
     "заминка 3–5 мин (растяжка рабочих мышц).\n"
-    "- Периодизация по неделям: фазы base / build / peak / deload; каждая 4-я неделя и "
-    "последняя — deload (weight_pct 85, sets_delta -1).\n"
+    "- Периодизация по неделям: фазы base / build / peak / deload по плану из базы "
+    "знаний; разгрузка — weight_pct 85 и sets_delta -1, в остальные недели weight_pct 100 "
+    "и sets_delta 0 (вес по неделям ведёт бэкенд).\n"
     "- start_weight_kg — консервативно по уровню, полу и весу тела; для упражнений с "
     "весом тела и measure reps/time — null. Если известны рабочие веса — отталкивайся "
     "от них. Для measure time указывай time_sec вместо повторов.\n"
-    "- Ограничения: колени — без глубоких приседов и прыжковых выпадов; поясница — без "
+    "- Ограничения (подробно — в базе знаний): колени — без глубоких приседов и прыжковых "
+    "выпадов; поясница — без "
     "становой тяги с пола и наклонов со штангой; плечи — без жима из-за головы и "
     "глубоких отжиманий на брусьях; запястья — без опоры на кисти под нагрузкой; шея — "
     "без нагрузки на шею и рывков; беременность/давление/сердце — см. правила "
@@ -248,7 +266,7 @@ PROGRAM_SYSTEM_PROMPT = (
     '"note": "локти под 45°"}], '
     '"cooldown": [{"slug": "chest_stretch", "time_sec": 30}]}]}, '
     '"periodization": [{"week": 1, "phase": "base", "weight_pct": 100, "sets_delta": 0}, '
-    '{"week": 4, "phase": "deload", "weight_pct": 85, "sets_delta": -1}], '
+    '{"week": 2, "phase": "build", "weight_pct": 100, "sets_delta": 0}], '
     '"tips": ["...", "..."]}\n\n'
     "Все тексты (title, summary, note, tips) — по-русски, коротко и конкретно."
 )
@@ -264,23 +282,30 @@ PROGRAM_SYSTEM_PROMPT_EN = (
     "this list — no invented or altered slugs. If the exact exercise is missing, take "
     "the closest one for the same muscle from the catalog.\n\n"
     "PROGRAM RULES:\n"
-    "- Exactly as many days as training sessions per week (day_index starts at 1). "
-    "Split by day count: up to 3 — full_body, 4 — upper_lower, 5–6 — ppl.\n"
-    "- Main exercises per day by session length: 20 min → 3–4, 30 → 4–5, 45 → 5–6, "
-    "60+ → 6–8. Compound movements before isolation.\n"
-    "- Balance push/pull and upper/lower across the week; weekly working sets per "
-    "muscle group: 8–12 for beginners, 10–20 otherwise.\n"
-    "- Rep ranges and rest by goal: strength — 3–6 reps, rest 120–180 s; muscle — "
-    "6–12 reps, 60–120 s; loss and tone — 10–15 reps, 45–60 s plus one cardio block; "
-    "endurance — 12–20 reps, 30–45 s plus cardio intervals.\n"
+    "- The KNOWLEDGE BASE in the user message is MANDATORY: take the week scheme (split "
+    "and days), volume per muscle, rep ranges, reps in reserve (RIR, rpe = 10 − RIR), rest "
+    "and the periodization plan from it. Deviate only because of health limitations or "
+    "when the needed equipment is not in the catalog. Pick exercises from the catalog for "
+    "the movement patterns of the slots in the sample week: a sample exercise may only be "
+    "swapped for one of the same movement.\n"
+    "- Exactly as many days as training sessions per week (day_index starts at 1); "
+    "split_type — as in the knowledge base scheme.\n"
+    "- As many exercises and sets as fit the session length (use the sample week as a "
+    "guide). Compound movements before isolation; weekly pulling sets at least equal to "
+    "pressing sets.\n"
+    "- If the message has no knowledge base block: up to 3 days — full_body, 4 — "
+    "upper_lower, 5–6 — ppl; 10–20 working sets per muscle per week (beginners 6–10); "
+    "strength 3–6 reps, other goals 6–15, rest at least 60 s.\n"
     "- Always a 5–8 min warm-up (warmup_general_5min plus 1–2 specific drills) and a "
     "3–5 min cool-down (stretching the muscles trained).\n"
-    "- Periodization by week: phases base / build / peak / deload; every 4th week and "
-    "the last one — deload (weight_pct 85, sets_delta -1).\n"
+    "- Periodization by week: phases base / build / peak / deload per the knowledge base "
+    "plan; a deload is weight_pct 85 and sets_delta -1, other weeks weight_pct 100 and "
+    "sets_delta 0 (the backend drives week-to-week load).\n"
     "- start_weight_kg — conservative for the level, sex and body weight; null for "
     "bodyweight exercises and measure reps/time. If working weights are known, start "
     "from them. For measure time give time_sec instead of reps.\n"
-    "- Limitations: knees — no deep squats or jumping lunges; lower back — no deadlifts "
+    "- Limitations (details in the knowledge base): knees — no deep squats or jumping "
+    "lunges; lower back — no deadlifts "
     "from the floor or barbell hinges; shoulders — no behind-the-neck presses or deep "
     "dips; wrists — no loaded weight on the hands; neck — no neck loading or jerks; "
     "pregnancy/blood pressure/heart — see the safety rules.\n"
@@ -299,7 +324,7 @@ PROGRAM_SYSTEM_PROMPT_EN = (
     '"note": "elbows at 45°"}], '
     '"cooldown": [{"slug": "chest_stretch", "time_sec": 30}]}]}, '
     '"periodization": [{"week": 1, "phase": "base", "weight_pct": 100, "sets_delta": 0}, '
-    '{"week": 4, "phase": "deload", "weight_pct": 85, "sets_delta": -1}], '
+    '{"week": 2, "phase": "build", "weight_pct": 100, "sets_delta": 0}], '
     '"tips": ["...", "..."]}\n\n'
     "All texts (title, summary, note, tips) — in English, short and specific."
 )
@@ -1032,7 +1057,7 @@ def normalize_program(
 
 
 # --------------------------------------------------------------------------- #
-#  §5.1 Генерация программы
+#  §5.1 Генерация программы: анкета и тело в user_prompt
 # --------------------------------------------------------------------------- #
 def _render_known_weights(value, lang: str) -> str:
     """«Известные рабочие веса» из профиля: dict slug→кг, список dict или строк."""
@@ -1135,8 +1160,675 @@ def _render_profile_parts(profile: dict, body: dict, lang: str) -> list[str]:
     return parts
 
 
+# --------------------------------------------------------------------------- #
+#  §5.1 База знаний: выжимка в промпт, аудит ответа ИИ, запасной шаблон
+# --------------------------------------------------------------------------- #
+# ai_model программы, собранной без модели (ИИ упал или вернул непригодный ответ).
+KNOWLEDGE_TEMPLATE_MODEL = "knowledge-template"
+# Замечания аудита, с которыми упражнение нельзя оставлять в плане: противопоказано
+# по каталогу, не рекомендуется при ограничениях анкеты или под него нет оборудования.
+_REPLACE_CODES = ("contraindicated", "not_recommended", "equipment_unavailable")
+_STRENGTH_CATEGORIES = ("compound", "isolation")
+# Предел итераций правки объёма на мышцу: защита от зацикливания на странном ответе модели.
+_VOLUME_GUARD = 60
+MAX_TIPS = 6
+# Короткое правило боли для советов шаблона (полная модель — TK.SAFETY_GENERAL["pain_model"]).
+_PAIN_TIP = (
+    "Боль: 0–3 из 10 — продолжай, 4–5 — снизь вес или амплитуду, больше 5, острая или утром хуже — замени упражнение.",
+    "Pain: 0–3 out of 10 — continue, 4–5 — reduce load or range, above 5, sharp or worse next morning — replace the exercise.",
+)
+
+
+def _knowledge_entries(cat: _Catalog) -> dict:
+    """slug → запись каталога для функций базы знаний.
+
+    Каталог, пришедший только строкой промпта, не знает категорию, противопоказания и
+    вторичные мышцы — без них аудит посчитал бы недельный объём нулевым и «чинил» бы
+    здоровую программу. Такие записи берём из seed: тот же slug — то же упражнение.
+    Пустой каталог (нормализатор тогда оставляет slug модели как есть) — весь seed.
+    """
+    if not cat:
+        return dict(SEED_BY_SLUG)
+    out = {}
+    for slug, entry in cat.entries.items():
+        if _field(entry, "category") is None and slug in SEED_BY_SLUG:
+            out[slug] = SEED_BY_SLUG[slug]
+        else:
+            out[slug] = entry
+    return out
+
+
+def _prompt_entries(entries: dict, catalog) -> dict:
+    """Упражнения, которые ИИ видел в каталоге промпта: из них база знаний берёт пример
+    недели, замены и шаблон.
+
+    Строку каталога маршрут уже отфильтровал (оборудование, противопоказания, сложность,
+    исключённые пользователем упражнения). Полный catalog_map нужен нормализатору для
+    фаззи-поиска, но предлагать из него исключённое пользователем упражнение нельзя.
+    """
+    if not entries or not isinstance(catalog, str):
+        return entries
+    allowed = set()
+    for line in catalog.splitlines():
+        if "|" not in line:
+            continue
+        slug = _norm_slug(line.split("|", 1)[0])
+        if slug and slug != "slug":
+            allowed.add(slug)
+    if not allowed:
+        return entries
+    allowed |= {DEFAULT_WARMUP_SLUG, DEFAULT_COOLDOWN_SLUG}
+    picked = {slug: entry for slug, entry in entries.items() if slug in allowed}
+    return picked or entries
+
+
+def _knowledge_brief(profile: dict, lang: str, pick: dict) -> str:
+    """Блок «БАЗА ЗНАНИЙ» для user_prompt; сбой базы не должен ломать генерацию."""
+    try:
+        return TK.prompt_brief(profile, lang, catalog_map=pick)
+    except Exception:  # noqa: BLE001 — без блока модель работает по запасным правилам промпта
+        logger.exception("AI[%s]: не удалось собрать выжимку базы знаний", TAG_PROGRAM)
+        return ""
+
+
+def _is_strength(entry) -> bool:
+    """Силовое упражнение, которое входит в недельный объём мышц."""
+    return _field(entry, "category") in _STRENGTH_CATEGORIES and _field(entry, "muscle_group") in TK.MUSCLES
+
+
+def _sets_of(item) -> int:
+    return _coerce_int(item.get("sets"), 0) or 0
+
+
+def _renumber(day: dict) -> None:
+    for order, item in enumerate(day["exercises"], start=1):
+        item["order"] = order
+
+
+def _knowledge_item(slug: str, entries: dict, cat: _Catalog, np_: dict, lang: str, sets=None, old=None) -> dict:
+    """Пункт упражнения по правилам базы знаний: повторы, RPE и отдых цели с учётом ограничений."""
+    entry = entries[slug]
+    category = _field(entry, "category") or "compound"
+    if category in _STRENGTH_CATEGORIES:
+        slot = {"pattern": TK._guess_pattern(slug, entry), "role": "secondary", "sets": sets or 2,
+                "reps_key": "accessory" if category == "isolation" else "main", "priority": 2, "variant": 0}
+        item = TK._make_strength_item(slug, entry, slot, "normal", TK._rules(np_), np_, lang)
+    else:
+        # Кардио на замену (например, интервалы → ровное кардио при давлении): одним блоком
+        # не короче 10 минут — короче ровное кардио почти ничего не даёт.
+        seconds = 600
+        if old:
+            seconds = _clamp(_sets_of(old) * (_coerce_int(old.get("time_sec"), 0) or 0), 600, 1800)
+        item = {"slug": slug, "sets": 1, "reps_min": None, "reps_max": None, "time_sec": seconds, "rest_sec": 60,
+                "start_weight_kg": None, "rpe": None, "tempo": None, "note": TK._note("steady", lang), "order": 0}
+        if (_field(entry, "measure_type") or "time") not in ("time", "distance"):
+            item.update(sets=3, reps_min=10, reps_max=15, time_sec=None)
+    item["exercise_id"] = cat.field(slug, "id") if cat else _field(entry, "id")
+    item["muscle_group"] = (cat.field(slug, "muscle_group") if cat else None) or _field(entry, "muscle_group")
+    return item
+
+
+def _fix_unsafe(days: list, np_: dict, entries: dict, pick: dict, cat: _Catalog, lang: str, issues: list, fixes: list) -> None:
+    """Заменить упражнения, которые нельзя оставлять (противопоказаны, не рекомендуются при
+    ограничениях, нет оборудования), на подходящие по тому же движению через pick_exercise.
+
+    Нормализатор уже заменяет противопоказанные по каталогу; здесь добираем то, чего он не
+    видит: правила SAFETY базы знаний и оборудование пользователя. Подходы сохраняем, чтобы
+    замена не меняла объём недели; если на то же движение ничего нет — берётся замена
+    паттерна из SAFETY (например, присед → ягодичный мост при боли в колене), иначе пункт
+    убирается.
+    """
+    flagged = {}
+    for issue in issues:
+        if issue["code"] in _REPLACE_CODES and issue.get("slug") and issue.get("day_index"):
+            flagged.setdefault((issue["day_index"], issue["slug"]), issue["code"])
+    if not flagged:
+        return
+    for day in days:
+        items = day["exercises"]
+        index = 0
+        while index < len(items):
+            item = items[index]
+            code = flagged.get((day["day_index"], item.get("slug")))
+            if not code:
+                index += 1
+                continue
+            used = {x.get("slug") for x in items if x is not item}
+            week_slugs = {x.get("slug") for d in days for x in d["exercises"]} | used
+            pattern = TK._guess_pattern(item["slug"], entries.get(item["slug"]))
+            new_slug = None
+            if pattern in TK.PATTERNS:
+                # Сначала упражнение, которого ещё нет в неделе (одна цель повторов на упражнение).
+                new_slug = (TK.pick_exercise(pattern, np_, pick, used=week_slugs)
+                            or TK.pick_exercise(pattern, np_, pick, used=used))
+            if not new_slug and len(items) == 1:
+                # Единственное упражнение дня не оставляем пустым местом: ровное кардио доступно всем.
+                new_slug = TK.pick_exercise("cardio_steady", np_, pick, used=used)
+            if new_slug and new_slug in entries:
+                old_entry, new_entry = entries.get(item["slug"]), entries[new_slug]
+                sets = _sets_of(item) if _is_strength(new_entry) else None
+                new_item = _knowledge_item(new_slug, entries, cat, np_, lang, sets=sets, old=item)
+                if _is_strength(old_entry) and _is_strength(new_entry):
+                    # Замена не должна удлинять тренировку и менять замысел модели: при той же мере
+                    # (повторы с весом, повторы, время) берём её повторы, RPE и темп; отдых — всегда её.
+                    # Рабочий вес и подсказку не переносим — они про другое упражнение.
+                    if _field(old_entry, "measure_type") == _field(new_entry, "measure_type"):
+                        for key in ("reps_min", "reps_max", "time_sec", "rpe", "tempo"):
+                            if item.get(key) is not None:
+                                new_item[key] = item[key]
+                    if item.get("rest_sec"):
+                        new_item["rest_sec"] = item["rest_sec"]
+                items[index] = new_item
+                fixes.append({"type": "replace", "reason": code, "day_index": day["day_index"],
+                              "slug": item["slug"], "new_slug": new_slug})
+                index += 1
+            else:
+                items.pop(index)
+                fixes.append({"type": "remove", "reason": code, "day_index": day["day_index"], "slug": item["slug"]})
+        _renumber(day)
+
+
+def _fix_intensity(days: list, np_: dict, entries: dict, fixes: list) -> None:
+    """Пределы интенсивности ограничений (беременность, давление/сердце): не меньше N
+    повторов, RPE не выше предела, удержание не дольше, отдых не короче — это правила
+    безопасности, их не оставляем на усмотрение модели."""
+    limits = TK._safety_for(np_)["overrides"]
+    if not any(limits.get(key) for key in ("min_reps", "max_rpe", "max_hold_sec", "min_rest_sec")):
+        return
+    changed = 0
+    for day in days:
+        for item in day["exercises"]:
+            if not _is_strength(entries.get(item.get("slug"))):
+                continue
+            before = (item.get("reps_min"), item.get("reps_max"), item.get("rpe"), item.get("time_sec"), item.get("rest_sec"))
+            if limits.get("min_reps") and item.get("reps_min") is not None:
+                low = max(item["reps_min"], limits["min_reps"])
+                item["reps_min"] = low
+                item["reps_max"] = min(REPS_RANGE[1], max(item.get("reps_max") or low, low + 2))
+            if limits.get("max_rpe") and (item.get("rpe") is None or item["rpe"] > limits["max_rpe"]):
+                item["rpe"] = limits["max_rpe"]
+            if limits.get("max_hold_sec") and item.get("time_sec") and item["time_sec"] > limits["max_hold_sec"]:
+                item["time_sec"] = limits["max_hold_sec"]
+            if limits.get("min_rest_sec") and (item.get("rest_sec") or 0) < limits["min_rest_sec"]:
+                item["rest_sec"] = limits["min_rest_sec"]
+            if before != (item.get("reps_min"), item.get("reps_max"), item.get("rpe"), item.get("time_sec"), item.get("rest_sec")):
+                changed += 1
+    if changed:
+        fixes.append({"type": "intensity", "count": changed})
+
+
+def _fix_order(days: list, entries: dict, fixes: list) -> None:
+    """Многосуставные раньше изолирующих (nunes2021_order): переставляем только силовые
+    пункты между собой; кор, икры и кардио остаются на своих местах (их порядок аудит
+    не проверяет, а кардио в конце — осознанный выбор)."""
+    def kind(item):
+        entry = entries.get(item.get("slug"))
+        if not _is_strength(entry) or _field(entry, "muscle_group") in ("core", "calves"):
+            return None
+        return 0 if _field(entry, "category") == "compound" else 1
+
+    for day in days:
+        items = day["exercises"]
+        slots = [i for i, item in enumerate(items) if kind(item) is not None]
+        ordered = sorted(slots, key=lambda i: (kind(items[i]), i))
+        if ordered == slots:
+            continue
+        new_items = list(items)
+        for position, source in zip(slots, ordered):
+            new_items[position] = items[source]
+        day["exercises"] = new_items
+        _renumber(day)
+        fixes.append({"type": "order", "day_index": day["day_index"]})
+
+
+_LOWER_MUSCLES = frozenset({"quads", "hamstrings", "glutes", "calves"})
+
+
+def _region(muscle) -> str:
+    """Зона тела мышцы: ноги или верх (кор — сам по себе, в любой день)."""
+    if muscle in _LOWER_MUSCLES:
+        return "lower"
+    return "core" if muscle == "core" else "upper"
+
+
+def _volume_worsens(before: dict, after: dict, targets: dict) -> bool:
+    """Правка подходов увела какую-то мышцу дальше за её диапазон (синергисты считаются по 0,5)."""
+    for muscle in TK.MUSCLES:
+        if after[muscle] > before[muscle] + 0.01 and after[muscle] > targets[muscle]["max"] + 0.01:
+            return True
+        if after[muscle] < before[muscle] - 0.01 and after[muscle] < targets[muscle]["min"] - 0.01:
+            return True
+    return False
+
+
+def _fix_volume(days: list, np_: dict, entries: dict, pick: dict, cat: _Catalog, lang: str, fixes: list) -> None:
+    """Подогнать недельный объём под диапазоны базы знаний, не переписывая программу:
+    ±1 подход у упражнений мышцы; крупной мышце ниже минимума — не больше двух новых
+    упражнений, если подходов уже не добавить; тяга не меньше жима. Каждая добавка
+    проверяется бюджетом времени дня, потолком подходов за тренировку и тем, что соседние
+    мышцы не выходят за свой диапазон, а жимов не становится больше, чем тяг.
+    """
+    targets = TK.volume_targets(np_)
+    session_cap = TK.LEVEL_PARAMS[np_["level"]]["session_sets_per_muscle_max"]
+    minutes = np_["session_minutes"]
+    counts = {"added": 0, "removed": 0}
+
+    def strength(day):
+        return [(item, entries[item["slug"]]) for item in day["exercises"] if _is_strength(entries.get(item.get("slug")))]
+
+    def totals():
+        return TK.weekly_sets_by_muscle(days, entries)
+
+    def planned_sec(day):
+        # Как в audit_week: длительность дня не больше выбранной в анкете.
+        return min(_coerce_int(day.get("duration_min"), minutes) or minutes, minutes) * 60
+
+    def fits(day):
+        return TK.estimate_day_seconds(day, entries) <= planned_sec(day) * TK.TIME_MODEL["tolerance"]
+
+    def set_cap(entry):
+        # ACSM: новичку 1–3 подхода на упражнение; остальным базовые до 5, изоляция до 4.
+        if np_["level"] == "beginner":
+            return 3
+        return 5 if _field(entry, "category") == "compound" else 4
+
+    def pull_push():
+        pull = push = 0
+        for day in days:
+            for item, entry in strength(day):
+                pattern = TK._guess_pattern(item["slug"], entry)
+                if pattern in TK.PULL_PATTERNS:
+                    pull += _sets_of(item)
+                elif pattern in TK.PUSH_PATTERNS:
+                    push += _sets_of(item)
+        return pull, push
+
+    def balanced():
+        # Добавки не должны делать жимов больше, чем тяг (если тяги в неделе вообще есть).
+        pull, push = pull_push()
+        return pull == 0 or pull >= push or not push_added()
+
+    def push_added():
+        # Жимы выросли относительно исходной недели — значит, дисбаланс создала правка.
+        return pull_push()[1] > start_push
+
+    tot = totals()
+    start_push = pull_push()[1]
+
+    # 1. Выше максимума: сначала изоляция (не ниже 1 подхода), затем базовые (не ниже 2);
+    #    тягу не трогаем, если она станет меньше жима.
+    for muscle in TK.MUSCLES:
+        blocked = set()
+        for _ in range(_VOLUME_GUARD):
+            if tot[muscle] <= targets[muscle]["max"] + 0.01:
+                break
+            pull, push = pull_push()
+            cands = []
+            for day in days:
+                for item, entry in strength(day):
+                    if id(item) in blocked or _field(entry, "muscle_group") != muscle:
+                        continue
+                    isolation = _field(entry, "category") == "isolation"
+                    if _sets_of(item) <= (1 if isolation else 2):
+                        continue
+                    if TK._guess_pattern(item["slug"], entry) in TK.PULL_PATTERNS and pull - 1 < push:
+                        continue
+                    cands.append(((0 if isolation else 1, -_sets_of(item), len(cands)), item))
+            if not cands:
+                break
+            item = min(cands, key=lambda c: c[0])[1]
+            item["sets"] = _sets_of(item) - 1
+            after = totals()
+            if _volume_worsens(tot, after, targets):
+                item["sets"] += 1
+                blocked.add(id(item))
+                continue
+            tot = after
+            counts["removed"] += 1
+
+    # 2. Ниже минимума: +1 подход, сначала базовым с наименьшим числом подходов.
+    def raise_sets(muscle):
+        nonlocal tot
+        blocked = set()
+        for _ in range(_VOLUME_GUARD):
+            if tot[muscle] >= targets[muscle]["min"] - 0.01:
+                return
+            cands = []
+            for d_index, day in enumerate(days):
+                direct = sum(_sets_of(item) for item, entry in strength(day) if _field(entry, "muscle_group") == muscle)
+                if direct >= session_cap:
+                    continue
+                for item, entry in strength(day):
+                    if id(item) in blocked or _field(entry, "muscle_group") != muscle or _sets_of(item) >= set_cap(entry):
+                        continue
+                    compound = _field(entry, "category") == "compound"
+                    cands.append(((0 if compound else 1, _sets_of(item), d_index, len(cands)), day, item))
+            if not cands:
+                return
+            _key, day, item = min(cands, key=lambda c: c[0])
+            item["sets"] = _sets_of(item) + 1
+            after = totals()
+            if not fits(day) or _volume_worsens(tot, after, targets) or not balanced():
+                item["sets"] -= 1
+                blocked.add(id(item))
+                continue
+            tot = after
+            counts["added"] += 1
+
+    for muscle in TK.MUSCLES:
+        raise_sets(muscle)
+
+    # 3. Крупная мышца всё ещё ниже минимума (подходы упёрлись в потолок или упражнения нет
+    #    вовсе) — одно упражнение на 2 подхода в день со свободным временем, лучше в день, где
+    #    этой мышцы ещё нет (частота 2 раза в неделю), затем снова шаг 2. Не больше двух
+    #    упражнений на мышцу: это правка, а не пересборка программы.
+    exercise_cap = min(TK.LEVEL_PARAMS[np_["level"]]["max_exercises"],
+                       TK.SESSION_BUDGET[minutes]["max_exercises"], MAX_MAIN_EXERCISES)
+    for muscle in sorted(TK.MAJOR_MUSCLES):
+        names = sorted((n for n, row in TK.PATTERNS.items() if row["muscle"] == muscle),
+                       key=lambda n: 0 if TK.PATTERNS[n]["kind"] == "compound" else 1)
+        for _attempt in range(2):
+            if tot[muscle] >= targets[muscle]["min"] - 0.01:
+                break
+            missing = tot[muscle] <= 0
+            # Порядок дней: той же зоны тела (жим не ставим в «день ног» сплита верх/низ), без этой
+            # мышцы (частота), с наибольшим запасом времени.
+            strength_days = sorted(
+                (d for d in days if strength(d) and len(strength(d)) < exercise_cap),
+                key=lambda d: (_region(muscle) not in {_region(_field(e, "muscle_group")) for _i, e in strength(d)},
+                               any(_field(e, "muscle_group") == muscle for _i, e in strength(d)),
+                               TK.estimate_day_seconds(d, entries) - planned_sec(d)))
+            week_slugs = {item.get("slug") for d in days for item in d["exercises"]}
+            added = False
+            for day in strength_days:
+                day_slugs = {item.get("slug") for item in day["exercises"]}
+                # Движение, которого в дне ещё нет (к мосту — отведение, а не второй мост).
+                present = {TK._guess_pattern(item.get("slug"), entries.get(item.get("slug"))) for item in day["exercises"]}
+                for name in sorted(names, key=lambda n: n in present):
+                    # Сначала упражнение, которого нет в неделе: у одного упражнения одна цель повторов.
+                    slug = (TK.pick_exercise(name, np_, pick, used=week_slugs, with_fallback=False)
+                            or TK.pick_exercise(name, np_, pick, used=day_slugs, with_fallback=False))
+                    if not slug or slug not in entries or _field(entries[slug], "muscle_group") != muscle:
+                        continue
+                    compound = _field(entries[slug], "category") == "compound"
+                    # Базовое — сразу после последнего базового, изоляция — после силовой части (до кардио).
+                    anchors = [i for i, item in enumerate(day["exercises"])
+                               if (_field(entries.get(item.get("slug")), "category") == "compound" if compound
+                                   else _is_strength(entries.get(item.get("slug"))))]
+                    position = anchors[-1] + 1 if anchors else (0 if compound else len(day["exercises"]))
+                    day["exercises"].insert(position, _knowledge_item(slug, entries, cat, np_, lang, sets=2))
+                    after = totals()
+                    # Мышца без единого подхода важнее баланса тяг и жимов: его потом выправит шаг 4.
+                    if fits(day) and not _volume_worsens(tot, after, targets) and (missing or balanced()):
+                        tot = after
+                        _renumber(day)
+                        fixes.append({"type": "add_exercise", "muscle": muscle, "day_index": day["day_index"], "slug": slug})
+                        added = True
+                        break
+                    day["exercises"].pop(position)
+                if added:
+                    break
+            if not added:
+                break
+            raise_sets(muscle)
+
+    # 4. Тяга не меньше жима (kolber2014_shoulder): подход тяге, иначе минус подход жиму.
+    blocked = set()
+    for _ in range(_VOLUME_GUARD):
+        pull, push = pull_push()
+        if pull == 0 or pull >= push:
+            break
+        ups, downs = [], []
+        for day in days:
+            for item, entry in strength(day):
+                if id(item) in blocked:
+                    continue
+                pattern = TK._guess_pattern(item["slug"], entry)
+                if pattern in TK.PULL_PATTERNS and _sets_of(item) < set_cap(entry):
+                    ups.append(((_sets_of(item), len(ups)), day, item, 1))
+                elif pattern in TK.PUSH_PATTERNS and _sets_of(item) > 2:
+                    isolation = _field(entry, "category") == "isolation"
+                    downs.append(((0 if isolation else 1, -_sets_of(item), len(downs)), day, item, -1))
+        changed = False
+        for _key, day, item, delta in sorted(ups, key=lambda c: c[0]) + sorted(downs, key=lambda c: c[0]):
+            item["sets"] = _sets_of(item) + delta
+            after = totals()
+            if (delta < 0 or fits(day)) and not _volume_worsens(tot, after, targets):
+                tot = after
+                counts["added" if delta > 0 else "removed"] += 1
+                changed = True
+                break
+            item["sets"] -= delta
+            blocked.add(id(item))
+        if not changed:
+            break
+
+    if counts["added"] or counts["removed"]:
+        fixes.append({"type": "sets", **counts})
+
+
+def _periodization_problem(raw, periodization: list, np_: dict):
+    """Почему периодизацию модели нельзя оставить (или None, если можно).
+
+    Непригодна: модель её не дала, все недели «база» (нет фаз роста и пика) или вес и
+    подходы меняются вне разгрузки (вес по неделям ведёт next_targets). Против правил
+    уровня: новичку до 8 недель плановая разгрузка не нужна; накопление дольше
+    max_accumulation_weeks уровня; разгрузка раньше, чем через 3 недели накопления.
+    """
+    weeks = len(periodization)
+    if not weeks:
+        return "empty"
+    explicit = 0
+    for item in raw if isinstance(raw, list) else []:
+        if (isinstance(item, dict) and 1 <= _coerce_int(item.get("week"), 0) <= weeks
+                and _clean_str(item.get("phase"), 12).lower() in PHASES):
+            explicit += 1
+    if not explicit:
+        return "empty"
+    phases = [row["phase"] for row in periodization]
+    if weeks >= 3 and not set(phases) - {"base", "deload"}:
+        return "no_progression"
+    for row in periodization:
+        if row["phase"] == "deload":
+            if row["weight_pct"] >= 100 and row["sets_delta"] >= 0:
+                return "deload_without_reduction"
+        elif row["weight_pct"] != 100 or row["sets_delta"] != 0:
+            return "load_change_outside_deload"
+    level = TK.LEVEL_PARAMS[np_["level"]]
+    if np_["level"] == "beginner" and weeks < level["deload_every_weeks"] and "deload" in phases:
+        return "beginner_deload"
+    reference = [row["phase"] for row in TK.periodization_for(np_)]
+    if phases == reference:
+        return None
+    # Предел накопления — как у periodization_for: короткую программу (например, 6 недель у
+    # продвинутого) база знаний не режет на блоки короче 3 недель, поэтому допускаем и её блок.
+    reference_run = run = 0
+    for phase in reference:
+        run = 0 if phase == "deload" else run + 1
+        reference_run = max(reference_run, run)
+    longest = max(level["max_accumulation_weeks"], reference_run)
+    run = 0
+    for phase in phases:
+        if phase == "deload":
+            if run < 3:
+                return "deload_too_often"
+            run = 0
+        else:
+            run += 1
+            if run > longest:
+                return "accumulation_too_long"
+    return None
+
+
+def _with_method_tip(tips, tip: str, safety=()) -> list[str]:
+    """Первой подсказкой — на чём основана программа, сразу за ней — «врач + красные флаги» для
+    беременности и давления (TK.safety_tips): модель может не дать совета о враче, а обрезка до
+    MAX_TIPS не должна его вытеснить. Дубликаты в любом месте списка убираем."""
+    out = [tip] if tip else []
+    seen = {tip.casefold()} if tip else set()
+    for text in safety or ():
+        if isinstance(text, str) and text and text.casefold() not in seen:
+            seen.add(text.casefold())
+            out.append(text)
+    for text in tips or []:
+        if isinstance(text, str) and text and text.casefold() not in seen:
+            seen.add(text.casefold())
+            out.append(text)
+    return out[:MAX_TIPS]
+
+
+def _brief_issues(issues: list, limit: int = 20) -> list[dict]:
+    """Замечания аудита без текстов — для лога и поля knowledge результата."""
+    keys = ("code", "severity", "muscle", "day_index", "slug")
+    return [{k: issue[k] for k in keys if k in issue} for issue in issues[:limit]]
+
+
+def _severity_counts(issues: list) -> dict:
+    counts = {"high": 0, "medium": 0, "low": 0}
+    for issue in issues:
+        counts[issue["severity"]] = counts.get(issue["severity"], 0) + 1
+    return counts
+
+
+def _audit_and_fix(days: list, np_: dict, entries: dict, pick: dict, cat: _Catalog, lang: str) -> tuple[list, list, list]:
+    """audit_week недели и безопасные правки по его замечаниям → (замечания до, после, правки).
+
+    Порядок: сначала безопасность (замены и пределы интенсивности), потом порядок
+    упражнений, потом объём — чтобы объём считался уже по безопасным упражнениям.
+    """
+    fixes: list[dict] = []
+    before = TK.audit_week(days, np_, entries)
+    _fix_unsafe(days, np_, entries, pick, cat, lang, before, fixes)
+    _fix_intensity(days, np_, entries, fixes)
+    _fix_order(days, entries, fixes)
+    _fix_volume(days, np_, entries, pick, cat, lang, fixes)
+    after = TK.audit_week(days, np_, entries) if fixes else before
+    for day in days:
+        # Акцент дня модели мог устареть: упражнение на мышцу убрано (противопоказано, нет
+        # оборудования) — в карточке дня не пишем «Квадрицепсы», если их в дне уже нет.
+        present = []
+        for item in day["exercises"]:
+            muscle = item.get("muscle_group") or _field(entries.get(item.get("slug")), "muscle_group")
+            if muscle in MUSCLE_GROUPS and muscle not in present:
+                present.append(muscle)
+        focus = [m for m in day.get("focus_muscles") or [] if m in present]
+        day["focus_muscles"] = (focus or present)[:5]
+    return before, after, fixes
+
+
+def _apply_knowledge(result: dict, raw_data, profile: dict, entries: dict, pick: dict, cat: _Catalog, lang: str) -> dict:
+    """Аудит программы модели по базе знаний и безопасные правки (без переписывания целиком)."""
+    np_ = TK._norm_profile(profile)
+    before, after, fixes = _audit_and_fix(result["week_template"]["days"], np_, entries, pick, cat, lang)
+
+    raw_period = raw_data.get("periodization") if isinstance(raw_data, dict) else None
+    problem = _periodization_problem(raw_period, result.get("periodization") or [], np_)
+    if problem:
+        result["periodization"] = TK.periodization_for(np_)
+        fixes.append({"type": "periodization", "reason": problem})
+
+    result["tips"] = _with_method_tip(result.get("tips"), TK.method_tip(np_, lang), TK.safety_tips(np_, lang))
+    result["knowledge"] = {"source": "ai", "split_id": TK.select_split(np_)["id"], "fixes": fixes,
+                           "issues": _brief_issues(after)}
+    logger.info(
+        "AI[%s]: база знаний — правок %d %s; замечания до %s, после %s: %s",
+        TAG_PROGRAM, len(fixes), sorted({f["type"] for f in fixes}), _severity_counts(before),
+        _severity_counts(after),
+        [(i["code"], i.get("muscle") or i.get("slug") or i.get("day_index")) for i in after if i["severity"] != "low"][:12],
+    )
+    return result
+
+
+def _template_tips(np_: dict, lang: str) -> list[str]:
+    """Советы программы из шаблона: метод, цель, безопасность ограничений, кардио, уровень."""
+    idx = 1 if lang == "en" else 0
+    goal = TK.GOAL_PARAMS[np_["goal"]]
+    tips = [goal["notes"][idx]]
+    for code in np_["limitations"]:
+        rule = TK.SAFETY.get(code)
+        if rule and rule["rules"]:
+            tips.append(rule["rules"][0][idx])
+    if np_["limitations"]:
+        tips.append(_PAIN_TIP[idx])
+    if np_["goal"] in ("loss", "endurance"):
+        tips.append(("Cardio: " if idx else "Кардио: ") + goal["cardio"]["en" if idx else "ru"].rstrip(".") + ".")
+    tips.append(TK.LEVEL_PARAMS[np_["level"]]["notes"][idx])
+    return _with_method_tip(tips, TK.method_tip(np_, lang), TK.safety_tips(np_, lang))
+
+
+def knowledge_template_program(profile: dict, catalog=None, lang: str = "ru", catalog_map=None, reason: str = "") -> dict:
+    """Программа без ИИ, целиком по базе знаний: build_week + periodization_for + тексты шаблона.
+
+    Формат тот же, что у generate_program: неделя проходит normalize_program с тем же
+    каталогом, значит в ней только существующие slug и exercise_id из библиотеки;
+    ai_model = "knowledge-template". Непригодный результат — AIError.
+    """
+    lang = _normalize_lang(lang)
+    profile = profile if isinstance(profile, dict) else {}
+    cat = catalog_map if isinstance(catalog_map, _Catalog) else _Catalog(catalog_map if catalog_map is not None else catalog)
+    entries = _knowledge_entries(cat)
+    return _template_program(profile, entries, _prompt_entries(entries, catalog), cat, lang, reason)
+
+
+def _template_program(profile: dict, entries: dict, pick: dict, cat: _Catalog, lang: str, reason: str) -> dict:
+    np_ = TK._norm_profile(profile)
+    en = lang == "en"
+    week = TK.build_week(np_, pick, lang)
+    split = TK.SPLITS_BY_ID.get(week["split_id"]) or TK.select_split(np_)
+    weeks = np_["program_weeks"]
+    title = f"{week['title']} — {weeks} weeks" if en else f"{week['title']} — {_plural_weeks_ru(weeks)}"
+    notes = TK.GOAL_PARAMS[np_["goal"]]["notes"][1 if en else 0]
+    about = split["about_en"] if en else split["about_ru"]
+    if en:
+        summary = f"Built from the coach's knowledge base: the “{split['name_en']}” scheme — {about}. {notes}"
+    else:
+        summary = f"Программа собрана по базе знаний тренера: схема «{split['name_ru']}» — {about}. {notes}"
+    expected = _coerce_int(profile.get("days_per_week"), 0) or 0
+    data = {
+        "title": title,
+        "split_type": week["split_type"],
+        "summary": summary,
+        "week_template": {"days": week["days"]},
+        "periodization": TK.periodization_for(np_),
+    }
+    result = normalize_program(
+        data,
+        cat,
+        days_per_week=min(expected, len(week["days"])) if expected > 0 else None,
+        weeks=weeks,
+        limitations=np_["limitations"],
+        lang=lang,
+        session_minutes=np_["session_minutes"],
+    )
+    result["tips"] = _template_tips(np_, lang)
+    # Тот же аудит, что для ответа модели: конструктор недели иногда оставляет свободное время
+    # при объёме ниже минимума (например, вес тела и 30 минут) — правки это добирают.
+    _before, issues, fixes = _audit_and_fix(result["week_template"]["days"], np_, entries, pick, cat, lang)
+    result["knowledge"] = {"source": "template", "split_id": week["split_id"], "fixes": fixes,
+                           "issues": _brief_issues(issues), "reason": _clean_str(reason, 200)}
+    result["ai_model"] = KNOWLEDGE_TEMPLATE_MODEL
+    logger.info("AI[%s]: программа из шаблона базы знаний %s (%s), правок %d, замечания %s", TAG_PROGRAM,
+                week["split_id"], reason or "-", len(fixes), _severity_counts(issues))
+    return result
+
+
+# --------------------------------------------------------------------------- #
+#  §5.1 Генерация программы: точка входа
+# --------------------------------------------------------------------------- #
 def generate_program(profile: dict, body: dict, catalog, lang: str = "ru", catalog_map=None) -> dict:
     """Сгенерировать шаблон недели + периодизацию (ТЗ §5.1). Тег trainer_program.
+
+    Схема: база знаний → ИИ → аудит → запасной шаблон.
+      1. В user_prompt перед каталогом — блок «БАЗА ЗНАНИЙ» (trainer_knowledge.prompt_brief):
+         схема недели с паттернами слотов, повторы/RIR/отдых цели, объём по мышцам,
+         прогрессия, периодизация и ограничения. System-промпт делает его обязательным.
+      2. Ответ модели нормализуется (normalize_program), затем audit_week и безопасные
+         правки: замена недопустимых упражнений, пределы интенсивности ограничений,
+         порядок «базовые раньше изоляции», ±подходы до диапазона объёма в рамках времени.
+         Периодизацию без смысла или против правил разгрузки уровня заменяет periodization_for.
+      3. Первая подсказка — method_tip: пользователь видит, на чём основана программа.
+      4. ИИ упал или ответ непригоден → программа из шаблона базы знаний
+         (ai_model "knowledge-template"), чтобы тренер работал и без модели.
 
     Параметры:
       * profile     — анкета тренера: goal, level, equipment, equipment_extra,
@@ -1152,8 +1844,9 @@ def generate_program(profile: dict, body: dict, catalog, lang: str = "ru", catal
       * catalog_map — необязательный полный каталог для нормализации (если catalog —
                       строка, карта строится из её строк).
 
-    Возвращает нормализованный словарь (см. normalize_program) плюс "ai_model".
-    При сбое ИИ или непригодном ответе — AIError (502 на маршруте).
+    Возвращает нормализованный словарь (см. normalize_program) плюс "ai_model" и
+    "knowledge" {source: ai|template, split_id, fixes, issues}. AIError — только если не
+    собрался и запасной шаблон (тогда маршрут отвечает 502).
     """
     lang = _normalize_lang(lang)
     profile = profile if isinstance(profile, dict) else {}
@@ -1161,8 +1854,13 @@ def generate_program(profile: dict, body: dict, catalog, lang: str = "ru", catal
 
     cat = _Catalog(catalog_map if catalog_map is not None else catalog)
     catalog_text = catalog.strip() if isinstance(catalog, str) else cat.lines()
+    entries = _knowledge_entries(cat)
+    pick = _prompt_entries(entries, catalog)
 
     parts = _render_profile_parts(profile, body, lang)
+    brief = _knowledge_brief(profile, lang, pick)
+    if brief:
+        parts.append(brief)
     if lang == "en":
         parts.append(
             "CATALOG (slug | name_en | muscle | equipment | measure | difficulty) — use ONLY these slugs:\n"
@@ -1177,32 +1875,52 @@ def generate_program(profile: dict, body: dict, catalog, lang: str = "ru", catal
         parts.append("Верни результат строго в формате JSON по инструкции.")
 
     system_prompt = _pick_prompt(PROGRAM_SYSTEM_PROMPT, PROGRAM_SYSTEM_PROMPT_EN, lang)
-    data, _debug = ai_service._run_text_completion(
-        system_prompt, "\n".join(parts), log_tag=TAG_PROGRAM, max_tokens=MAX_TOKENS_PROGRAM
-    )
-    _debug = _debug if isinstance(_debug, dict) else {}
-
     try:
-        result = normalize_program(
-            data,
-            cat,
-            days_per_week=profile.get("days_per_week"),
-            weeks=profile.get("program_weeks"),
-            limitations=profile.get("limitations"),
-            lang=lang,
-            session_minutes=profile.get("session_minutes"),
+        data, _debug = ai_service._run_text_completion(
+            system_prompt, "\n".join(parts), log_tag=TAG_PROGRAM, max_tokens=MAX_TOKENS_PROGRAM
         )
-    except AIError as exc:
-        logger.warning("AI[%s]: непригодный ответ: %s", TAG_PROGRAM, exc)
-        raise AIError(
-            str(exc),
-            raw=_debug.get("raw", ""),
-            finish_reason=_debug.get("finish_reason"),
-            refusal=_debug.get("refusal"),
-        )
+        _debug = _debug if isinstance(_debug, dict) else {}
+        try:
+            result = normalize_program(
+                data,
+                cat,
+                days_per_week=profile.get("days_per_week"),
+                weeks=profile.get("program_weeks"),
+                limitations=profile.get("limitations"),
+                lang=lang,
+                session_minutes=profile.get("session_minutes"),
+            )
+        except AIError as exc:
+            logger.warning("AI[%s]: непригодный ответ: %s", TAG_PROGRAM, exc)
+            raise AIError(
+                str(exc),
+                raw=_debug.get("raw", ""),
+                finish_reason=_debug.get("finish_reason"),
+                refusal=_debug.get("refusal"),
+            )
+    except Exception as exc:  # noqa: BLE001 — любой сбой модели (сеть, ключ, мусор) закрывает шаблон
+        logger.warning("AI[%s]: ИИ не дал программу (%s) — собираем по базе знаний", TAG_PROGRAM, exc,
+                       exc_info=not isinstance(exc, AIError))
+        try:
+            return _template_program(profile, entries, pick, cat, lang, str(exc))
+        except Exception:  # noqa: BLE001
+            logger.exception("AI[%s]: шаблон базы знаний тоже не собрался", TAG_PROGRAM)
+        if isinstance(exc, AIError):
+            raise
+        raise AIError(f"AI не ответил ({TAG_PROGRAM}): {exc}") from exc
+
     if result["unmatched"]:
         logger.info("AI[%s]: отброшено/заменено %d slug: %s", TAG_PROGRAM, len(result["unmatched"]),
                     [u.get("slug") for u in result["unmatched"]][:10])
+    try:
+        result = _apply_knowledge(result, data, profile, entries, pick, cat, lang)
+    except Exception:  # noqa: BLE001 — аудит улучшает программу, но не должен её ронять
+        logger.exception("AI[%s]: аудит по базе знаний не выполнен", TAG_PROGRAM)
+        try:
+            result["tips"] = _with_method_tip(result.get("tips"), TK.method_tip(profile, lang),
+                                              TK.safety_tips(profile, lang))
+        except Exception:  # noqa: BLE001
+            logger.exception("AI[%s]: подсказка о методе не собрана", TAG_PROGRAM)
     result["ai_model"] = ai_service.TEXT_MODEL
     return result
 

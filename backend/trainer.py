@@ -1007,11 +1007,16 @@ def trainer_program_generate(
     user: User = Depends(subscription.require_premium),
     db: Session = Depends(get_db),
 ) -> TrainerProgramOut:
-    """Собрать программу тренировок ИИ и раскрыть её по неделям (ТЗ §4.2).
+    """Собрать программу тренировок и раскрыть её по неделям (ТЗ §4.2, §5.1).
 
-    ИИ возвращает шаблон недели и план периодизации, бэкенд детерминированно
-    раскрывает его в `weeks × days_per_week` дней (`trainer_logic.expand_program`).
-    Предыдущая активная программа архивируется ТОЛЬКО после успешной генерации.
+    Каркас недели задаёт база знаний (`trainer_knowledge`), ИИ подбирает упражнения
+    в её рамках, аудит выправляет ответ; если ИИ упал или ответил непригодно,
+    `trainer_ai.generate_program` сам собирает программу из шаблона базы знаний
+    (`ai_model = "knowledge-template"`) — пользователь получает 200, а не 502.
+    502 остаётся только на случай, когда не собрался и шаблон.
+    Бэкенд детерминированно раскрывает шаблон недели в `weeks × days_per_week` дней
+    (`trainer_logic.expand_program`). Предыдущая активная программа архивируется
+    ТОЛЬКО после успешной генерации.
     """
     tid = user.telegram_id
     lang = user_lang(user)
@@ -1089,9 +1094,11 @@ def trainer_program_generate(
     db.commit()
     db.refresh(program)
 
+    knowledge = result.get("knowledge") or {}
     logger.info(
-        "trainer/program/generate: tid=%s программа #%s, %d дней (%s..%s)",
-        tid, program.id, len(expanded), first_date, last_date,
+        "trainer/program/generate: tid=%s программа #%s, %d дней (%s..%s), источник %s, схема %s, правок %d",
+        tid, program.id, len(expanded), first_date, last_date, program.ai_model,
+        knowledge.get("split_id"), len(knowledge.get("fixes") or []),
     )
     return program_out(db, program, lang, start_date)
 

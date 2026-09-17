@@ -27,8 +27,8 @@ def build_app(**env):
     """Пересобрать приложение с заданным окружением."""
     for key in ("CLOUDPAYMENTS_PUBLIC_ID", "CLOUDPAYMENTS_API_SECRET",
                 "YOOKASSA_SHOP_ID", "YOOKASSA_SECRET_KEY",
-                "PRICE_MONTHLY_RUB", "PRICE_YEARLY_RUB", "PRICE_LIFETIME_RUB",
-                "PAYMENT_PROVIDER"):
+                "PRICE_MONTHLY_RUB", "PRICE_QUARTERLY_RUB", "PRICE_YEARLY_RUB",
+                "PRICE_LIFETIME_RUB", "PAYMENT_PROVIDER"):
         os.environ.pop(key, None)
     os.environ.update(env)
 
@@ -65,11 +65,15 @@ def main():
 
     prices = status.get("card_prices") or {}
     check("цена месячного есть", prices.get("monthly", 0) > 0, prices)
+    check("цена 3 месяцев есть", prices.get("quarterly", 0) > 0, prices)
     check("цена годового есть", prices.get("yearly", 0) > 0, prices)
     check("вечный тариф по умолчанию не продаётся", "lifetime" not in prices, prices)
-    check("по умолчанию в каталоге месяц и год",
-          set(status.get("tariffs", {})) == {"monthly", "yearly"},
+    check("по умолчанию в каталоге месяц, 3 месяца и год",
+          set(status.get("tariffs", {})) == {"monthly", "quarterly", "yearly"},
           sorted(status.get("tariffs", {})))
+    check("цены по умолчанию: 699 / 1790 / 5590 ₽",
+          (prices.get("monthly"), prices.get("quarterly"), prices.get("yearly"))
+          == (699, 1790, 5590), prices)
 
     check("в каталоге только рубли (цен в звёздах нет)",
           all(set(cfg) == {"days", "price", "currency"} and cfg["currency"] == "RUB"
@@ -81,15 +85,22 @@ def main():
     check("конфиг карты недоступен без ключей", resp.status_code == 503, resp.status_code)
 
     # --- 2. Цены переопределяются переменными окружения --------------------
-    client = build_app(PRICE_MONTHLY_RUB="349", PRICE_YEARLY_RUB="2990",
-                       PRICE_LIFETIME_RUB="0")
+    client = build_app(PRICE_MONTHLY_RUB="349", PRICE_QUARTERLY_RUB="899",
+                       PRICE_YEARLY_RUB="2990", PRICE_LIFETIME_RUB="0")
     prices = client.get("/subscription/status").json().get("card_prices") or {}
     check("своя цена месячного", prices.get("monthly") == 349, prices)
+    check("своя цена 3 месяцев", prices.get("quarterly") == 899, prices)
     check("своя цена годового", prices.get("yearly") == 2990, prices)
     check("нулевая цена скрывает тариф из витрины", "lifetime" not in prices, prices)
     check("тариф без цены исчезает и из каталога",
           "lifetime" not in (client.get("/subscription/status").json().get("tariffs") or {}),
           client.get("/subscription/status").json().get("tariffs"))
+
+    # Тариф «3 месяца» можно убрать с витрины отдельно, не трогая остальные.
+    client = build_app(PRICE_QUARTERLY_RUB="0")
+    tariffs = client.get("/subscription/status").json().get("tariffs") or {}
+    check("PRICE_QUARTERLY_RUB=0 убирает только «3 месяца»",
+          set(tariffs) == {"monthly", "yearly"}, sorted(tariffs))
 
     # --- 3. Подключение CloudPayments переключает провайдера ---------------
     client = build_app(CLOUDPAYMENTS_PUBLIC_ID="pk", CLOUDPAYMENTS_API_SECRET="sec")
@@ -129,7 +140,8 @@ def main():
         return 1
 
     print("OK: рублёвая цена и кнопка показываются без подключённой платёжки;")
-    print("    цены переопределяются через PRICE_*_RUB, нулевая цена убирает тариф;")
+    print("    по умолчанию месяц 699, 3 месяца 1790, год 5590 ₽; цены переопределяются")
+    print("    через PRICE_*_RUB, нулевая цена убирает тариф;")
     print("    провайдер определяется автоматически и задаётся явно (yookassa/none);")
     print("    сама витрина премиум не выдаёт")
     return 0

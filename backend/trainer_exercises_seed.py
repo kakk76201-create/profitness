@@ -235,6 +235,19 @@ EXERCISES: list[dict] = [
     _ex("wall_sit", "«Стульчик» у стены", "Wall Sit", "quads", "bodyweight", "isolation", "time", 1,
         ["glutes"], contra=["knee"], alternatives=["air_squat"]),
 
+    # Варианты для больных коленей. Не помечены knee намеренно: это не «без ограничений»,
+    # а сама замена. Угол сгибания колена ограничен, при передней боли в колене так
+    # нагрузку и возвращают (Powers 2014, Willy 2019): квадрицепс не выключают, а
+    # работают в безболезненной амплитуде и наращивают глубину по ощущениям.
+    _ex("box_squat_high", "Присед на высокую опору", "High Box Squat", "quads", "bodyweight", "compound", "reps", 1,
+        ["glutes"], alternatives=["leg_press_partial", "wall_sit_high"]),
+    _ex("leg_press_partial", "Жим ногами в неполной амплитуде", "Partial-Range Leg Press", "quads", "machine",
+        "compound", "reps_weight", 1, ["glutes"], alternatives=["box_squat_high"]),
+    # Изометрия на небольшом угле снимает боль в сухожилии надколенника (Rio 2015).
+    # Долгое удержание поднимает давление, поэтому при heart_bp — нельзя.
+    _ex("wall_sit_high", "Высокий «стульчик» у стены", "High Wall Sit", "quads", "bodyweight", "isolation", "time", 1,
+        ["glutes"], contra=["heart_bp"], alternatives=["box_squat_high"]),
+
     # ------------------------------------------------------------------ #
     #  Задняя поверхность бедра
     # ------------------------------------------------------------------ #

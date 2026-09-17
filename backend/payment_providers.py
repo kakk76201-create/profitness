@@ -43,7 +43,7 @@ def activate_premium(
       - db          — сессия БД;
       - telegram_id — Telegram ID пользователя (если записи нет — создаём
                       минимального пользователя, чтобы не потерять оплату);
-      - tariff      — имя тарифа ("monthly" | "yearly" | "lifetime"), из config;
+      - tariff      — имя тарифа ("monthly" | "quarterly" | "yearly" | "lifetime"), из config;
       - provider    — источник оплаты ("cloudpayments" | "yookassa" |
                       "tribute" | "trial" | "owner" и т.п.);
       - amount      — сумма платежа (как пришла от провайдера; может быть None/0);

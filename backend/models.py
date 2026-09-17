@@ -104,7 +104,7 @@ class User(Base):
     supplement_goal = Column(String, nullable=True)
 
     # --- Поля подписки и доступа (Этап 1, добавлены поверх таблицы) ---
-    # Тип подписки: "free" | "monthly" | "yearly" | "lifetime".
+    # Тип подписки: "free" | "trial" | "monthly" | "quarterly" | "yearly" | "lifetime".
     subscription_type = Column(String, nullable=True, default="free")
 
     # До какой даты (UTC) действует подписка. None — нет срока:
@@ -455,7 +455,7 @@ class Payment(Base):
     # Валюта платежа ("RUB" для оплаты картой; "XTR" в старых Stars-записях).
     currency = Column(String)
 
-    # Какой тариф был оплачён: "monthly" | "yearly" | "lifetime".
+    # Какой тариф был оплачен: "monthly" | "quarterly" | "yearly" | "lifetime".
     subscription_type = Column(String)
 
     # Идентификатор списания провайдера ("cp:<id>" у CloudPayments, "yk:<id>"

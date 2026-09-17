@@ -1,22 +1,27 @@
 /*
- * page-trainer-exercise.js — страница «Упражнения» раздела «AI-тренер»
- * (страница "trainer-exercise", ТЗ §2.8, §4.4, §6.2 блок «Прогресс/упражнения»).
+ * page-trainer-exercise.js — «Упражнения» раздела «AI-тренер»
+ * (ТЗ §2.8, §4.4, §6.2 блок «Прогресс/упражнения»).
  *
- * Регистрирует контроллер через App.registerPage("trainer-exercise", {...}).
- * Публичная ссылка — window.PageTrainerExercise.
+ * Три места показа одного модуля:
+ *   • вкладка «Упражнения» раздела — window.TrainerLibrary.mount(el, opts) /
+ *     unmount(): библиотека (фильтры-чипы по мышце и оборудованию, поиск по
+ *     имени, список `.tr-lib-item`, GET /trainer/exercises) внутри панели
+ *     оболочки (page-trainer.js), без своей шапки и кнопки «Назад»;
+ *   • страница "trainer-exercise" с App.state.trainerExerciseId — карточка
+ *     упражнения: вкладка «Техника» (генерируется ИИ один раз на упражнение
+ *     и язык, дальше приходит из кэша; на время генерации — скелетон
+ *     «Тренер пишет технику…»), вкладка «История» (рекорды, график
+ *     1RM/вес/объём, последние подходы) и «Исключить из программ» / «Вернуть».
+ *     Это переход вглубь, поэтому у карточки своя шапка с «Назад»: он ведёт
+ *     туда, откуда карточку открыли (Trainer.openExercise запоминает место);
+ *   • страница "trainer-exercise" с App.state.trainerPickForSession — тот же
+ *     список в режиме «Добавить упражнение» в идущую тренировку.
  *
- * Два режима одной страницы:
- *   • list   — библиотека: фильтры-чипы (мышца, оборудование), поиск по имени,
- *              список `.tr-lib-item` (GET /trainer/exercises);
- *   • detail — карточка упражнения: вкладка «Техника» (генерируется ИИ один
- *              раз на упражнение и язык, дальше приходит из кэша; на время
- *              генерации — скелетон «Тренер пишет технику…»), вкладка
- *              «История» (рекорды, график 1RM/вес/объём, последние подходы)
- *              и кнопка «Исключить из программ» / «Вернуть».
+ * Вход на страницу без упражнения и без режима выбора переадресуется на
+ * вкладку раздела (App.state.trainerSegment = "exercises").
  *
- * Вход в карточку минуя список: App.state.trainerExerciseId (ставят страницы
- * «Программа», «Прогресс» и «Сессия»). Тогда «← Назад» ведёт не в список,
- * а туда, откуда пришли (Trainer.back()).
+ * Список, фильтры и поиск живут в состоянии модуля: после карточки вкладка
+ * рисует тот же отфильтрованный список, а не грузит каталог с нуля.
  *
  * Экономия ИИ: карточка сначала грузится БЕЗ technique (быстро, из БД); если
  * техники в кэше нет — вторым запросом с `technique=1` (это единственное
@@ -64,9 +69,13 @@
   // Пауза перед запросом после ввода в поиск, мс.
   var SEARCH_DELAY = 350;
 
-  // Внутреннее состояние контроллера.
+  // Внутреннее состояние. Вкладка и страница не показываются одновременно
+  // (вкладка живёт на экране "trainer"), поэтому состояние общее.
   var state = {
-    viewEl: null,          // корневой элемент (#view)
+    viewEl: null,          // #view в режиме страницы (карточка, выбор в тренировку)
+    host: null,            // панель оболочки в режиме вкладки
+    embedded: false,       // сейчас смонтирована вкладка, а не страница
+    opts: null,            // опции mount: {onPaywall}
     mode: "list",          // list|detail
     // --- список ---
     muscle: null,          // выбранная группа мышц или null
@@ -79,7 +88,7 @@
     // --- карточка ---
     exerciseId: null,      // id открытого упражнения
     exercise: null,        // TrainerExerciseOut
-    fromList: false,       // карточка открыта из списка этой же страницы
+    ret: null,             // куда вернуться из карточки (Trainer.openExercise)
     tab: "technique",      // technique|history
     techniqueBusy: false,  // идёт генерация техники
     techniqueTried: false, // уже пробовали сгенерировать в этом заходе
@@ -173,10 +182,18 @@
     );
   }
 
-  function setSubtitle(text) {
-    if (!state.viewEl) return;
-    var el = state.viewEl.querySelector(".sub-subtitle");
-    if (el) el.textContent = text || "";
+  /** Корень текущего показа: панель вкладки или #view страницы. */
+  function rootEl() {
+    return state.embedded ? state.host : state.viewEl;
+  }
+
+  /** Paywall: вкладка отдаёт его оболочке (на весь экран), страница рисует сама. */
+  function showPaywall() {
+    if (state.embedded) {
+      if (state.opts && typeof state.opts.onPaywall === "function") state.opts.onPaywall();
+      return;
+    }
+    if (state.viewEl) T.paywall(state.viewEl, T.paywallOpts());
   }
 
   /* =====================================================================
@@ -600,27 +617,27 @@
    * ===================================================================== */
 
   function renderList() {
-    if (!state.viewEl) return;
     state.mode = "list";
-    var picking = !!state.pickSession;
-    state.viewEl.innerHTML = shellHtml(
-      picking ? pick("Добавить упражнение", "Add exercise") : pick("Упражнения", "Exercises"),
-      picking
-        ? pick("Тап по упражнению — и оно в тренировке", "Tap an exercise to add it to the workout")
-        : pick("Библиотека и техника", "Library and technique"),
-      picking ? "plus" : "book"
-    );
-    T.bindBack(state.viewEl, function () {
-      if (state.pickSession) {
+    if (state.embedded) {
+      // Вкладка: без шапки — заголовок и полоса вкладок у оболочки раздела.
+      if (!state.host) return;
+      state.host.innerHTML = '<div class="tr-library" id="trLibBody"></div>';
+    } else {
+      // Страница существует только для выбора упражнения в идущую тренировку.
+      if (!state.viewEl) return;
+      state.viewEl.innerHTML = shellHtml(
+        pick("Добавить упражнение", "Add exercise"),
+        pick("Тап по упражнению — и оно в тренировке", "Tap an exercise to add it to the workout"),
+        "plus"
+      );
+      T.bindBack(state.viewEl, function () {
         // Выход из режима выбора — назад в тренировку.
         var sid = state.pickSession;
         state.pickSession = null;
-        App.state.trainerSessionId = sid;
+        if (sid) App.state.trainerSessionId = sid;
         T.go("trainer-session");
-        return;
-      }
-      T.back();
-    });
+      });
+    }
     var body = byId("trLibBody");
     if (!body) return;
     body.innerHTML = filtersHtml() + '<div id="trLibList"></div>';
@@ -652,7 +669,8 @@
         }, SEARCH_DELAY);
       });
     }
-    var filters = state.viewEl ? state.viewEl.querySelector(".tr-lib-filters") : null;
+    var root = rootEl();
+    var filters = root ? root.querySelector(".tr-lib-filters") : null;
     if (filters) filters.addEventListener("click", onFilterClick);
     var toggle = byId("trLibFiltersToggle");
     if (toggle) toggle.addEventListener("click", toggleFilters);
@@ -709,8 +727,9 @@
       addToSession(id, btn);
       return;
     }
-    state.fromList = true;
-    openDetail(id);
+    // Карточка — отдельная страница с «Назад», который вернёт на эту же
+    // вкладку к тому же списку (он остаётся в состоянии модуля).
+    T.openExercise(id, { page: "trainer", state: { trainerSegment: "exercises" } });
   }
 
   /**
@@ -802,7 +821,8 @@
   }
 
   function bindDetail() {
-    var tabs = state.viewEl ? state.viewEl.querySelector(".tr-ex-tabs") : null;
+    var root = rootEl();
+    var tabs = root ? root.querySelector(".tr-ex-tabs") : null;
     if (tabs) tabs.addEventListener("click", onTabClick);
     var excl = byId("trExExclude");
     if (excl) excl.addEventListener("click", onExcludeClick);
@@ -833,21 +853,14 @@
     renderTab();
   }
 
-  /** «← Назад» из карточки: в список, если пришли из него. */
+  /**
+   * «← Назад» из карточки: туда, откуда её открыли (вкладка раздела или
+   * предпросмотр программы), с прежней прокруткой. Без записи — Trainer.back().
+   */
   function onDetailBack() {
-    if (state.fromList) {
-      dropRequests();
-      state.techniqueBusy = false;
-      state.historyBusy = false;
-      state.exercise = null;
-      state.exerciseId = null;
-      state.history = null;
-      state.techniqueTried = false;
-      state.tab = "technique";
-      renderList();
-      return;
-    }
-    T.back();
+    var ret = state.ret;
+    state.ret = null;
+    T.returnFromExercise(ret);
   }
 
   /* =====================================================================
@@ -940,7 +953,7 @@
         state.listLoading = false;
         if (stale("list", token) || state.mode !== "list") return;
         if (err && err.status === 402) {
-          T.paywall(state.viewEl, T.paywallOpts());
+          showPaywall();
           return;
         }
         var h = byId("trLibList");
@@ -1054,55 +1067,114 @@
    *  КОНТРОЛЛЕР
    * ===================================================================== */
 
+  /** Сброс списка к виду «все упражнения» (свежий заход). */
+  function resetList() {
+    state.items = null;
+    state.total = 0;
+    state.muscle = null;
+    state.equipment = null;
+    state.query = "";
+    state.filtersOpen = false;
+    state.listLoading = false;
+  }
+
+  /** Гасит отложенный поиск и ответы в полёте (уход со страницы/вкладки). */
+  function stopWork() {
+    if (state.searchTimer) {
+      clearTimeout(state.searchTimer);
+      state.searchTimer = null;
+    }
+    dropRequests();
+    state.listLoading = false;
+    state.techniqueBusy = false;
+    state.historyBusy = false;
+    state.excludeBusy = false;
+    state.addBusy = false;
+  }
+
+  /* =====================================================================
+   *  ВКЛАДКА «УПРАЖНЕНИЯ» (монтируется оболочкой раздела)
+   * ===================================================================== */
+
+  /**
+   * Рисует библиотеку в панели вкладки.
+   * @param {HTMLElement} el панель оболочки
+   * @param {object} [opts] {keep: тот же список и фильтры (возврат из
+   *        карточки), onPaywall()}
+   */
+  function mount(el, opts) {
+    if (!el) return;
+    opts = opts || {};
+    stopWork();
+    state.viewEl = null;
+    state.host = el;
+    state.embedded = true;
+    state.opts = opts;
+    state.pickSession = null;
+    // Фильтры и найденный список переживают только возврат из карточки:
+    // свежий заход в раздел начинается со всего каталога.
+    if (!opts.keep) resetList();
+    renderList();
+  }
+
+  function unmount() {
+    stopWork();
+    state.host = null;
+    state.embedded = false;
+    state.opts = null;
+  }
+
+  window.TrainerLibrary = { mount: mount, unmount: unmount };
+
+  /* =====================================================================
+   *  СТРАНИЦА: КАРТОЧКА УПРАЖНЕНИЯ / ВЫБОР В ТРЕНИРОВКУ
+   * ===================================================================== */
+
   var controller = {
     onShow: function (viewEl) {
+      // Режим выбора упражнения для текущей тренировки (ставит page-trainer-session)
+      // и прямой вход в карточку (Trainer.openExercise).
+      var pickFor = App.state.trainerPickForSession;
+      App.state.trainerPickForSession = null;
+      var passed = App.state.trainerExerciseId;
+      App.state.trainerExerciseId = null;
+      var id = parseInt(passed, 10);
+      var hasId = !isNaN(id) && id > 0;
+
+      // Просто библиотека — это вкладка раздела, а не страница.
+      if (!pickFor && !hasId) {
+        App.state.trainerSegment = "exercises";
+        App.navigate("trainer");
+        return;
+      }
+
       state.viewEl = viewEl;
+      state.host = null;
+      state.embedded = false;
+      state.opts = null;
       if (!T.isPro()) {
         T.paywall(viewEl, T.paywallOpts());
         return;
       }
-      dropRequests();
-      state.items = null;
-      state.total = 0;
-      state.muscle = null;
-      state.equipment = null;
-      state.query = "";
-      state.excludeBusy = false;
-      state.listLoading = false;
+      stopWork();
 
-      // Режим выбора упражнения для текущей тренировки (ставит page-trainer-session).
-      var pickFor = App.state.trainerPickForSession;
-      App.state.trainerPickForSession = null;
-      state.pickSession = pickFor ? pickFor : null;
-      state.addBusy = false;
-
-      // Прямой вход в карточку (из программы, прогресса или сессии).
-      var passed = App.state.trainerExerciseId;
-      App.state.trainerExerciseId = null;
-      var id = parseInt(passed, 10);
-      if (!isNaN(id) && id > 0) {
-        state.fromList = false;
-        openDetail(id);
+      if (pickFor) {
+        state.pickSession = pickFor;
+        state.ret = null;
+        // Свой список: фильтры вкладки для выбора в тренировку не подходят.
+        resetList();
+        renderList();
         return;
       }
-      state.fromList = false;
-      state.exercise = null;
-      state.exerciseId = null;
-      state.history = null;
-      renderList();
+
+      state.pickSession = null;
+      state.ret = T.takeExerciseReturn(id);
+      openDetail(id);
     },
 
     onHide: function () {
-      if (state.searchTimer) {
-        clearTimeout(state.searchTimer);
-        state.searchTimer = null;
-      }
-      dropRequests();
+      stopWork();
       state.viewEl = null;
-      state.listLoading = false;
-      state.techniqueBusy = false;
-      state.historyBusy = false;
-      state.excludeBusy = false;
       T.closeSheet(true);
     }
   };

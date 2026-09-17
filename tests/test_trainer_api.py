@@ -1,8 +1,9 @@
 """Проверки API AI-тренера (ТЗ §4.1, §4.2, §4.3 /today, §4.4, §8.1 test_trainer_api).
 
 Покрыто: премиум-гейт 402 на всех маршрутах, валидация анкеты (422), upsert
-TrainingReminder, генерация программы (409 без анкеты, раскрытие weeks×days,
-архивация прошлой, heavy-лимит 429, пустой ответ ИИ → 502), /today
+TrainingReminder, генерация программы (409 без анкеты, база знаний в промпте,
+раскрытие weeks×days, архивация прошлой, heavy-лимит 429, пустой ответ ИИ → 200
+с программой из шаблона базы знаний), /today
 (planned / rest / week_done / no_program), библиотека (фильтры, поиск, техника
 с кэшем и AIError → 200, альтернативы, исключение), удаление данных аккаунта.
 """
@@ -19,6 +20,7 @@ os.environ["OPENAI_API_KEY"] = "dummy"
 from fastapi.testclient import TestClient
 from backend.database import init_db, SessionLocal
 from backend import models as M, ai_service, ratelimit
+from backend import trainer_knowledge as K
 from backend.main import app
 
 init_db()
@@ -231,6 +233,9 @@ if "trainer_program" in captured:
     chk("тело в user_prompt", "80" in cap["user"], cap["user"][:400])
     chk("«не врач» в system", "не врач" in cap["system"].lower(), cap["system"][:200])
     chk("контриндицированные не в каталоге", "bb_back_squat" not in cap["user"], "колено -> присед со штангой исключён")
+    chk("база знаний в user_prompt перед каталогом",
+        0 <= cap["user"].find("БАЗА ЗНАНИЙ") < cap["user"].find("КАТАЛОГ ("), cap["user"][:300])
+    chk("правило базы знаний в system", "БАЗА ЗНАНИЙ" in cap["system"], cap["system"][:300])
 
 chk("статус active", prog.get("status") == "active", prog.get("status"))
 chk("title из ИИ", prog.get("title") == "Верх/Низ — 6 недель", prog.get("title"))
@@ -241,9 +246,15 @@ chk("дней 6x3=18", len(prog.get("days", [])) == 18, len(prog.get("days", [])
 chk("периодизация на 6 недель", len(prog.get("periodization", [])) == 6, prog.get("periodization"))
 chk("подпись фазы по-русски", (prog.get("periodization") or [{}])[0].get("label") in ("База", "Рост", "Пик", "Разгрузка"),
     (prog.get("periodization") or [{}])[0])
-chk("4-я неделя — deload", any(p["week"] == 4 and p["phase"] == "deload" for p in prog.get("periodization", [])),
+# Модель поставила новичку разгрузку на 4-й и 6-й неделе — это против правил базы знаний
+# (до 8 недель плановая разгрузка новичку не нужна), поэтому план берётся из periodization_for.
+chk("периодизация по базе знаний (новичку без разгрузки)",
+    [p["phase"] for p in prog.get("periodization", [])] == [p["phase"] for p in K.periodization_for(BASE)],
     prog.get("periodization"))
-chk("советы сохранены", prog.get("tips") == ["Ешь белок", "Спи 8 часов"], prog.get("tips"))
+chk("советы: метод базы знаний первым, советы ИИ сохранены",
+    prog.get("tips") == [K.method_tip(BASE, "ru"), "Ешь белок", "Спи 8 часов"], prog.get("tips"))
+chk("ai_model программы от модели", q(lambda db: db.query(M.TrainerProgram).filter(
+    M.TrainerProgram.id == prog.get("id")).first().ai_model) == ai_service.TEXT_MODEL)
 chk("summary сохранён", "full body" in (prog.get("summary") or ""), prog.get("summary"))
 
 days = prog.get("days", [])
@@ -296,13 +307,36 @@ with mock.patch.object(ai_service, "_run_text_completion", fake_run):
 chk("третья generate за минуту -> 429", r.status_code == 429, r.status_code)
 chk("на 429 ИИ не вызывался", calls["program"] == 2, calls["program"])
 
-# Сбрасываем лимиты и проверяем пустой ответ ИИ.
+# Сбрасываем лимиты и проверяем пустой ответ ИИ: вместо 502 — программа из шаблона базы знаний.
 ratelimit._minute_hits.clear(); ratelimit._day_hits.clear()
 with mock.patch.object(ai_service, "_run_text_completion", lambda *a, **k: ({}, {})):
     r = c.post("/trainer/program/generate", json={"start_date": start})
-chk("пустой ответ ИИ -> 502", r.status_code == 502, r.status_code)
-chk("после 502 активная программа прежняя",
-    q(lambda db: db.query(M.TrainerProgram).filter(M.TrainerProgram.status == "active").first().id) == prog2.get("id"))
+chk("пустой ответ ИИ -> 200 (шаблон базы знаний)", r.status_code == 200, (r.status_code, r.text[:300]))
+tpl = r.json() if r.status_code == 200 else {}
+tpl_row = q(lambda db: db.query(M.TrainerProgram).filter(M.TrainerProgram.id == tpl.get("id")).first())
+chk("шаблон: ai_model knowledge-template", tpl_row is not None and tpl_row.ai_model == "knowledge-template",
+    getattr(tpl_row, "ai_model", None))
+chk("шаблон: активен, прошлая программа в архиве", tpl.get("status") == "active" and q(
+    lambda db: db.query(M.TrainerProgram).filter(M.TrainerProgram.id == prog2.get("id")).first().status) == "archived")
+chk("шаблон: раскрыт 6x3=18", len(tpl.get("days", [])) == 18 and tpl.get("weeks") == 6, len(tpl.get("days", [])))
+tpl_items = [e for d in tpl.get("days", []) for e in d["exercises"]]
+chk("шаблон: в каждом дне упражнения из библиотеки",
+    all(d["exercises"] for d in tpl.get("days", [])) and all(isinstance(e["exercise_id"], int) and e["name_ru"] for e in tpl_items),
+    tpl_items[:2])
+knee_bad = q(lambda db: [e.slug for e in db.query(M.TrainerExercise).filter(
+    M.TrainerExercise.slug.in_({i["slug"] for i in tpl_items})).all() if "knee" in (e.contraindications_json or "")])
+chk("шаблон: ничего противопоказанного колену", not knee_bad, knee_bad)
+chk("шаблон: разминка и заминка", all(d["warmup"] and d["cooldown"] for d in tpl.get("days", [])))
+chk("шаблон: периодизация базы знаний",
+    [p["phase"] for p in tpl.get("periodization", [])] == [p["phase"] for p in K.periodization_for(BASE)], tpl.get("periodization"))
+chk("шаблон: метод первой подсказкой", (tpl.get("tips") or [None])[0] == K.method_tip(BASE, "ru"), tpl.get("tips"))
+chk("шаблон: название и описание", tpl.get("title", "").endswith("6 недель") and tpl.get("summary"), (tpl.get("title"), tpl.get("summary")))
+chk("шаблон: даты Пн/Ср/Пт", [d["scheduled_date"] for d in tpl.get("days", [])[:3]] == [D(0), D(2), D(4)])
+# Возвращаем в строй программу модели: дальше тесты опираются на её дни («Верх тела»).
+db = SessionLocal()
+db.query(M.TrainerProgram).filter(M.TrainerProgram.id == tpl.get("id")).update({"status": "archived"})
+db.query(M.TrainerProgram).filter(M.TrainerProgram.id == prog2.get("id")).update({"status": "active"})
+db.commit(); db.close()
 ratelimit._minute_hits.clear(); ratelimit._day_hits.clear()
 
 # Архивация вручную.
@@ -561,7 +595,7 @@ chk("библиотека упражнений не тронута", q(lambda db
 if fails:
     print("FAIL:"); [print("  -", f) for f in fails]; sys.exit(1)
 print("OK: премиум-гейт 402, валидация анкеты 422, upsert TrainingReminder,")
-print("    generate (409/200/архивация/429/502), раскрытие 6x3=18 по Пн-Ср-Пт,")
+print("    generate (409/200/архивация/429, база знаний в промпте, пустой ответ ИИ -> шаблон 200), раскрытие 6x3=18,")
 print("    today planned/rest/week_done, сериализация активной сессии (сеты, PR,")
 print("    «прошлый раз»), библиотека (фильтры, техника с кэшем, AIError -> 200,")
 print("    альтернативы, exclude), EN-подписи и промпт, DELETE /account/data")

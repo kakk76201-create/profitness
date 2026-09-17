@@ -3,6 +3,11 @@
 (фаззи-матч slug, усечение дней, инжект разминки, clamp диапазонов),
 устойчивость к мусору от AI и AIError на пустом ответе.
 
+Генерация программы опирается на базу знаний (подробно — tests/test_trainer_knowledge.py):
+здесь проверяем, что она встроена в промпт и результат, а сбой ИИ даёт программу из
+шаблона, а не AIError. Детали нормализации проверяем на normalize_program напрямую —
+аудит базы знаний потом законно меняет подходы, порядок и упражнения без оборудования.
+
 Модуль чистый (без БД и приложения), поэтому TestClient не нужен — но env
 выставляем ДО импорта backend, как во всех тестах проекта."""
 import os, sys, tempfile, pathlib, json, types
@@ -13,9 +18,15 @@ os.environ["DATABASE_URL"] = "sqlite:///" + os.path.join(tmp, "trai.db").replace
 os.environ["ALLOW_INSECURE_AUTH"] = "1"; os.environ["ENABLE_SCHEDULER"] = "0"; os.environ["OWNER_ID"] = "0"
 os.environ["OPENAI_API_KEY"] = "dummy"
 
+import logging
+import re
 from backend import ai_service
 from backend.ai_service import AIError
 from backend import trainer_ai as T
+from backend import trainer_knowledge as K
+
+# Сценарии сбоя ИИ пишут предупреждения «собираем по базе знаний» — ожидаемо, не шумим.
+logging.getLogger("trainer_ai").setLevel(logging.CRITICAL)
 
 fails = []
 def chk(n, cond, x=""):
@@ -142,16 +153,42 @@ chk("program: каталог строками slug|name_en|muscle|equipment|meas
     "db_bench_press | Dumbbell Bench Press | chest | dumbbell | reps_weight | 2" in userp, userp[-900:])
 chk("program: каталог ≤110 строк", userp.count(" | ") <= 110 * 5)
 
+# База знаний в промпте: выжимка под анкету перед каталогом, правило — в system.
+chk("program RU: блок базы знаний в user_prompt", "БАЗА ЗНАНИЙ" in userp and "Рабочих подходов на мышцу" in userp
+    and "Схема: " in userp, userp[:600])
+chk("program RU: база знаний перед каталогом", 0 <= userp.find("БАЗА ЗНАНИЙ") < userp.find("КАТАЛОГ ("))
+chk("program RU: правило базы знаний в system", "БАЗА ЗНАНИЙ" in sysp and "ОБЯЗАТЕЛЬНА" in sysp, sysp[:600])
+sample_slugs = re.findall(r"([a-z_0-9]+) \([a-z_]+\) \d", userp)
+chk("program: пример недели только из каталога запроса", sample_slugs and all(s in BY_SLUG for s in sample_slugs), sample_slugs)
+
 days = prog["week_template"]["days"]
 chk("program: лишний день усечён до days_per_week", len(days) == 3, len(days))
 chk("program: day_index 1..3", [d["day_index"] for d in days] == [1, 2, 3], [d["day_index"] for d in days])
+chk("program: unmatched содержит мусорный slug (generate)",
+    any(u.get("slug") == "zzz_unknown_xyz" and u.get("reason") == "unknown" for u in prog["unmatched"]), prog["unmatched"])
+chk("program: контриндицированное (knee) не осталось",
+    not any("knee" in json.loads(BY_SLUG[e["slug"]]["contraindications_json"]) for d in days for e in d["exercises"]))
+chk("program: без оборудования зала (дом с гантелями и скамьёй)",
+    all(BY_SLUG[e["slug"]]["equipment"] in K.available_equipment(PROFILE) for d in days for e in d["exercises"]),
+    [e["slug"] for d in days for e in d["exercises"]])
+chk("program: разминка/заминка на месте", all(d["warmup"] and d["cooldown"] for d in days))
+chk("program: периодизация модели (разгрузка новичку на 4-й неделе) → база знаний",
+    prog["periodization"] == K.periodization_for(PROFILE), [p["phase"] for p in prog["periodization"]])
+chk("program: первая подсказка — метод базы знаний",
+    prog["tips"] == [K.method_tip(PROFILE, "ru"), "Пей воду", "Спи 8 часов"], prog["tips"])
+chk("program: knowledge — источник ai и правки",
+    prog["knowledge"]["source"] == "ai" and isinstance(prog["knowledge"]["fixes"], list), prog.get("knowledge"))
+
+# Детали нормализации — на normalize_program (тот же ответ модели, без аудита базы знаний).
+norm = T.normalize_program(GOOD_PROGRAM, CATALOG, days_per_week=3, weeks=6, limitations=["knee"], lang="ru", session_minutes=45)
+days = norm["week_template"]["days"]
 d1, d2, d3 = days
 s1 = [e["slug"] for e in d1["exercises"]]
 chk("program: опечатка slug → фаззи-матч по slug", "db_bench_press" in s1, s1)
 chk("program: название вместо slug → матч по имени", "db_row" in s1, s1)
 chk("program: мусорный slug отброшен", "zzz_unknown_xyz" not in s1 and len(s1) == 3, s1)
 chk("program: unmatched содержит мусорный slug",
-    any(u.get("slug") == "zzz_unknown_xyz" and u.get("reason") == "unknown" for u in prog["unmatched"]), prog["unmatched"])
+    any(u.get("slug") == "zzz_unknown_xyz" and u.get("reason") == "unknown" for u in norm["unmatched"]), norm["unmatched"])
 bench = d1["exercises"][0]
 chk("program: sets clamp 1–6", bench["sets"] == 6, bench["sets"])
 chk("program: reps clamp 1–30", bench["reps_min"] == 10 and bench["reps_max"] == 30, (bench["reps_min"], bench["reps_max"]))
@@ -174,7 +211,7 @@ s2 = [e["slug"] for e in d2["exercises"]]
 chk("program: контриндицированное (knee) заменено альтернативой на ту же мышцу",
     "bb_squat" not in s2 and "jump_lunge" not in s2 and s2[0] in ("goblet_squat", "leg_press"), s2)
 chk("program: замена отмечена в unmatched",
-    any(u.get("slug") == "bb_squat" and u.get("reason") == "contraindicated" and u.get("replaced_with") == s2[0] for u in prog["unmatched"]), prog["unmatched"])
+    any(u.get("slug") == "bb_squat" and u.get("reason") == "contraindicated" and u.get("replaced_with") == s2[0] for u in norm["unmatched"]), norm["unmatched"])
 lat = next(e for e in d2["exercises"] if e["slug"] == "lat_pulldown")
 chk("program: reps_min > reps_max → меняем местами", lat["reps_min"] == 10 and lat["reps_max"] == 15, lat)
 push = next(e for e in d2["exercises"] if e["slug"] == "pushup")
@@ -183,14 +220,14 @@ chk("program: focus_muscles из CSV-строки", d2["focus_muscles"] == ["qua
 chk("program: session_type mixed сохранён", d3["session_type"] == "mixed", d3["session_type"])
 chk("program: кардио на время", next(e for e in d3["exercises"] if e["slug"] == "treadmill_walk")["time_sec"] == 600)
 
-per = prog["periodization"]
+per = norm["periodization"]
 chk("program: периодизация дополнена до 6 недель", [p["week"] for p in per] == [1, 2, 3, 4, 5, 6], per)
 chk("program: недели без фазы → base", per[1]["phase"] == "base" and per[1]["weight_pct"] == 100 and per[1]["sets_delta"] == 0, per[1])
 chk("program: неделя 4 deload из ответа", per[3]["phase"] == "deload" and per[3]["weight_pct"] == 85 and per[3]["sets_delta"] == -1, per[3])
 chk("program: последняя неделя → deload", per[5]["phase"] == "deload", per[5])
 chk("program: неделя 9 (за пределами) отброшена", all(p["week"] <= 6 for p in per))
 chk("program: подписи фаз ru/en", per[3]["label_ru"] == "Разгрузка" and per[3]["label_en"] == "Deload", per[3])
-chk("program: tips — только строки", prog["tips"] == ["Пей воду", "Спи 8 часов"], prog["tips"])
+chk("program: tips — только строки", norm["tips"] == ["Пей воду", "Спи 8 часов"], norm["tips"])
 chk("program: title/split/summary", prog["title"] == "Всё тело — 6 недель" and prog["split_type"] == "full_body" and "full body" in prog["summary"], prog["title"])
 chk("program: ai_model заполнен", bool(prog.get("ai_model")), prog.get("ai_model"))
 
@@ -200,6 +237,10 @@ with mock.patch.object(ai_service, "_run_text_completion", make_fake(GOOD_PROGRA
 chk("program EN: «not a doctor» в system", "not a doctor" in captured.get("system", ""), captured.get("system", "")[:200])
 chk("program EN: system на английском", "PROGRAM RULES" in captured.get("system", ""))
 chk("program EN: user_prompt на английском", "Goal: fat loss (loss)" in captured.get("user", "") and "Limitations/injuries: knees" in captured.get("user", ""), captured.get("user", "")[:300])
+chk("program EN: KNOWLEDGE BASE перед CATALOG",
+    0 <= captured.get("user", "").find("KNOWLEDGE BASE") < captured.get("user", "").find("CATALOG ("))
+chk("program EN: правило базы знаний в system", "KNOWLEDGE BASE" in captured.get("system", "") and "MANDATORY" in captured.get("system", ""))
+chk("program EN: метод базы знаний первой подсказкой", prog_en["tips"][0] == K.method_tip(PROFILE, "en"), prog_en["tips"])
 chk("program EN: те же ключи JSON", set(prog_en) == set(prog), set(prog_en) ^ set(prog))
 # Неизвестный/пустой lang → русский
 with mock.patch.object(ai_service, "_run_text_completion", make_fake(GOOD_PROGRAM)):
@@ -214,30 +255,54 @@ catalog_str = "\n".join(f"{e['slug']} | {e['name_en']} | {e['muscle_group']} | {
 with mock.patch.object(ai_service, "_run_text_completion", make_fake(GOOD_PROGRAM)):
     prog_s = T.generate_program(PROFILE, BODY, catalog_str, lang="ru", catalog_map=CATALOG)
 chk("program: строка каталога уходит в промпт как есть", catalog_str in captured.get("user", ""))
-chk("program: catalog_map даёт exercise_id", prog_s["week_template"]["days"][0]["exercises"][0]["exercise_id"] == 5)
+chk("program: catalog_map даёт exercise_id",
+    any(e["slug"] == "db_bench_press" and e["exercise_id"] == 5 for e in prog_s["week_template"]["days"][0]["exercises"]))
 with mock.patch.object(ai_service, "_run_text_completion", make_fake(GOOD_PROGRAM)):
     prog_s2 = T.generate_program(PROFILE, BODY, catalog_str, lang="ru")
+s2_all = [e for d in prog_s2["week_template"]["days"] for e in d["exercises"]]
 chk("program: каталог только строкой — slug резолвятся, id нет",
-    [e["slug"] for e in prog_s2["week_template"]["days"][0]["exercises"]] == ["db_bench_press", "db_row", "plank"]
-    and prog_s2["week_template"]["days"][0]["exercises"][0]["exercise_id"] is None)
+    [e["slug"] for e in T.normalize_program(GOOD_PROGRAM, catalog_str, days_per_week=3)["week_template"]["days"][0]["exercises"]]
+    == ["db_bench_press", "db_row", "plank"]
+    and "db_bench_press" in [e["slug"] for e in s2_all] and all(e["exercise_id"] is None for e in s2_all), s2_all)
 
-# --- пустой/непригодный ответ → AIError ---
+# --- пустой/непригодный ответ или сбой ИИ → программа из шаблона базы знаний, не AIError ---
+def expect_template(name, fn, days_expected=3):
+    try:
+        result = fn()
+    except Exception as exc:  # noqa: BLE001
+        fails.append(f"{name}: ожидали программу из шаблона, получили {type(exc).__name__}: {exc}"); return
+    tdays = result["week_template"]["days"]
+    chk(f"{name}: ai_model knowledge-template", result.get("ai_model") == T.KNOWLEDGE_TEMPLATE_MODEL, result.get("ai_model"))
+    chk(f"{name}: дни с упражнениями из каталога", len(tdays) == days_expected
+        and all(d["exercises"] and all(e["slug"] in BY_SLUG for e in d["exercises"]) for d in tdays),
+        [[e["slug"] for e in d["exercises"]] for d in tdays])
+    chk(f"{name}: те же ключи, что у ответа модели", set(result) == set(prog), set(result) ^ set(prog))
+    chk(f"{name}: метод первой подсказкой",
+        result["tips"][0] == K.method_tip(dict(PROFILE, days_per_week=days_expected), "ru"), result["tips"])
 with mock.patch.object(ai_service, "_run_text_completion", lambda *a, **k: ({}, {})):
-    expect_aierror("program: ({}, {}) → AIError", lambda: T.generate_program(PROFILE, BODY, CATALOG, "ru"))
+    expect_template("program: ({}, {}) → шаблон", lambda: T.generate_program(PROFILE, BODY, CATALOG, "ru"))
 with mock.patch.object(ai_service, "_run_text_completion", lambda *a, **k: ([], {})):
-    expect_aierror("program: не dict → AIError", lambda: T.generate_program(PROFILE, BODY, CATALOG, "ru"))
+    expect_template("program: не dict → шаблон", lambda: T.generate_program(PROFILE, BODY, CATALOG, "ru"))
 with mock.patch.object(ai_service, "_run_text_completion", lambda *a, **k: ({"title": "x", "week_template": {"days": "нет"}}, {})):
-    expect_aierror("program: days не список → AIError", lambda: T.generate_program(PROFILE, BODY, CATALOG, "ru"))
+    expect_template("program: days не список → шаблон", lambda: T.generate_program(PROFILE, BODY, CATALOG, "ru"))
 one_day = {"week_template": {"days": [GOOD_PROGRAM["week_template"]["days"][0]]}}
 with mock.patch.object(ai_service, "_run_text_completion", lambda *a, **k: (one_day, {})):
-    expect_aierror("program: дней меньше days_per_week → AIError", lambda: T.generate_program(PROFILE, BODY, CATALOG, "ru"))
+    expect_template("program: дней меньше days_per_week → шаблон", lambda: T.generate_program(PROFILE, BODY, CATALOG, "ru"))
 only_junk = {"week_template": {"days": [{"day_index": 1, "exercises": [{"slug": "qqq_zzz_1"}, {"slug": "qqq_zzz_2"}]}]}}
 with mock.patch.object(ai_service, "_run_text_completion", lambda *a, **k: (only_junk, {})):
-    expect_aierror("program: все slug мусорные → AIError", lambda: T.generate_program(dict(PROFILE, days_per_week=1), BODY, CATALOG, "ru"))
+    expect_template("program: все slug мусорные → шаблон на 1 день",
+                    lambda: T.generate_program(dict(PROFILE, days_per_week=1), BODY, CATALOG, "ru"), days_expected=1)
 def _boom(*a, **k):
     raise AIError("AI не ответил (trainer_program)", raw="")
 with mock.patch.object(ai_service, "_run_text_completion", _boom):
-    expect_aierror("program: AIError движка пробрасывается", lambda: T.generate_program(PROFILE, BODY, CATALOG, "ru"))
+    expect_template("program: AIError движка → шаблон", lambda: T.generate_program(PROFILE, BODY, CATALOG, "ru"))
+# Нормализатор сам по себе по-прежнему строг: непригодный ответ → AIError (его ловит generate_program).
+expect_aierror("normalize_program: дней меньше days_per_week → AIError",
+               lambda: T.normalize_program(one_day, CATALOG, days_per_week=3))
+expect_aierror("normalize_program: все slug мусорные → AIError", lambda: T.normalize_program(only_junk, CATALOG, days_per_week=1))
+# Не собрался и шаблон — AIError движка пробрасывается (маршрут ответит 502).
+with mock.patch.object(ai_service, "_run_text_completion", _boom), mock.patch.object(K, "build_week", side_effect=ValueError("x")):
+    expect_aierror("program: шаблон не собрался → AIError", lambda: T.generate_program(PROFILE, BODY, CATALOG, "ru"))
 
 # --- normalize_program напрямую: мусор в полях не роняет ---
 junk_prog = {"title": 123, "split_type": "weird", "summary": None,
@@ -447,5 +512,6 @@ chk("prompts program: ключи по ТЗ", {"title", "split_type", "summary", 
 if fails:
     print("FAIL:"); [print("  -", f) for f in fails]; sys.exit(1)
 print("OK: trainer_ai — теги/лимиты токенов, RU/EN промпты с правилами безопасности, контекст в user_prompt,")
-print("    фаззи-матч и отброс slug, усечение дней, инжект разминки/заминки, clamp, замена контриндицированных,")
+print("    база знаний в промпте и результате (метод, периодизация, без противопоказанных и недоступного), сбой ИИ →")
+print("    программа из шаблона, фаззи-матч и отброс slug, усечение дней, инжект разминки/заминки, clamp, замена контриндицированных,")
 print("    разбор недели (типы/clamp/swap по мышце/лимит 5), техника и совет дня нормализуются, пусто → AIError")

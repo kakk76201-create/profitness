@@ -1640,7 +1640,8 @@
       function (key) {
         if (key === "minimize") {
           syncCache();
-          App.navigate("trainer");
+          // На «Сегодня» — там карточка «Продолжить», по которой возвращаются.
+          T.openSegment("today");
           return;
         }
         if (key === "abandon") abandon();
@@ -1656,7 +1657,7 @@
     ).then(function (ok) {
       if (!ok) return;
       if (!sid) {
-        App.navigate("trainer");
+        T.openSegment("today");
         return;
       }
       state.busy = true;
@@ -1673,7 +1674,7 @@
           T.cache.invalidate();
           App.state.trainerSessionId = null;
           closingConfirmation(false);
-          App.navigate("trainer");
+          T.openSegment("today");
         });
     });
   }
@@ -1878,12 +1879,13 @@
     if (act === "go-progress") {
       App.haptic("light");
       App.state.trainerProgressSection = null;
-      T.go("trainer-progress");
+      // Прогресс — вкладка раздела, а не отдельная страница.
+      T.openSegment("progress");
       return;
     }
     if (act === "go-home") {
       App.haptic("light");
-      App.navigate("trainer");
+      T.openSegment("today");
     }
   }
 

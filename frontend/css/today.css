@@ -1,8 +1,10 @@
 /* ============================================================
    ЭКРАН «СЕГОДНЯ» (page-today.js)
    ------------------------------------------------------------
-   Витрина состояния дня: кольцо калорий, тренировка дня, вес и серия.
-   Ни одной формы — только числа и одна кнопка действия.
+   Витрина состояния дня: кольцо калорий, быстрые действия с едой,
+   тренировка дня, вес и серия.
+   Ни одной формы — только числа, одна главная кнопка действия и два
+   коротких входа в запись еды.
    Цвета, размеры и отступы — исключительно из css/tokens.css.
    ============================================================ */
 
@@ -174,6 +176,47 @@
 .td-macro--f .td-macro__fill { background: var(--data-fat); }
 .td-macro--c .td-macro__fill { background: var(--data-carb); }
 
+/* ---------- Быстрые действия с едой ----------
+   Ряд из двух кнопок под кольцом калорий. Вес второстепенный: карточная
+   поверхность с контуром, текст цвета текста, а цвет действия — только у
+   иконки. Залитые зелёные кнопки спорили бы с «Начать» в карточке
+   тренировки, а на экране должно быть одно главное действие. */
+.td-quick {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
+}
+
+.td-quick__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  min-width: 0;
+  min-height: var(--tap-min);
+  padding: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  text-align: center;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.td-quick__btn svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.td-quick__btn:active {
+  background: var(--surface-2);
+}
+
 /* ---------- Карточка тренировки ---------- */
 .td-workout__title {
   margin: var(--s2) 0 0;
@@ -324,5 +367,17 @@
 
   .td-tiles {
     grid-template-columns: 1fr;
+  }
+
+  /* «Добавить вручную» 13px с иконкой на 360px не влезала в половину ряда
+     и переносилась на две строки. Шаг кегля вниз и узкие поля держат обе
+     подписи в одну строку; перенос остаётся запасным путём для 320px. */
+  .td-quick {
+    gap: var(--s2);
+  }
+
+  .td-quick__btn {
+    padding: var(--s2) var(--s1);
+    font-size: var(--fs-xs);
   }
 }

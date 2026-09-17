@@ -1,22 +1,38 @@
 /*
- * page-trainer.js — главная раздела «AI-тренер» (страница "trainer").
+ * page-trainer.js — раздел «AI-тренер» (страница "trainer").
  *
  * Регистрирует контроллер через App.registerPage("trainer", {...}).
- * Публичная ссылка — window.PageTrainer.
+ * Публичная ссылка — window.PageTrainer ({switchTo(segment), refresh()}).
  *
- * Это КОРЕНЬ раздела (вкладка «Тренировка» в нижней навигации), а не
- * подстраница: шапка без кнопки «Назад», переход к программе/прогрессу/
- * библиотеке — сегментами вверху, настройки — иконкой в углу заголовка.
- * Раньше здесь был список из четырёх ссылок внизу экрана: раздел выглядел
- * оглавлением, хотя вся работа происходит на нём самом.
+ * Это КОРЕНЬ раздела (вкладка «Тренировка» в нижней навигации) и ОБОЛОЧКА
+ * четырёх вкладок: шапка «Тренировка» с неделей программы и шестерёнкой,
+ * липкая полоса вкладок «Сегодня / Программа / Прогресс / Упражнения» и
+ * панели содержимого под ней. Переключение вкладки не вызывает App.navigate:
+ * раньше каждая вкладка была отдельной страницей со своей шапкой и кнопкой
+ * «Назад», и человек, переключая виды одного раздела, каждый раз «уходил»
+ * с экрана и искал дорогу обратно.
+ *
+ * Панели живут в DOM, пока открыт раздел: вкладка монтируется при первом
+ * открытии, дальше скрывается и показывается атрибутом hidden. Повторное
+ * переключение мгновенное, без скелетона и без потери раскрытых дней,
+ * поиска и выбранного графика. Панель перезагружается, только если данные
+ * тренера изменились с момента её загрузки (Trainer.cache.version).
+ *
+ *   • «Сегодня»    — рисуется здесь же, по overview;
+ *   • «Программа»  — window.TrainerProgram.mount/unmount (page-trainer-program.js);
+ *   • «Прогресс»   — window.TrainerProgress.mount/unmount (page-trainer-progress.js);
+ *   • «Упражнения» — window.TrainerLibrary.mount/unmount (page-trainer-exercise.js).
+ *
+ * Выбранная вкладка — App.state.trainerSegment (контракт между разделами):
+ * onShow открывает её и не сбрасывает, это память выбора между заходами.
  *
  * Сценарий onShow (ТЗ §2.1, §2.4):
- *   GET /trainer/overview →
+ *   GET /trainer/overview (всегда: из него подзаголовок шапки) →
  *     • 402 (нет подписки) → paywall тренера с бесплатным входом в анкету;
  *     • профиля нет / onboarding_completed=false → App.navigate("trainer-onboarding");
- *     • нет активной программы → экран «Программа не создана» + «Собрать программу»;
- *     • иначе — экран «Сегодня»: карточка дня (в процессе / по плану / отдых /
- *       неделя закрыта), лента недели, стрик, «Самочувствие», «Питание сегодня».
+ *     • вкладка «Сегодня»: нет активной программы → «Программа не создана»;
+ *       иначе карточка дня (в процессе / по плану / отдых / неделя закрыта),
+ *       лента недели, стрик, «Самочувствие», «Питание сегодня».
  *
  * «Самочувствие» — совет по восстановлению (POST /recovery/advice): переехал
  * сюда из удалённого раздела «Тренировки». Место естественное: зону тела
@@ -65,15 +81,38 @@
     { key: "knees", ru: "Колени", en: "Knees" }
   ];
 
+  // Вкладки раздела. Ключи — контракт App.state.trainerSegment.
+  var SEGMENTS = [
+    { key: "today", ru: "Сегодня", en: "Today" },
+    { key: "program", ru: "Программа", en: "Program" },
+    { key: "progress", ru: "Прогресс", en: "Progress" },
+    { key: "exercises", ru: "Упражнения", en: "Exercises" }
+  ];
+
+  // Модули, которые рисуют содержимое вкладок (кроме «Сегодня»). Ищем их
+  // по имени в момент монтирования: скрипты вкладок подключаются ПОСЛЕ
+  // этого файла, и прямая ссылка при загрузке была бы undefined.
+  var MODULES = {
+    program: "TrainerProgram",
+    progress: "TrainerProgress",
+    exercises: "TrainerLibrary"
+  };
+
   // Внутреннее состояние контроллера.
   var state = {
-    viewEl: null,       // корневой элемент (#view)
-    overview: null,     // последний TrainerOverviewOut
-    loading: false,     // идёт загрузка overview (защита от гонок)
-    starting: false,    // идёт старт сессии
-    nutritionReq: 0,    // счётчик запросов совета (игнорируем устаревшие ответы)
-    recoveryZone: null, // выбранная зона тела в «Самочувствии»
-    recoveryBusy: false // идёт запрос совета по восстановлению
+    viewEl: null,        // корневой элемент (#view)
+    overview: null,      // последний TrainerOverviewOut
+    overviewErr: null,   // ошибка последней загрузки overview
+    overviewVersion: -1, // Trainer.cache.version на момент загрузки overview
+    loading: false,      // идёт загрузка overview (защита от гонок)
+    ovReq: 0,            // счётчик запросов overview (устаревшие ответы — мимо)
+    subtitle: "",        // последний подзаголовок шапки (см. onShow)
+    segment: null,       // открытая вкладка
+    panes: {},           // вкладка → {mounted, version}
+    starting: false,     // идёт старт сессии
+    nutritionReq: 0,     // счётчик запросов совета (игнорируем устаревшие ответы)
+    recoveryZone: null,  // выбранная зона тела в «Самочувствии»
+    recoveryBusy: false  // идёт запрос совета по восстановлению
   };
 
   /* =====================================================================
@@ -217,32 +256,47 @@
    * ===================================================================== */
 
   /**
-   * Сегменты раздела. «Сегодня» — текущий экран, остальные три ведут на свои
-   * страницы. Переключатель стоит вверху, сразу под заголовком: так видно,
-   * что у раздела есть несколько видов, и не нужно скроллить к оглавлению.
+   * Полоса вкладок (ARIA tabs). Стоит сразу под заголовком и прилипает к
+   * верху при прокрутке: «Прогресс» и «Программа» длиннее экрана, и без
+   * липкой полосы для смены вида пришлось бы сначала долистать до верха.
+   * Кнопки отрисованы все неактивными — выбор расставляет activate().
    */
-  function segmentsHtml() {
-    var items = [
-      { key: "today", label: pick("Сегодня", "Today") },
-      { key: "program", label: pick("Программа", "Program") },
-      { key: "progress", label: pick("Прогресс", "Progress") },
-      { key: "exercise", label: pick("Упражнения", "Exercises") }
-    ];
+  function tabsHtml() {
     var html = "";
-    for (var i = 0; i < items.length; i++) {
-      var active = items[i].key === "today";
+    for (var i = 0; i < SEGMENTS.length; i++) {
+      var s = SEGMENTS[i];
       html +=
-        '<button type="button" class="tr-segment' + (active ? " is-active" : "") +
-        '" data-link="' + items[i].key + '"' + (active ? ' aria-current="page"' : "") + ">" +
-        esc(items[i].label) +
+        '<button type="button" class="tr-tab" role="tab" id="trTab-' + s.key + '" ' +
+        'data-seg="' + s.key + '" aria-controls="trPanel-' + s.key + '" ' +
+        'aria-selected="false" tabindex="-1">' +
+        esc(pick(s.ru, s.en)) +
         "</button>";
     }
-    return '<nav class="tr-segments" aria-label="' + esc(pick("Разделы тренера", "Coach sections")) + '">' + html + "</nav>";
+    return (
+      '<div class="tr-tabs-bar" id="trTabsBar">' +
+      '<div class="tr-tabs" role="tablist" aria-label="' + esc(pick("Разделы тренера", "Coach sections")) + '">' +
+      html +
+      "</div>" +
+      "</div>"
+    );
+  }
+
+  /** Панели вкладок: пустые и скрытые, наполняются при первом открытии. */
+  function panelsHtml() {
+    var html = "";
+    for (var i = 0; i < SEGMENTS.length; i++) {
+      var key = SEGMENTS[i].key;
+      html +=
+        '<div class="tr-seg-panel' + (key === "today" ? " tr-today" : "") + '" ' +
+        'id="trPanel-' + key + '" role="tabpanel" aria-labelledby="trTab-' + key + '" hidden></div>';
+    }
+    return '<div class="tr-seg-body" id="trSegBody">' + html + "</div>";
   }
 
   /**
-   * Каркас страницы: шапка корня раздела (без «Назад», с иконкой настроек),
-   * сегменты и контейнер тела (#trBody).
+   * Каркас раздела: шапка корня (без «Назад», с иконкой настроек), полоса
+   * вкладок и панели. Рисуется один раз за заход и при переключении вкладок
+   * не перерисовывается.
    */
   function shellHtml(subtitle) {
     var settings =
@@ -251,15 +305,15 @@
       icon("settings", { size: 22 }) +
       "</button>";
     return (
-      '<section class="page tr-page tr-today">' +
+      '<section class="page tr-page tr-shell">' +
       T.headHtml({
         back: false,
         title: pick("Тренировка", "Workout"),
         subtitle: subtitle || "",
         actions: settings
       }) +
-      segmentsHtml() +
-      '<div id="trBody"></div>' +
+      tabsHtml() +
+      panelsHtml() +
       "</section>"
     );
   }
@@ -597,11 +651,16 @@
    *  РЕНДЕР И СОБЫТИЯ
    * ===================================================================== */
 
-  /** Обновляет подзаголовок шапки без перерисовки страницы. */
+  /**
+   * Обновляет подзаголовок шапки без перерисовки страницы. Текст запоминаем:
+   * следующий заход рисует шапку сразу с ним, и строка не «прыгает» из
+   * пустой в заполненную, сдвигая всё содержимое вниз после загрузки.
+   */
   function setSubtitle(text) {
+    state.subtitle = text || "";
     if (!state.viewEl) return;
-    var el = state.viewEl.querySelector(".sub-subtitle");
-    if (el) el.textContent = text || "";
+    var el = state.viewEl.querySelector(".tr-shell .sub-subtitle");
+    if (el) el.textContent = state.subtitle;
   }
 
   /**
@@ -610,7 +669,6 @@
   function renderToday(ov) {
     var body = byId("trBody");
     if (!body) return;
-    setSubtitle(subtitleFor(ov));
     body.innerHTML =
       todayCardHtml(ov) +
       reviewBannerHtml(ov) +
@@ -630,7 +688,6 @@
   function renderEmpty() {
     var body = byId("trBody");
     if (!body) return;
-    setSubtitle(pick("Персональная программа", "Your personal program"));
     body.innerHTML = emptyProgramHtml();
     var gen = byId("trGenerate");
     if (gen) {
@@ -659,9 +716,32 @@
     if (btn) {
       btn.addEventListener("click", function () {
         App.haptic("light");
-        load();
+        loadOverview();
       });
     }
+  }
+
+  /**
+   * Содержимое вкладки «Сегодня» по текущему состоянию overview: скелетон,
+   * ошибка, «Программа не создана» или сам экран дня.
+   */
+  function renderTodayPane() {
+    var body = byId("trBody");
+    if (!body) return;
+    if (state.overviewErr) {
+      renderError(state.overviewErr);
+      return;
+    }
+    var ov = state.overview;
+    if (!ov) {
+      body.innerHTML = T.skeleton(4) + T.skeleton(2);
+      return;
+    }
+    if (!ov.program) {
+      renderEmpty();
+      return;
+    }
+    renderToday(ov);
   }
 
   /**
@@ -680,7 +760,7 @@
     if (doneBtn) {
       doneBtn.addEventListener("click", function () {
         App.haptic("light");
-        T.go("trainer-progress");
+        activate("progress", { scroll: true });
       });
     }
     var cont = byId("trContinue");
@@ -689,7 +769,7 @@
         App.haptic("medium");
         var session = (ov.today && ov.today.active_session) || T.cache.activeSession || null;
         if (!session && ov.active_session_id) App.state.trainerSessionId = ov.active_session_id;
-        if (!T.openSession(session)) load();
+        if (!T.openSession(session)) loadOverview();
       });
     }
     var banner = byId("trReviewBanner");
@@ -697,19 +777,224 @@
       banner.addEventListener("click", function () {
         App.haptic("light");
         App.state.trainerProgressSection = "review";
-        T.go("trainer-progress");
+        activate("progress", { scroll: true });
       });
     }
   }
 
+  /* =====================================================================
+   *  ВКЛАДКИ
+   * ===================================================================== */
+
+  /** Модуль содержимого вкладки или null («Сегодня» рисуется здесь). */
+  function moduleOf(seg) {
+    var name = MODULES[seg];
+    var mod = name ? window[name] : null;
+    return mod && typeof mod.mount === "function" ? mod : null;
+  }
+
   /**
-   * Сегменты и кнопка настроек живут в каркасе, а не в теле: вешаем
-   * обработчики один раз при onShow, а не на каждой перерисовке #trBody.
+   * Наполняет панель вкладки. keep=true — возврат из карточки упражнения:
+   * модуль берёт данные из своего кэша, а не грузит заново.
+   */
+  function mountPane(seg, keep) {
+    var panel = byId("trPanel-" + seg);
+    if (!panel) return;
+    state.panes[seg] = { mounted: true, version: T.cache.version };
+
+    if (seg === "today") {
+      panel.innerHTML = '<div id="trBody"></div>';
+      // overview грузится при каждом заходе; здесь догружаем, только если
+      // данные тренера успели измениться, пока была открыта другая вкладка.
+      if (!state.loading && state.overviewVersion !== T.cache.version) loadOverview();
+      else renderTodayPane();
+      return;
+    }
+
+    var mod = moduleOf(seg);
+    if (!mod) {
+      panel.innerHTML = T.errorCard(pick("Раздел не загрузился. Обновите приложение.", "This section failed to load. Please reload the app."));
+      return;
+    }
+    try {
+      mod.mount(panel, {
+        keep: !!keep,
+        onPaywall: showPaywall,
+        onReload: reloadSection
+      });
+    } catch (e) {
+      console.error("Ошибка монтирования вкладки " + seg, e);
+      panel.innerHTML = T.errorCard(T.errMessage(e));
+    }
+  }
+
+  /**
+   * Снимает вкладку: модуль гасит таймеры и отбрасывает запросы в полёте.
+   * Разметку не трогаем — её заменит монтирование или очистит App.navigate.
+   */
+  function unmountPane(seg) {
+    var pane = state.panes[seg];
+    if (!pane || !pane.mounted) return;
+    pane.mounted = false;
+    if (seg === "today") {
+      state.nutritionReq++;
+      state.recoveryBusy = false;
+      return;
+    }
+    var mod = moduleOf(seg);
+    if (mod && typeof mod.unmount === "function") {
+      try {
+        mod.unmount();
+      } catch (e) {
+        console.error("Ошибка размонтирования вкладки " + seg, e);
+      }
+    }
+  }
+
+  function unmountAll() {
+    for (var i = 0; i < SEGMENTS.length; i++) unmountPane(SEGMENTS[i].key);
+  }
+
+  /**
+   * Открывает вкладку: подсветка, показ панели, монтирование при первом
+   * открытии. Шапку и полосу вкладок не трогает.
+   * @param {string} segment ключ вкладки
+   * @param {object} [opts] {keep: взять данные из кэша модуля,
+   *                         scroll: вернуть прокрутку к началу раздела}
+   */
+  function activate(segment, opts) {
+    opts = opts || {};
+    if (!state.viewEl || !byId("trSegBody")) return;
+    var seg = T.normSegment(segment);
+    var prev = state.segment;
+    // Уходящая вкладка была на экране, пока в ней меняли данные (применили
+    // разбор, архивировали программу), и уже показывает результат своих же
+    // действий. Отмечаем её актуальной, иначе на обратном переключении она
+    // без нужды перезагрузилась бы со скелетоном.
+    if (prev && prev !== seg && state.panes[prev] && state.panes[prev].mounted) {
+      state.panes[prev].version = T.cache.version;
+    }
+    state.segment = seg;
+    App.state.trainerSegment = seg;
+
+    var tabs = state.viewEl.querySelectorAll(".tr-tab");
+    for (var i = 0; i < tabs.length; i++) {
+      var on = tabs[i].getAttribute("data-seg") === seg;
+      tabs[i].classList.toggle("is-active", on);
+      tabs[i].setAttribute("aria-selected", on ? "true" : "false");
+      // Роуминговый tabindex: Tab попадает только на выбранную вкладку,
+      // между вкладками ходят стрелками (см. onTabKey).
+      tabs[i].setAttribute("tabindex", on ? "0" : "-1");
+    }
+    for (var j = 0; j < SEGMENTS.length; j++) {
+      var panel = byId("trPanel-" + SEGMENTS[j].key);
+      if (panel) panel.hidden = SEGMENTS[j].key !== seg;
+    }
+
+    var pane = state.panes[seg];
+    if (pane && pane.mounted && pane.version !== T.cache.version) {
+      unmountPane(seg);
+      pane = null;
+    }
+    var fresh = !pane || !pane.mounted;
+    if (fresh) mountPane(seg, opts.keep);
+
+    // К началу раздела: шапка и полоса вкладок снова на виду.
+    if (opts.scroll) App.scrollTop();
+
+    // Уже смонтированная вкладка флаг «открыть на разборе» сама не прочитает
+    // (баннер «Разбор готов» на «Сегодня») — передаём явно. Строго после
+    // прокрутки наверх, иначе она отменила бы прокрутку к разбору.
+    if (!fresh && seg === "progress" && App.state.trainerProgressSection === "review") {
+      var progress = moduleOf("progress");
+      App.state.trainerProgressSection = null;
+      if (progress && typeof progress.focusReview === "function") progress.focusReview();
+    }
+    updateStuck();
+  }
+
+  function onTabClick(ev) {
+    var btn = ev.target.closest ? ev.target.closest(".tr-tab") : null;
+    if (!btn) return;
+    var seg = btn.getAttribute("data-seg");
+    if (seg === state.segment) {
+      // Повторный тап по выбранной вкладке — наверх, как в таббаре.
+      App.scrollTop();
+      return;
+    }
+    App.haptic("selection");
+    activate(seg, { scroll: true });
+  }
+
+  /** Стрелки/Home/End по полосе вкладок (шаблон ARIA tabs). */
+  function onTabKey(ev) {
+    var keys = { ArrowLeft: -1, ArrowRight: 1, Home: "first", End: "last" };
+    if (!Object.prototype.hasOwnProperty.call(keys, ev.key)) return;
+    var idx = 0;
+    for (var i = 0; i < SEGMENTS.length; i++) {
+      if (SEGMENTS[i].key === state.segment) idx = i;
+    }
+    var step = keys[ev.key];
+    if (step === "first") idx = 0;
+    else if (step === "last") idx = SEGMENTS.length - 1;
+    else idx = (idx + step + SEGMENTS.length) % SEGMENTS.length;
+    ev.preventDefault();
+    var seg = SEGMENTS[idx].key;
+    activate(seg, { scroll: true });
+    var btn = byId("trTab-" + seg);
+    if (btn) btn.focus();
+  }
+
+  /**
+   * Полная перезагрузка раздела на указанной вкладке. Нужна после действий,
+   * меняющих всё сразу (архивировали программу, начали новую): точечно
+   * обновлять четыре вкладки и шапку дороже и ненадёжнее.
+   */
+  function reloadSection(segment) {
+    T.cache.invalidate();
+    App.state.trainerSegment = T.normSegment(segment || state.segment);
+    App.navigate("trainer");
+  }
+
+  /**
+   * Тонкая линия под полосой вкладок, когда та прилипла к верху: без неё
+   * содержимое при прокрутке «уходит под» полосу без видимой границы.
+   * Считаем по положению элемента — событий «прилипло» у sticky нет.
+   */
+  function updateStuck() {
+    var bar = byId("trTabsBar");
+    if (!bar) return;
+    var top = parseFloat(window.getComputedStyle(bar).top) || 0;
+    var stuck = pageYOffsetSafe() > 0 && bar.getBoundingClientRect().top <= top + 1;
+    bar.classList.toggle("is-stuck", stuck);
+  }
+
+  function pageYOffsetSafe() {
+    return window.pageYOffset || (document.documentElement && document.documentElement.scrollTop) || 0;
+  }
+
+  // Отдельный кадр (requestAnimationFrame) не заводим: браузер и так шлёт
+  // scroll не чаще раза за кадр, а проверка — один замер без записи в DOM
+  // (classList.toggle с тем же значением стиль не пересчитывает).
+  function onScroll() {
+    updateStuck();
+  }
+
+  function stopStuckWatch() {
+    window.removeEventListener("scroll", onScroll);
+  }
+
+  /**
+   * Полоса вкладок и кнопка настроек живут в каркасе, а не в панелях:
+   * вешаем обработчики один раз при onShow.
    */
   function bindShell() {
     if (!state.viewEl) return;
-    var segs = state.viewEl.querySelectorAll(".tr-segment");
-    for (var i = 0; i < segs.length; i++) segs[i].addEventListener("click", onLink);
+    var list = state.viewEl.querySelector(".tr-tabs");
+    if (list) {
+      list.addEventListener("click", onTabClick);
+      list.addEventListener("keydown", onTabKey);
+    }
     var settings = byId("trHeadSettings");
     if (settings) {
       settings.addEventListener("click", function () {
@@ -717,22 +1002,7 @@
         openSettings();
       });
     }
-  }
-
-  function onLink(ev) {
-    var key = ev.currentTarget.getAttribute("data-link");
-    if (key === "today") return; // уже здесь
-    App.haptic("light");
-    if (key === "program") {
-      App.state.trainerProgramMode = null;
-      T.go("trainer-program");
-    } else if (key === "progress") {
-      App.state.trainerProgressSection = null;
-      T.go("trainer-progress");
-    } else if (key === "exercise") {
-      App.state.trainerExerciseId = null;
-      T.go("trainer-exercise");
-    }
+    window.addEventListener("scroll", onScroll, { passive: true });
   }
 
   /* =====================================================================
@@ -829,7 +1099,7 @@
     App.haptic("medium");
     T.startSession(dayId)
       .then(function (session) {
-        if (!T.openSession(session)) load();
+        if (!T.openSession(session)) loadOverview();
       })
       .catch(function (err) {
         App.toast(T.errMessage(err, pick("Не удалось начать тренировку", "Failed to start the workout")));
@@ -979,19 +1249,26 @@
    * ===================================================================== */
 
   /**
-   * Загружает overview и маршрутизирует: онбординг / пустое состояние / «Сегодня».
+   * Загружает overview: подзаголовок шапки, сводка для других экранов,
+   * маршрутизация в анкету и содержимое вкладки «Сегодня» (если открыта).
+   * Грузится при любой открытой вкладке: шапка общая для всех, а человек
+   * без анкеты должен попасть в анкету, а не в пустую библиотеку.
    */
-  function load() {
-    var body = byId("trBody");
-    if (!body || state.loading) return;
+  function loadOverview() {
+    if (!state.viewEl || state.loading) return;
     state.loading = true;
-    body.innerHTML = T.skeleton(4) + T.skeleton(2);
+    state.overview = null;
+    state.overviewErr = null;
+    state.overviewVersion = T.cache.version;
+    var reqId = ++state.ovReq;
+    renderTodayPane();
 
     App.api
       .trainerOverview()
       .then(function (ov) {
+        if (reqId !== state.ovReq) return; // раздел закрыт или запрос устарел
         state.loading = false;
-        if (!byId("trBody")) return; // страница уже закрыта
+        if (!state.viewEl) return;
         ov = ov || {};
         state.overview = ov;
         T.cache.overview = ov;
@@ -1004,21 +1281,19 @@
           App.navigate("trainer-onboarding");
           return;
         }
-        // Нет активной программы → пустое состояние.
-        if (!ov.program) {
-          renderEmpty();
-          return;
-        }
-        renderToday(ov);
+        setSubtitle(subtitleFor(ov));
+        renderTodayPane();
       })
       .catch(function (err) {
+        if (reqId !== state.ovReq) return;
         state.loading = false;
-        if (!byId("trBody")) return;
+        if (!state.viewEl) return;
         if (err && err.status === 402) {
           showPaywall();
           return;
         }
-        renderError(err);
+        state.overviewErr = err || {};
+        renderTodayPane();
       });
   }
 
@@ -1031,6 +1306,11 @@
    */
   function showPaywall() {
     if (!state.viewEl) return;
+    // Paywall заменяет весь экран: вкладки гасим, чтобы их запросы и
+    // таймеры не дорисовывали что-то в уже несуществующие панели.
+    unmountAll();
+    stopStuckWatch();
+    state.segment = null;
     var opts = T.paywallOpts();
     opts.extraLabel = pick("Заполнить анкету", "Fill in the profile");
     opts.onExtra = function () {
@@ -1047,6 +1327,8 @@
   var controller = {
     onShow: function (viewEl) {
       state.viewEl = viewEl;
+      state.segment = null;
+      state.panes = {};
       // Первый вход извне раздела — запоминаем, куда возвращаться.
       if (!App.state.trainerOrigin) App.state.trainerOrigin = "today";
       // Без подписки не ходим за overview вовсе: ответ всё равно 402,
@@ -1055,24 +1337,43 @@
         showPaywall();
         return;
       }
-      viewEl.innerHTML = shellHtml("");
+      // Возврат из карточки упражнения: открытая вкладка берёт данные из
+      // кэша, чтобы человек вернулся к тому же списку и той же прокрутке.
+      var keep = T.isReturning();
+      viewEl.innerHTML = shellHtml(state.subtitle);
       bindShell();
-      load();
+      loadOverview();
+      activate(App.state.trainerSegment, { keep: keep });
     },
 
     onHide: function () {
+      unmountAll();
+      stopStuckWatch();
       state.viewEl = null;
+      state.segment = null;
       state.loading = false;
+      state.ovReq++;
       state.starting = false;
       state.nutritionReq++;
       state.recoveryBusy = false;
       T.closeSheet(true);
     },
 
+    /**
+     * Открывает вкладку на месте, без App.navigate. Вызывается через
+     * Trainer.openSegment из обработчиков внутри раздела. Если раздел
+     * сейчас закрыт paywall'ом, только запоминаем выбор.
+     */
+    switchTo: function (segment) {
+      App.state.trainerSegment = T.normSegment(segment);
+      if (!state.viewEl || !byId("trSegBody")) return;
+      activate(segment, { scroll: true });
+    },
+
     /** Принудительное обновление (для других страниц после изменений). */
     refresh: function () {
       T.cache.invalidate();
-      if (state.viewEl) load();
+      if (state.viewEl && byId("trSegBody")) reloadSection(state.segment);
     }
   };
 

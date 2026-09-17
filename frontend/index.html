@@ -12,37 +12,44 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <!-- Дизайн-токены — ПЕРВЫМИ: остальные файлы читают их через var() -->
-  <link rel="stylesheet" href="css/tokens.css?v=s33">
+  <link rel="stylesheet" href="css/tokens.css?v=s34">
   <!-- Основные стили приложения -->
-  <link rel="stylesheet" href="css/style.css?v=s33">
+  <link rel="stylesheet" href="css/style.css?v=s34">
   <!-- Экран «Сегодня» -->
-  <link rel="stylesheet" href="css/today.css?v=s33">
+  <link rel="stylesheet" href="css/today.css?v=s34">
   <!-- Разделы: питание, камера, профиль -->
-  <link rel="stylesheet" href="css/nutrition.css?v=s33">
-  <link rel="stylesheet" href="css/scan.css?v=s33">
-  <link rel="stylesheet" href="css/profile.css?v=s33">
+  <link rel="stylesheet" href="css/nutrition.css?v=s34">
+  <link rel="stylesheet" href="css/scan.css?v=s34">
+  <link rel="stylesheet" href="css/profile.css?v=s34">
   <!-- Стили отдельной страницы оплаты -->
-  <link rel="stylesheet" href="css/payment.css?v=s33">
+  <link rel="stylesheet" href="css/payment.css?v=s34">
   <!-- Стили раздела «Тренировка»: общие/онбординг/сегодня, сессия, прогресс -->
-  <link rel="stylesheet" href="css/trainer.css?v=s33">
-  <link rel="stylesheet" href="css/trainer-session.css?v=s33">
-  <link rel="stylesheet" href="css/trainer-progress.css?v=s33">
+  <link rel="stylesheet" href="css/trainer.css?v=s34">
+  <link rel="stylesheet" href="css/trainer-session.css?v=s34">
+  <link rel="stylesheet" href="css/trainer-progress.css?v=s34">
 </head>
 <body>
   <!-- Контейнер активной страницы: App очищает и наполняет его -->
   <main id="view"></main>
 
-  <!-- Нижняя навигация: четыре раздела + приподнятая кнопка камеры по центру.
+  <!-- Нижняя навигация: пять разделов, «Сегодня» — по центру.
+       Слева направо: Добавки · Тренировка · СЕГОДНЯ · Питание · Профиль.
+       Камеры здесь больше нет: снимок еды — действие внутри «Питания» и
+       «Сегодня», а не раздел, и отдельная кнопка «снять» в таббаре дублировала
+       кнопку на самом экране камеры (две кнопки спуска, верхняя и нижняя).
+       Центральная вкладка — приподнятый круг: это «домой», точка, откуда
+       начинается любой путь по приложению. Подпись у неё на одной линии с
+       остальными, чтобы ряд подписей читался как единая строка.
        Иконки встроены как SVG (не эмодзи): они наследуют цвет активного
        состояния через currentColor и одинаково выглядят на всех устройствах.
        Геометрия совпадает с набором в js/icons.js. -->
   <nav id="tabbar">
-    <button class="tab" type="button" data-page="today">
+    <button class="tab" type="button" data-page="supplements">
       <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M3.5 10.5L12 3.5l8.5 7"/>
-        <path d="M5.5 9.5v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-9"/>
+        <rect x="2.6" y="8.8" width="18.8" height="6.4" rx="3.2" transform="rotate(-45 12 12)"/>
+        <path d="M9.2 9.2l5.6 5.6"/>
       </svg>
-      <span class="tab-label">Сегодня</span>
+      <span class="tab-label">Добавки</span>
     </button>
     <button class="tab" type="button" data-page="trainer">
       <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -51,12 +58,16 @@
       </svg>
       <span class="tab-label">Тренировка</span>
     </button>
-    <!-- Центральная кнопка «Снять еду»: только иконка, без подписи -->
-    <button class="tab tab-camera" type="button" data-page="scan" aria-label="Снять еду">
-      <svg class="tab-camera__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M21.5 18.5a2 2 0 0 1-2 2h-15a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2h3l1.7-2.5h6.6L17.5 7.5h2a2 2 0 0 1 2 2z"/>
-        <circle cx="12" cy="13.5" r="3.5"/>
-      </svg>
+    <!-- Центральная вкладка «Сегодня»: круг приподнят над панелью, подпись
+         стоит в общей строке подписей. -->
+    <button class="tab tab-home" type="button" data-page="today">
+      <span class="tab-home__disc" aria-hidden="true">
+        <svg class="tab-home__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3.5 10.5L12 3.5l8.5 7"/>
+          <path d="M5.5 9.5v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-9"/>
+        </svg>
+      </span>
+      <span class="tab-label">Сегодня</span>
     </button>
     <button class="tab" type="button" data-page="diary">
       <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -86,26 +97,26 @@
   <!-- 1) Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <!-- 2) Ядро приложения: window.App, хелперы, API-клиент, роутер -->
-  <script src="js/app.js?v=s33"></script>
+  <script src="js/app.js?v=s34"></script>
   <!-- 3) Набор иконок: App.icon(name) — сразу после ядра, до страниц -->
-  <script src="js/icons.js?v=s33"></script>
+  <script src="js/icons.js?v=s34"></script>
   <!-- 4) Контроллеры страниц (каждый вызывает App.registerPage при загрузке) -->
-  <script src="js/page-today.js?v=s33"></script>
-  <script src="js/page-scan.js?v=s33"></script>
-  <script src="js/page-diary.js?v=s33"></script>
+  <script src="js/page-today.js?v=s34"></script>
+  <script src="js/page-scan.js?v=s34"></script>
+  <script src="js/page-diary.js?v=s34"></script>
   <!-- Раздел «Тренировка»: общий модуль window.Trainer ПЕРВЫМ, затем страницы -->
-  <script src="js/trainer-common.js?v=s33"></script>
-  <script src="js/page-trainer.js?v=s33"></script>
-  <script src="js/page-trainer-onboarding.js?v=s33"></script>
-  <script src="js/page-trainer-program.js?v=s33"></script>
-  <script src="js/page-trainer-session.js?v=s33"></script>
-  <script src="js/page-trainer-progress.js?v=s33"></script>
-  <script src="js/page-trainer-exercise.js?v=s33"></script>
-  <script src="js/page-supplements.js?v=s33"></script>
-  <script src="js/page-subscription.js?v=s33"></script>
-  <script src="js/page-payment.js?v=s33"></script>
-  <script src="js/page-account.js?v=s33"></script>
-  <script src="js/page-onboarding.js?v=s33"></script>
+  <script src="js/trainer-common.js?v=s34"></script>
+  <script src="js/page-trainer.js?v=s34"></script>
+  <script src="js/page-trainer-onboarding.js?v=s34"></script>
+  <script src="js/page-trainer-program.js?v=s34"></script>
+  <script src="js/page-trainer-session.js?v=s34"></script>
+  <script src="js/page-trainer-progress.js?v=s34"></script>
+  <script src="js/page-trainer-exercise.js?v=s34"></script>
+  <script src="js/page-supplements.js?v=s34"></script>
+  <script src="js/page-subscription.js?v=s34"></script>
+  <script src="js/page-payment.js?v=s34"></script>
+  <script src="js/page-account.js?v=s34"></script>
+  <script src="js/page-onboarding.js?v=s34"></script>
   <!-- 5) Запуск приложения после регистрации всех страниц -->
   <script>App.init();</script>
 </body>

@@ -287,7 +287,8 @@ uvicorn backend.main:app --reload
 | `APP_TZ`               | Часовой пояс для времени push-уведомлений (по умолчанию `Europe/Moscow`)   |
 | `ENABLE_SCHEDULER`     | `0` — выключить планировщик уведомлений (по умолчанию включён при заданном `BOT_TOKEN`) |
 | `OWNER_ID`             | Числовой Telegram ID владельца (вечный премиум + команды `/givepro`/`/revokepro`) |
-| `PRICE_MONTHLY_RUB` / `PRICE_YEARLY_RUB` / `PRICE_LIFETIME_RUB` | Цены тарифов в рублях (единственная валюта; `0` убирает тариф с витрины) |
+| `PRICE_MONTHLY_RUB` / `PRICE_QUARTERLY_RUB` / `PRICE_YEARLY_RUB` / `PRICE_LIFETIME_RUB` | Цены тарифов в рублях (единственная валюта; `0` убирает тариф с витрины) |
+| `SUBSCRIPTION_MONTHLY_DAYS` / `SUBSCRIPTION_QUARTERLY_DAYS` / `SUBSCRIPTION_YEARLY_DAYS` | Сроки тарифов в днях (по умолчанию 30 / 90 / 365) |
 | `PAYMENT_PROVIDER`     | Кто принимает карты: `auto` (по ключам) / `cloudpayments` / `yookassa` / `none` |
 | `CLOUDPAYMENTS_PUBLIC_ID` / `CLOUDPAYMENTS_API_SECRET` | Ключи CloudPayments (секрет проверяет подпись вебхука) |
 | `YOOKASSA_SHOP_ID` / `YOOKASSA_SECRET_KEY` | Ключи ЮKassa (API v3); пока пусты — приём карт через ЮKassa выключен |
@@ -352,7 +353,7 @@ uvicorn backend.main:app --reload
 Telegram Stars **убрана**: цены только рублёвые. Проверка премиума — на бэкенде,
 обойти правкой фронта нельзя.
 
-**Тарифы:** `monthly` (30 дней, 699 ₽) и `yearly` (365 дней, 5590 ₽). Тип `lifetime` (навсегда) с витрины убран (`PRICE_LIFETIME_RUB=0`) и выдаётся только владельцем через `/givepro`.
+**Тарифы:** `monthly` (30 дней, 699 ₽), `quarterly` (90 дней, 1790 ₽ — ≈597 ₽/мес, экономия 15%) и `yearly` (365 дней, 5590 ₽ — ≈466 ₽/мес, экономия 33%). Тип `lifetime` (навсегда) с витрины убран (`PRICE_LIFETIME_RUB=0`) и выдаётся только владельцем через `/givepro`.
 Цены задаются переменными `PRICE_*_RUB`; тариф с ценой `0` с витрины исчезает.
 
 **Что бесплатно:** базовый дневник (добавить/удалить еду, цель, профиль, история) и

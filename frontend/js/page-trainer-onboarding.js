@@ -939,7 +939,9 @@
           home.addEventListener("click", function () {
             App.haptic("light");
             App.state.trainerEdit = false;
-            App.navigate("trainer");
+            // «На главную тренера» — это вкладка «Сегодня», а не последняя
+            // открытая: программы нет, и остальные вкладки здесь пустые.
+            T.openSegment("today");
           });
         }
         return null;

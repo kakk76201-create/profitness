@@ -20,7 +20,9 @@
  *          для lifetime/owner);
  *        - free     -> «Бесплатный доступ».
  *   2. КАРТОЧКИ ТАРИФОВ из App.subscription.tariffs ({days, price, currency}):
- *        Месячный (monthly), Годовой (yearly), Вечный (lifetime).
+ *        Месячный (monthly), 3 месяца (quarterly), Годовой (yearly),
+ *        Вечный (lifetime). У тарифов длиннее месяца — «≈ N ₽/мес · экономия
+ *        M%» относительно месячной цены (только если выгода действительно есть).
  *        У каждого — цена в рублях и кнопка «Выбрать» -> App.goPayment(tariff),
  *        которая открывает отдельную страницу оплаты ("payment"). Сама оплата
  *        здесь НЕ запускается: страница подписки — это витрина.
@@ -46,22 +48,37 @@
   }
 
   // Описание тарифов: ключ для бэкенда -> метаданные для отображения.
-  // Порядок задаёт расположение карточек на странице.
+  // Порядок задаёт расположение карточек на странице: от короткого срока к
+  // длинному (как и каталог на бэкенде), чтобы «лесенка» цен читалась сверху
+  // вниз — каждая следующая ступень дешевле в пересчёте на месяц.
   // Тексты заданы парами [ru, en] и переводятся через pick() в момент рендера.
   // icon — имя из общего набора js/icons.js (эмодзи в интерфейсе нет).
+  // termNote: true — подпись срока строится из days, пришедших с сервера
+  // («Доступ на 90 дней»): срок задаётся env и может отличаться от
+  // значения по умолчанию, а note — лишь запасной текст, если days нет.
   var TARIFF_META = [
     {
       key: "monthly",
       title: ["Месячный", "Monthly"],
       icon: "calendar",
+      termNote: true,
       note: ["Доступ на 30 дней", "Access for 30 days"]
+    },
+    {
+      key: "quarterly",
+      title: ["3 месяца", "3 months"],
+      // Тот же календарь, что у месячного: оба — «срок в месяцах», а отличает
+      // их крупное название карточки.
+      icon: "calendar",
+      termNote: true,
+      note: ["Доступ на 90 дней", "Access for 90 days"]
     },
     {
       key: "yearly",
       title: ["Годовой", "Yearly"],
       // «Кубок» — годовой всегда самый выгодный вариант и всегда несёт бейдж
-      // «Выгодно»: отдельной иконки «год» в наборе нет, а второй календарь
-      // рядом с месячным было бы не отличить.
+      // «Выгодно»: отдельной иконки «год» в наборе нет, а третий календарь
+      // сливался бы с двумя карточками выше.
       icon: "trophy",
       note: ["Выгоднее на длинной дистанции", "Better value over time"]
     },
@@ -219,7 +236,7 @@
    * Основной источник — s.tariffs[key] ({days, price, currency}); фолбэк —
    * s.card_prices[key] (та же рублёвая витрина в плоском виде).
    * @param {object} s результат sub()
-   * @param {string} key "monthly" | "yearly" | "lifetime"
+   * @param {string} key "monthly" | "quarterly" | "yearly" | "lifetime"
    */
   function tariffPrice(s, key) {
     var t = s.tariffs && s.tariffs[key];
@@ -249,29 +266,60 @@
     return shown + " " + (cur === "RUB" ? "₽" : cur);
   }
 
-  /**
-   * Считает «экономику» годового тарифа относительно месячного:
-   *   - perMonth — во сколько за месяц обходится годовой (yearly.price / 12);
-   *   - savePct  — процент экономии против 12× месячных.
-   * Возвращает null, если данных недостаточно или экономии нет
-   * (тогда никакой рекламной подписи не показываем — честно).
-   * @param {object} s результат sub()
-   */
-  function yearlyEconomy(s) {
-    var yearly = tariffPrice(s, "yearly");
-    var monthly = tariffPrice(s, "monthly");
-    if (!yearly) return null;
+  /** Срок тарифа в днях с сервера (null — бессрочный или не пришёл). */
+  function tariffDays(s, key) {
+    var t = s.tariffs && s.tariffs[key];
+    var days = t ? Number(t.days) : NaN;
+    return isFinite(days) && days > 0 ? days : null;
+  }
 
-    var perMonth = Math.round(yearly.price / 12);
-    var savePct = null;
-    if (monthly) {
-      var fullYear = monthly.price * 12;
-      if (fullYear > 0) {
-        savePct = Math.round((1 - yearly.price / fullYear) * 100);
-        if (savePct <= 0) savePct = null; // экономии нет — не завышаем
-      }
-    }
-    return { perMonth: perMonth, currency: yearly.currency, savePct: savePct };
+  /**
+   * Считает «экономику» ЛЮБОГО тарифа длиннее месяца относительно месячного:
+   *   - months   — сколько месяцев покрывает тариф (days / дней в месяце,
+   *                округлено до целых: 90 -> 3, 365 -> 12);
+   *   - perMonth — во сколько обходится месяц (price / months);
+   *   - savePct  — процент экономии против months × месячная цена.
+   * Возвращает null для месячного/бессрочного тарифа, без месячной цены и
+   * когда выгоды нет: рекламную строку «экономия» без основания не показываем.
+   * Одна функция на все тарифы, чтобы «3 месяца» и год считались одинаково и
+   * новый срок не требовал своей копии расчёта.
+   * @param {object} s результат sub()
+   * @param {string} key ключ тарифа
+   */
+  function tariffEconomy(s, key) {
+    if (key === "monthly") return null;
+    var plan = tariffPrice(s, key);
+    var monthly = tariffPrice(s, "monthly");
+    var days = tariffDays(s, key);
+    if (!plan || !monthly || !days) return null;
+
+    // Месяц меряем сроком месячного тарифа с сервера (по умолчанию 30 дней),
+    // чтобы расчёт не разошёлся с тем, что реально продаётся как «месяц».
+    var monthDays = tariffDays(s, "monthly") || 30;
+    var months = Math.round(days / monthDays);
+    if (months < 2) return null; // не длиннее месяца — сравнивать не с чем
+
+    var savePct = Math.round((1 - plan.price / (monthly.price * months)) * 100);
+    if (!(savePct > 0)) return null; // выгоды нет — не завышаем
+
+    return {
+      perMonth: Math.round(plan.price / months),
+      currency: plan.currency,
+      savePct: savePct
+    };
+  }
+
+  /**
+   * Подпись срока карточки: «Доступ на 90 дней» по days с сервера, иначе —
+   * запасной текст из метаданных.
+   */
+  function tariffNote(s, meta) {
+    var days = meta.termNote ? tariffDays(s, meta.key) : null;
+    if (!days) return pick(meta.note[0], meta.note[1]);
+    return pick(
+      "Доступ на " + days + " " + daysWordRu(days),
+      "Access for " + days + (days === 1 ? " day" : " days")
+    );
   }
 
   /* =====================================================================
@@ -503,10 +551,6 @@
 
     var s = sub();
 
-    // «Экономика» годового тарифа (₽/мес и процент экономии) — для рекламных
-    // подписей и подсветки самой выгодной карточки.
-    var economy = yearlyEconomy(s);
-
     // Собираем только те тарифы, для которых сервер вернул рублёвую цену.
     var cards = [];
     TARIFF_META.forEach(function (meta) {
@@ -527,29 +571,21 @@
         ? '<span class="sub-tariff__badge">' + esc(badgeText) + "</span>"
         : "";
 
-      // Для годового тарифа — подпись «≈ N ₽/мес» и «экономия M%».
+      // Для тарифов длиннее месяца — «≈ N ₽/мес» и «экономия M%» против
+      // месячной цены (только когда выгода есть — см. tariffEconomy).
       var econHtml = "";
-      if (isYearly && economy) {
+      var economy = tariffEconomy(s, meta.key);
+      if (economy) {
         var perMonthShown = formatPrice(economy.perMonth, economy.currency);
-        var perMonthLine =
-          '<span class="sub-tariff__permonth">' +
-          esc(
-            pick("≈ " + perMonthShown + "/мес", "≈ " + perMonthShown + "/mo")
-          ) +
-          "</span>";
-        var saveLine =
-          economy.savePct != null
-            ? '<span class="sub-tariff__save">' +
-              esc(
-                pick(
-                  "экономия " + economy.savePct + "%",
-                  "save " + economy.savePct + "%"
-                )
-              ) +
-              "</span>"
-            : "";
         econHtml =
-          '<div class="sub-tariff__econ">' + perMonthLine + saveLine + "</div>";
+          '<div class="sub-tariff__econ">' +
+          '<span class="sub-tariff__permonth">' +
+          esc(pick("≈ " + perMonthShown + "/мес", "≈ " + perMonthShown + "/mo")) +
+          "</span>" +
+          '<span class="sub-tariff__save">' +
+          esc(pick("экономия " + economy.savePct + "%", "save " + economy.savePct + "%")) +
+          "</span>" +
+          "</div>";
       }
 
       cards.push(
@@ -568,7 +604,7 @@
           badgeHtml +
           "</div>" +
           '<div class="sub-tariff__note">' +
-          esc(pick(meta.note[0], meta.note[1])) +
+          esc(tariffNote(s, meta)) +
           "</div>" +
           econHtml +
           "</div>" +

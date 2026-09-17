@@ -1,16 +1,21 @@
 /*
- * page-trainer-program.js — страница «Программа» раздела «AI-тренер»
- * (страница "trainer-program", ТЗ §2.3, §6.2 блок «Сегодня/программа»).
+ * page-trainer-program.js — «Программа» раздела «AI-тренер» (ТЗ §2.3,
+ * §6.2 блок «Сегодня/программа»).
  *
- * Регистрирует контроллер через App.registerPage("trainer-program", {...}).
- * Публичная ссылка — window.PageTrainerProgram.
+ * Одно содержимое, два места показа:
+ *   • вкладка «Программа» раздела — window.TrainerProgram.mount(el, opts) /
+ *     unmount(): рисует план внутри панели оболочки (page-trainer.js), без
+ *     своей шапки и кнопки «Назад». Прогресс-бар текущей недели, статусы
+ *     дней, «Архивировать и создать новую»;
+ *   • отдельная страница "trainer-program" (App.registerPage, публичная
+ *     ссылка window.PageTrainerProgram) — ТОЛЬКО предпросмотр только что
+ *     собранной программы (App.state.trainerProgramMode === "preview"):
+ *     шапка с «Назад», лента недель с фазами, кнопки «Начать программу» и
+ *     «Пересобрать». Здесь отдельный экран уместен: это шаг сценария
+ *     «анкета → план → старт», а не вид раздела. Вход без preview
+ *     переадресуется на вкладку.
  *
- * Два режима одной страницы:
- *   • preview (App.state.trainerProgramMode === "preview") — сразу после
- *     генерации: шапка с названием и «Почему так», лента недель с фазами,
- *     раскрывающиеся дни, кнопки «Начать программу» и «Пересобрать»;
- *   • обычный — та же страница как «Программа»: прогресс-бар текущей недели,
- *     статусы дней (выполнено / пропущено / план), «Архивировать и создать новую».
+ * Пересборка на вкладке тоже показывает предпросмотр — прямо в панели.
  *
  * Источник данных: App.state.trainerProgram (положила страница, вызвавшая
  * Trainer.openProgram) либо GET /trainer/program. 404 → «Программа не создана».
@@ -39,14 +44,20 @@
     return T.icon(name, opts);
   }
 
-  // Внутреннее состояние контроллера.
+  // Внутреннее состояние. Страница и вкладка никогда не показываются
+  // одновременно (вкладка живёт на экране "trainer"), поэтому состояние общее.
   var state = {
-    viewEl: null,     // корневой элемент (#view)
+    viewEl: null,     // #view в режиме страницы
+    host: null,       // панель оболочки в режиме вкладки
+    embedded: false,  // сейчас смонтирована вкладка, а не страница
+    opts: null,       // опции mount: {onPaywall, onReload}
     program: null,    // последний TrainerProgramOut
     mode: null,       // "preview" | null
     week: 1,          // выбранная неделя (лента недель)
+    openDays: null,   // раскрытые дни {week, idx: {index: true}} — переживают перерисовку
     loading: false,   // идёт загрузка программы
-    busy: false       // идёт генерация/архивация (защита от двойного тапа)
+    busy: false,      // идёт генерация/архивация (защита от двойного тапа)
+    reqId: 0          // счётчик загрузок: ответ после размонтирования — мимо
   };
 
   /* =====================================================================
@@ -131,11 +142,39 @@
     );
   }
 
-  /** Обновляет подзаголовок шапки без перерисовки страницы. */
+  /**
+   * Обновляет подзаголовок шапки без перерисовки страницы. На вкладке своей
+   * шапки нет, а шапка оболочки общая для всех вкладок — её не трогаем.
+   */
   function setSubtitle(text) {
-    if (!state.viewEl) return;
+    if (state.embedded || !state.viewEl) return;
     var el = state.viewEl.querySelector(".sub-subtitle");
     if (el) el.textContent = text || "";
+  }
+
+  /** Paywall: вкладка отдаёт его оболочке (на весь экран), страница рисует сама. */
+  function showPaywall() {
+    if (state.embedded) {
+      if (state.opts && typeof state.opts.onPaywall === "function") state.opts.onPaywall();
+      return;
+    }
+    T.paywall(state.viewEl, T.paywallOpts());
+  }
+
+  /**
+   * После «Начать программу» и архивации меняется всё: карточка дня, неделя
+   * в шапке, прогресс. Открываем раздел заново на «Сегодня» — там теперь
+   * первая тренировка новой программы или пустое состояние.
+   */
+  function leaveToToday() {
+    App.state.trainerProgram = null;
+    App.state.trainerProgramMode = null;
+    if (state.embedded && state.opts && typeof state.opts.onReload === "function") {
+      state.opts.onReload("today");
+      return;
+    }
+    T.cache.invalidate();
+    T.openSegment("today");
   }
 
   /**
@@ -417,9 +456,18 @@
       '<div id="trPgmDaysWrap">' + daysHtml(p) + "</div>" +
       actionsHtml();
     bindProgram();
-    // В обычном режиме сразу раскрываем ближайший невыполненный день —
-    // чаще всего пользователь заходит именно за ним.
-    autoOpenDay(p);
+    // Раскрытые руками дни этой недели восстанавливаем (перерисовка после
+    // возврата из карточки упражнения не должна схлопывать то, что человек
+    // открыл). Впервые на неделе — раскрываем ближайший невыполненный день:
+    // чаще всего заходят именно за ним.
+    if (state.openDays && state.openDays.week === state.week) {
+      for (var key in state.openDays.idx) {
+        if (Object.prototype.hasOwnProperty.call(state.openDays.idx, key)) toggleDay(parseInt(key, 10), true);
+      }
+    } else {
+      state.openDays = { week: state.week, idx: {} };
+      autoOpenDay(p);
+    }
   }
 
   /** Раскрывает первый день недели со статусом planned (кроме preview). */
@@ -450,6 +498,10 @@
       card.classList.remove("acc-fold--open");
       bodyEl.hidden = true;
     }
+    if (state.openDays) {
+      if (open) state.openDays.idx[index] = true;
+      else delete state.openDays.idx[index];
+    }
   }
 
   function bindProgram() {
@@ -470,10 +522,8 @@
     if (start) {
       start.addEventListener("click", function () {
         App.haptic("success");
-        App.state.trainerProgramMode = null;
         state.mode = null;
-        T.cache.invalidate();
-        T.go("trainer");
+        leaveToToday();
       });
     }
     var regen = byId("trPgmRegen");
@@ -498,8 +548,15 @@
       var exId = parseInt(exBtn.getAttribute("data-ex-id"), 10);
       if (!isNaN(exId)) {
         App.haptic("light");
-        App.state.trainerExerciseId = exId;
-        T.go("trainer-exercise");
+        // «Назад» из карточки вернёт сюда же: на вкладку «Программа» или на
+        // предпросмотр — во втором случае программу надо передать заново,
+        // страница забирает её из App.state один раз.
+        T.openExercise(exId, state.embedded
+          ? { page: "trainer", state: { trainerSegment: "program" } }
+          : {
+              page: "trainer-program",
+              state: { trainerProgram: state.program, trainerProgramMode: state.mode }
+            });
       }
       return;
     }
@@ -541,8 +598,12 @@
         if (!byId("trPgmBody")) return;
         App.haptic("success");
         state.mode = "preview";
-        App.state.trainerProgramMode = "preview";
+        // Флаг App.state нужен только странице (переживает перерисовку при
+        // смене языка). Вкладке он вреден: следующий вход на страницу
+        // программы по другому поводу открылся бы предпросмотром.
+        if (!state.embedded) App.state.trainerProgramMode = "preview";
         state.week = program && program.current_week ? program.current_week : 1;
+        state.openDays = null;
         renderProgram(program || {});
         App.scrollTop();
       })
@@ -601,11 +662,9 @@
         .trainerArchiveProgram(state.program.id)
         .then(function () {
           state.busy = false;
-          T.cache.invalidate();
-          App.state.trainerProgram = null;
-          App.state.trainerProgramMode = null;
+          state.program = null;
           App.toast(pick("Программа архивирована", "Program archived"));
-          T.go("trainer");
+          leaveToToday();
         })
         .catch(function (err) {
           state.busy = false;
@@ -650,22 +709,27 @@
     var body = byId("trPgmBody");
     if (!body || state.loading) return;
     state.loading = true;
+    var reqId = ++state.reqId;
     body.innerHTML = T.skeleton(3) + T.skeleton(4);
     App.api
       .trainerProgram()
       .then(function (program) {
+        if (reqId !== state.reqId) return;
         state.loading = false;
         if (!byId("trPgmBody")) return;
+        state.openDays = null;
         renderProgram(program || {});
       })
       .catch(function (err) {
+        if (reqId !== state.reqId) return;
         state.loading = false;
         if (!byId("trPgmBody")) return;
         if (err && err.status === 402) {
-          T.paywall(state.viewEl, T.paywallOpts());
+          showPaywall();
           return;
         }
         if (err && err.status === 404) {
+          state.program = null;
           renderEmpty();
           return;
         }
@@ -674,18 +738,83 @@
   }
 
   /* =====================================================================
-   *  КОНТРОЛЛЕР
+   *  ВКЛАДКА «ПРОГРАММА» (монтируется оболочкой раздела)
+   * ===================================================================== */
+
+  /**
+   * Рисует программу внутри панели вкладки.
+   * @param {HTMLElement} el панель оболочки
+   * @param {object} [opts] {keep: взять программу из кэша (возврат из
+   *        карточки упражнения), onPaywall(), onReload(segment)}
+   */
+  function mount(el, opts) {
+    if (!el) return;
+    opts = opts || {};
+    state.viewEl = null;
+    state.host = el;
+    state.embedded = true;
+    state.opts = opts;
+    state.busy = false;
+    state.loading = false;
+    state.reqId++;
+    el.innerHTML = '<div class="tr-program" id="trPgmBody"></div>';
+
+    if (opts.keep && state.program) {
+      renderProgram(state.program);
+      return;
+    }
+    // Свежий заход: статусы дней могли измениться после тренировки.
+    state.mode = null;
+    state.program = null;
+    state.openDays = null;
+    state.week = 0;
+    load();
+  }
+
+  /**
+   * Снимает вкладку. Программу и раскрытые дни не забываем: по ним вкладка
+   * восстановится после карточки упражнения; свежий заход их сбросит.
+   */
+  function unmount() {
+    state.reqId++;
+    state.host = null;
+    state.embedded = false;
+    state.opts = null;
+    state.loading = false;
+    state.busy = false;
+  }
+
+  window.TrainerProgram = { mount: mount, unmount: unmount };
+
+  /* =====================================================================
+   *  СТРАНИЦА ПРЕДПРОСМОТРА
    * ===================================================================== */
 
   var controller = {
     onShow: function (viewEl) {
+      // Обычный вид программы — вкладка раздела, отдельной страницей он
+      // больше не открывается. Старые переходы сюда ведём на вкладку.
+      if (App.state.trainerProgramMode !== "preview") {
+        App.state.trainerProgram = null;
+        App.state.trainerSegment = "program";
+        App.navigate("trainer");
+        return;
+      }
+
       state.viewEl = viewEl;
-      state.mode = App.state.trainerProgramMode === "preview" ? "preview" : null;
+      state.host = null;
+      state.embedded = false;
+      state.opts = null;
+      state.mode = "preview";
       state.busy = false;
       state.loading = false;
+      state.reqId++;
+      // Раскрытые дни переживают только возврат из карточки упражнения.
+      if (!T.isReturning()) state.openDays = null;
 
-      // Превью после генерации приходит на руки готовым объектом; в обычном
-      // режиме всегда читаем свежую программу с сервера (статусы дней).
+      // Превью после генерации приходит на руки готовым объектом. Если его
+      // нет (страницу перерисовали сменой языка), читаем с сервера — только
+      // что собранная программа и есть активная.
       var passed = App.state.trainerProgram;
       App.state.trainerProgram = null;
 
@@ -693,7 +822,7 @@
       // сети не требуется, а платить, не увидев план, никто не должен.
       // Стена остаётся там, где начинается платная работа, — на старте
       // сессии и на любом запросе к /trainer/*.
-      if (!(state.mode === "preview" && passed) && !T.isPro()) {
+      if (!passed && !T.isPro()) {
         T.paywall(viewEl, T.paywallOpts());
         return;
       }
@@ -701,8 +830,14 @@
       viewEl.innerHTML = shellHtml();
       T.bindBack(viewEl);
 
-      if (state.mode === "preview" && passed) {
-        state.week = passed.current_week || 1;
+      if (passed) {
+        // Возврат из карточки упражнения — на ту же неделю, что смотрели:
+        // раскрытые дни (state.openDays) привязаны к неделе, и со сбросом на
+        // текущую они бы схлопнулись, а прокрутка упёрлась бы в укороченный план.
+        // Карточку из предпросмотра открывает только сам предпросмотр, так что
+        // state.week в этот момент — его собственный выбор.
+        var keepWeek = T.isReturning() && state.week ? state.week : 0;
+        state.week = keepWeek || passed.current_week || 1;
         renderProgram(passed);
         return;
       }
@@ -715,6 +850,7 @@
       state.program = null;
       state.loading = false;
       state.busy = false;
+      state.reqId++;
       T.closeSheet(true);
     }
   };

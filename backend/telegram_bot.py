@@ -106,7 +106,7 @@ def _greeting_text(lang: str, name: str) -> str:
     if lang == "en":
         return (
             (f"Hi, {name}! " if name else "Hi! ")
-            + "This is the «Calories» app bot 🥗\n\n"
+            + "This is the Fitness Up bot 🥗\n\n"
             "Open the mini app to count calories from photos, keep a food diary, "
             "track workouts and supplements.\n"
             "You can subscribe right inside the app."
@@ -114,7 +114,7 @@ def _greeting_text(lang: str, name: str) -> str:
     # Русский вариант (по умолчанию) — без изменений относительно прежнего текста.
     return (
         (f"Привет, {name}! " if name else "Привет! ")
-        + "Это бот приложения «Калории» 🥗\n\n"
+        + "Это бот Fitness Up 🥗\n\n"
         "Открывайте мини-приложение, чтобы считать калории по фото, "
         "вести дневник питания, тренировки и спортпит.\n"
         "Оформить подписку можно прямо в приложении."
@@ -126,12 +126,12 @@ def _payment_success_text(lang: str) -> str:
     if lang == "en":
         return (
             "✅ Payment received! Premium access is now active.\n"
-            "Thank you for your support — enjoy the «Calories» app."
+            "Thank you for your support — enjoy Fitness Up."
         )
     # Русский вариант (по умолчанию) — без изменений относительно прежнего текста.
     return (
         "✅ Оплата получена! Премиум-доступ активирован.\n"
-        "Спасибо за поддержку — приятного пользования приложением «Калории»."
+        "Спасибо за поддержку — приятного пользования Fitness Up."
     )
 
 
@@ -195,12 +195,12 @@ def _voice_premium_required_text(lang: str) -> str:
     if lang == "en":
         return (
             "🎤 Voice food logging is a premium feature.\n"
-            "Open the «Calories» app to subscribe and add meals just by speaking."
+            "Open Fitness Up to subscribe and add meals just by speaking."
         )
     # Русский вариант (по умолчанию).
     return (
         "🎤 Голосовой ввод еды — премиум-функция.\n"
-        "Откройте приложение «Калории», оформите подписку — и добавляйте "
+        "Откройте Fitness Up, оформите подписку — и добавляйте "
         "приёмы пищи просто голосом."
     )
 

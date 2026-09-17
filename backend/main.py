@@ -2147,7 +2147,9 @@ def cloudpayments_config(
         "public_id": config.CLOUDPAYMENTS_PUBLIC_ID,
         "amount": amount,
         "currency": config.CLOUDPAYMENTS_CURRENCY,
-        "description": f"Подписка «Калории»: {tariff}",
+        # Видят плательщик и модератор CloudPayments: продукт и тариф по-русски
+        # («Fitness Up — подписка на год»), а не код тарифа.
+        "description": config.payment_description(tariff),
         # accountId — по нему вебхук поймёт, кому начислять доступ.
         "account_id": str(user.telegram_id),
         "invoice_id": cloudpayments.build_invoice_id(tariff, user.telegram_id, stamp),

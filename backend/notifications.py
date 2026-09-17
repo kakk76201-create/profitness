@@ -1171,9 +1171,9 @@ def check_notifications() -> None:
 def _process_subscription_lifecycle(db, now: datetime, today: str) -> None:
     """Напоминания о подписке: за 3 дня до конца, в день конца и win-back через 7 дней.
 
-    Шлём только премиум-тарифам monthly/yearly (lifetime/free/владельца — нет),
-    и не ночью (после 12:00). Дедуп — по kind + дате. Продлить пользователь может
-    в приложении (на экране подписки).
+    Шлём только срочным платным тарифам monthly/quarterly/yearly
+    (lifetime/free/trial/владельца — нет), и не ночью (после 12:00). Дедуп — по
+    kind + дате. Продлить пользователь может в приложении (на экране подписки).
     """
     # Не будим ночью — шлём только во второй половине дня.
     if not _time_reached(now, "12:00"):
@@ -1184,7 +1184,12 @@ def _process_subscription_lifecycle(db, now: datetime, today: str) -> None:
             db.query(User)
             .filter(
                 User.subscription_until.isnot(None),
-                User.subscription_type.in_(("monthly", "yearly")),
+                # Набор типов перечислен явно, а не «всё, кроме free»: у триала
+                # свой тип "trial", и напоминать «продлите подписку» тому, кто
+                # ничего не покупал, нельзя. Добавляя срочный тариф в
+                # config.TARIFFS, добавь его и сюда — иначе его подписчики
+                # молча останутся без предупреждения об окончании.
+                User.subscription_type.in_(("monthly", "quarterly", "yearly")),
             )
             .all()
         )
@@ -1209,28 +1214,28 @@ def _process_subscription_lifecycle(db, now: datetime, today: str) -> None:
             if days_left == 3:
                 kind = "sub_exp_3"
                 text = (
-                    f"⏳ Your «Calories» subscription ends in 3 days ({date_str}). "
+                    f"⏳ Your Fitness Up subscription ends in 3 days ({date_str}). "
                     "Renew in the app to keep premium access."
                     if lang == "en" else
-                    f"⏳ Подписка «Калории» заканчивается через 3 дня ({date_str}). "
+                    f"⏳ Подписка Fitness Up заканчивается через 3 дня ({date_str}). "
                     "Продлите в приложении, чтобы не потерять доступ."
                 )
             elif days_left == 0:
                 kind = "sub_exp_0"
                 text = (
-                    "⚠️ Your «Calories» subscription ends today. "
+                    "⚠️ Your Fitness Up subscription ends today. "
                     "Renew in the app to keep premium."
                     if lang == "en" else
-                    "⚠️ Подписка «Калории» заканчивается сегодня. "
+                    "⚠️ Подписка Fitness Up заканчивается сегодня. "
                     "Продлите в приложении, чтобы сохранить премиум."
                 )
             elif days_left == -7:
                 kind = "sub_winback"
                 text = (
-                    "We miss you! Your «Calories» premium ended a week ago. "
+                    "We miss you! Your Fitness Up premium ended a week ago. "
                     "Come back and keep tracking — resubscribe in the app."
                     if lang == "en" else
-                    "Скучаем! 😔 Премиум «Калории» закончился неделю назад. "
+                    "Скучаем! 😔 Премиум Fitness Up закончился неделю назад. "
                     "Возвращайтесь — оформить снова можно прямо в приложении."
                 )
 

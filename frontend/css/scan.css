@@ -16,6 +16,66 @@
    ============================================================ */
 
 /* ============================================================
+   0. ШАПКА С КНОПКОЙ «ЗАКРЫТЬ»
+   ------------------------------------------------------------
+   Камера — экран-задача без таббара, и крестик в шапке — единственный
+   выход с неё. Он стоит в каждом состоянии экрана (камера, результат,
+   голос, ошибки, пейволлы), слева, в одной строке с заголовком.
+   ============================================================ */
+
+.page-scan .scan-head {
+  margin-bottom: var(--s4);
+}
+
+.page-scan .scan-head__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+}
+
+/* Крестик: зона нажатия 44px без подложки. Отрицательный левый отступ
+   выравнивает сам значок по краю контента, а не по краю невидимой зоны
+   нажатия — иначе заголовок казался бы сдвинутым вправо без причины. */
+.page-scan .scan-head__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  margin-left: calc(var(--s3) * -1);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.page-scan .scan-head__close:active {
+  background: var(--surface-2);
+}
+
+/* Заголовок переносится, а не обрезается: «Сфотографировать еду» рядом
+   с крестиком на 360px занимает почти всю строку. */
+.page-scan .scan-head__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--fs-h1);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+}
+
+.page-scan .scan-head .page-subtitle {
+  margin-top: var(--s2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--muted);
+}
+
+/* ============================================================
    1. КАМЕРА: рамка видоискателя и ряд управления
    ============================================================ */
 
@@ -144,6 +204,14 @@
 
 .scan-control__icon {
   display: inline-flex;
+}
+
+/* Кнопка «Голос» в ряду управления несёт класс .scan-voice-btn, а старое
+   правило из style.css даёт ему отступ сверху 10px (оно писалось для
+   кнопки-строки под фото). В ряду этот отступ опускал «Голос» ниже
+   «Галереи» — выравниваем. */
+.scan-controls .scan-voice-btn {
+  margin-top: 0;
 }
 
 .scan-control__label {

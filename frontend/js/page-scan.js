@@ -23,13 +23,19 @@
  *   App.pick("рус","eng") В МОМЕНТ РЕНДЕРА, чтобы смена языка давала нужный
  *   текст после перерисовки. Идентификаторы/ключи/console — НЕ переводятся.
  *
+ * ЭКРАН-ЗАДАЧА. Камера — не вкладка: таббар на ней скрыт (app.js,
+ *   TASK_PAGES), а открывают её «Питание» и «Сегодня». Уйти можно только
+ *   кнопкой «Закрыть» в шапке, и она есть в КАЖДОМ состоянии экрана.
+ *   Открывающий экран кладёт свой id в App.state.scanOrigin — туда «Закрыть»
+ *   и возвращает (по умолчанию в «Питание»).
+ *
  * ТРИ ПРАВИЛА, КОТОРЫЕ ЗДЕСЬ НЕЛЬЗЯ НАРУШАТЬ (каждое чинит реальную потерю
  * пользовательских данных, см. историю правок):
- *   1. СПУСК ЗАТВОРА — кнопка на самом экране (#scan-shutter). Центральная
- *      кнопка таббара (app.js -> PageScan.capture) НИЧЕГО НЕ РАЗРУШАЕТ: если
- *      результат или снимок уже на экране, она молча подсказывает, а не
- *      сбрасывает состояние. Раньше повторный тап звал reset() и стирал кадр
- *      вместе со всеми правками полей.
+ *   1. СПУСК ЗАТВОРА — ОДНА кнопка на самом экране (#scan-shutter). Раньше
+ *      вторым затвором служила кнопка камеры в таббаре, и её повторный тап
+ *      звал reset(), стирая кадр вместе со всеми правками полей. Кнопки в
+ *      таббаре больше нет; сбрасывать снимок имеют право только явные
+ *      «Снять заново» / «Отмена» на самом экране.
  *   2. ИСЧЕРПАННЫЙ ЛИМИТ (402) НЕ СТИРАЕТ КАДР. renderScanLimit сохраняет
  *      файл и превью (pending), а пейволл рисует поверх снимка. Кадр переживает
  *      уход на страницу подписки и возврат — после оплаты анализ продолжается
@@ -68,7 +74,6 @@
     edited: null,          // текущие отредактированные значения формы { dish_name, weight, calories, proteins, fats, carbs }
     mealType: "breakfast", // выбранный приём пищи по умолчанию
     scans: null,           // последний ответ getScansRemaining { used, limit, remaining, is_premium } или null
-    analyzing: false,      // идёт ли сейчас запрос анализа (для точных подсказок)
   };
 
   // ===== Внутреннее состояние ГОЛОСОВОГО ввода (Этап 2) =====
@@ -89,8 +94,8 @@
 
   // ===== Внутреннее состояние ЖИВОЙ КАМЕРЫ главного экрана =====
   // Главный экран «Определение» сразу показывает живой видеопоток камеры
-  // (getUserMedia, facingMode "environment"). Спуск затвора — повторный тап по
-  // центральной кнопке-камере (app.js -> PageScan.capture()).
+  // (getUserMedia, facingMode "environment"). Спуск затвора — круглая кнопка
+  // под видоискателем (#scan-shutter).
   // ВАЖНО (утечки): треки потока обязательно останавливаются во ВСЕХ ветках ухода
   // с главного экрана (превью/результат/ошибка/голос/анализ), при onHide и перед
   // повторным открытием камеры (не плодим потоки).
@@ -452,6 +457,100 @@
   // viewEl передаётся в onShow и сохраняется для перерисовок.
   var viewEl = null;
 
+  // ===== Шапка экрана с кнопкой «Закрыть» =====
+  // Таббара на камере нет, поэтому шапка с крестиком рисуется в КАЖДОМ
+  // состоянии: камера, превью, результат, голос, ошибки, пейволлы. Без неё
+  // экран ошибки или пейволла становился тупиком — назад было только к
+  // камере, а с камеры уже некуда.
+  // Крестик слева, в строке с заголовком: там же, где «Назад» на остальных
+  // экранах-задачах, — палец ищет выход в привычном углу.
+  //   title    — заголовок состояния (уже локализованный);
+  //   subtitle — необязательная строка пояснения под заголовком.
+  function headHtml(title, subtitle) {
+    return (
+      '<header class="page-head scan-head">' +
+        '<div class="scan-head__row">' +
+          '<button type="button" class="scan-head__close" data-scan-close ' +
+            'aria-label="' + esc(L("Закрыть", "Close")) + '">' +
+            icon("close", { size: 22 }) +
+          "</button>" +
+          '<h1 class="page-title scan-head__title">' + esc(title) + "</h1>" +
+        "</div>" +
+        (subtitle ? '<p class="page-subtitle">' + esc(subtitle) + "</p>" : "") +
+      "</header>"
+    );
+  }
+
+  // Закрывает камеру: возвращает на экран, откуда её открыли.
+  // Флаг scanOrigin гасим ДО перехода: экран назначения может сразу же снова
+  // открыть камеру со своим scanOrigin, и поздний сброс стёр бы его.
+  // Если камеру открыли из дневника на прошлый день (scanDate), возвращаем
+  // дневник на тот же день: он открывается на «сегодня», пока не попросить
+  // иначе через diaryReturnDate, и человек терял бы выбранную дату.
+  /**
+   * Есть ли на экране распознанное, но ещё не сохранённое блюдо. Распознавание
+   * тратит сканирование из дневного лимита, а человек мог уже поправить вес и
+   * КБЖУ — выбросить это одним касанием крестика нельзя.
+   */
+  function hasUnsavedResult() {
+    return !!(state.edited || voice.result);
+  }
+
+  /**
+   * Подтверждение выхода. Нативный диалог Telegram появился в Bot API 6.2: в
+   * старом клиенте SDK лишь пишет ошибку и не зовёт колбэк, поэтому версию
+   * проверяем явно, а иначе берём обычный confirm браузера.
+   */
+  function confirmLeave(cb) {
+    var msg = L("Выйти? Распознанное блюдо не сохранится.", "Leave? The recognised dish will not be saved.");
+    var tg = App.tg;
+    if (tg && typeof tg.showConfirm === "function" &&
+        typeof tg.isVersionAtLeast === "function" && tg.isVersionAtLeast("6.2")) {
+      try {
+        tg.showConfirm(msg, function (ok) { if (ok) cb(); });
+        return;
+      } catch (e) { /* фолбэк ниже */ }
+    }
+    if (window.confirm(msg)) cb();
+  }
+
+  function closeScan() {
+    if (hasUnsavedResult()) {
+      confirmLeave(doCloseScan);
+      return;
+    }
+    doCloseScan();
+  }
+
+  function doCloseScan() {
+    var st = App.state || {};
+    var origin = st.scanOrigin;
+    if (!origin || origin === "scan" || !(App._pages && App._pages[origin])) {
+      origin = "diary";
+    }
+    if (origin === "diary" && App.state) {
+      var d = st.scanDate;
+      if (d && /^\d{4}-\d{2}-\d{2}$/.test(String(d)) && String(d) !== App.todayStr()) {
+        App.state.diaryReturnDate = String(d);
+      }
+    }
+    if (App.state) App.state.scanOrigin = null;
+    App.navigate(origin);
+  }
+
+  // Один делегированный обработчик на документ вместо навески в каждом из
+  // дюжины рендеров: разметка экрана пересобирается целиком, и забытая
+  // навеска в новом состоянии оставила бы крестик мёртвым. Проверка
+  // App._current отсекает клики, когда камера не на экране.
+  document.addEventListener("click", function (ev) {
+    if (!window.App || App._current !== "scan") return;
+    var t = ev.target;
+    var btn = t && typeof t.closest === "function" ? t.closest("[data-scan-close]") : null;
+    if (!btn) return;
+    haptic("light");
+    closeScan();
+  });
+
   // ===== Рендеринг экранов =====
   // Страница имеет несколько состояний, переключаемых через render():
   //   - нет файла           -> экран загрузки фото
@@ -511,17 +610,13 @@
   function renderUploadFallback() {
     viewEl.innerHTML =
       '<section class="page page-scan">' +
-        '<header class="page-head">' +
-          '<h1 class="page-title">' +
-            esc(L("Определение еды", "Food recognition")) +
-          "</h1>" +
-          '<p class="page-subtitle">' +
-            esc(L(
-              "Сфотографируйте блюдо или загрузите фото — ИИ оценит калории и БЖУ.",
-              "Take a photo of your dish or upload one — AI will estimate calories and macros."
-            )) +
-          "</p>" +
-        "</header>" +
+        headHtml(
+          L("Сфотографировать еду", "Photograph your food"),
+          L(
+            "Сфотографируйте блюдо или загрузите фото — ИИ оценит калории и БЖУ.",
+            "Take a photo of your dish or upload one — AI will estimate calories and macros."
+          )
+        ) +
         '<div class="card scan-dropzone" id="scan-dropzone">' +
           '<span class="scan-dropzone__icon">' + icon("camera", { size: 28 }) + "</span>" +
           '<p class="scan-dropzone__hint">' +
@@ -628,11 +723,7 @@
 
     viewEl.innerHTML =
       '<section class="page page-scan">' +
-        '<header class="page-head">' +
-          '<h1 class="page-title">' +
-            esc(L("Определение еды", "Food recognition")) +
-          "</h1>" +
-        "</header>" +
+        headHtml(L("Сфотографировать еду", "Photograph your food")) +
         dateHintHtml +
         '<div class="card scan-cam-card">' +
           '<div class="scan-cam-window">' + frameInner + "</div>" +
@@ -719,9 +810,8 @@
     loadScansRemaining();
   }
 
-  // Спуск затвора: снимает кадр с живого видео. Вызывается кнопкой на экране
-  // (#scan-shutter) и центральной кнопкой таббара, когда снимать действительно
-  // нечего другого (см. PageScan.capture).
+  // Спуск затвора: снимает кадр с живого видео. Единственный вызов — кнопка
+  // на экране (#scan-shutter).
   function shutter() {
     haptic("medium");
 
@@ -885,11 +975,7 @@
     var src = state.previewUrl || "";
     viewEl.innerHTML =
       '<section class="page page-scan">' +
-        '<header class="page-head">' +
-          '<h1 class="page-title">' +
-            esc(L("Определение еды", "Food recognition")) +
-          "</h1>" +
-        "</header>" +
+        headHtml(L("Определение еды", "Food recognition")) +
         '<div class="card scan-preview">' +
           '<img class="scan-preview__img" src="' + esc(src) + '" alt="' +
             esc(L("Выбранное фото", "Selected photo")) + '">' +
@@ -973,17 +1059,13 @@
 
     viewEl.innerHTML =
       '<section class="page page-scan">' +
-        '<header class="page-head">' +
-          '<h1 class="page-title">' +
-            esc(L("Результат", "Result")) +
-          "</h1>" +
-          '<p class="page-subtitle">' +
-            esc(L(
-              "Проверьте и при необходимости поправьте значения перед добавлением.",
-              "Review and adjust the values if needed before adding."
-            )) +
-          "</p>" +
-        "</header>" +
+        headHtml(
+          L("Результат", "Result"),
+          L(
+            "Проверьте и при необходимости поправьте значения перед добавлением.",
+            "Review and adjust the values if needed before adding."
+          )
+        ) +
         '<div class="card result-card scan-edit-card">' +
           (src
             ? '<img class="result-card__img" src="' + esc(src) + '" alt="' +
@@ -1063,7 +1145,7 @@
           "<span>" + esc(L("Добавить в рацион", "Add to diary")) + "</span>" +
         "</button>" +
         // Пересъёмка — ЯВНОЕ действие пользователя. Никакой другой путь
-        // (в том числе кнопка таббара) не имеет права стереть этот результат.
+        // внутри экрана не имеет права стереть этот результат.
         '<button type="button" class="btn btn-ghost btn-block" id="scan-reset">' +
           icon("camera", { size: 18 }) +
           "<span>" + esc(L("Снять заново", "Retake")) + "</span>" +
@@ -1175,11 +1257,7 @@
 
     viewEl.innerHTML =
       '<section class="page page-scan">' +
-        '<header class="page-head">' +
-          '<h1 class="page-title">' +
-            esc(L("Что-то пошло не так", "Something went wrong")) +
-          "</h1>" +
-        "</header>" +
+        headHtml(L("Что-то пошло не так", "Something went wrong")) +
         '<div class="card error-card">' +
           '<span class="error-card__icon">' + icon("warning", { size: 28 }) + "</span>" +
           // Текст в прокручиваемом блоке: при DEBUG_AI сюда приходит и сырой ответ.
@@ -1315,11 +1393,7 @@
 
     viewEl.innerHTML =
       '<section class="page page-scan">' +
-        '<header class="page-head">' +
-          '<h1 class="page-title">' +
-            esc(L("Лимит сканирований", "Scan limit reached")) +
-          "</h1>" +
-        "</header>" +
+        headHtml(L("Лимит сканирований", "Scan limit reached")) +
         shotHtml +
         paywallCardHtml({
           iconName: "camera",
@@ -1400,9 +1474,6 @@
       return;
     }
     var fileAtStart = state.file; // фиксируем, чтобы не показать чужой результат
-    // Флаг нужен подсказкам (hintBusy): «анализируем» и «снимок выбран,
-    // но анализ уже завершён ошибкой» — это разные состояния для человека.
-    state.analyzing = true;
 
     if (App && typeof App.showLoading === "function") App.showLoading();
 
@@ -1414,7 +1485,7 @@
 
         // Кадр дошёл до результата — он больше НЕ «отложен из-за лимита».
         // Иначе pending.active пережил бы успешный повтор анализа (кнопка
-        // «Повторить анализ» на экране лимита), и следующий возврат на вкладку
+        // «Повторить анализ» на экране лимита), и следующий возврат на камеру
         // ушёл бы в ветку onShow для отложенного кадра: повторный анализ поверх
         // готового результата — потраченное сканирование и стёртые правки полей.
         pendingClear();
@@ -1479,7 +1550,6 @@
         renderError(msg, "analyze");
       })
       .finally(function () {
-        state.analyzing = false;
         if (App && typeof App.hideLoading === "function") App.hideLoading();
       });
   }
@@ -1487,6 +1557,9 @@
   // Мост «после добавления -> дневник» (task 3). Освобождает ресурсы сканера
   // (камера/превью) и переходит на вкладку дневника, чтобы пользователь увидел
   // итог дня. Если навигация недоступна — мягкий откат к главному экрану сканера.
+  // Даже если камеру открыли с «Сегодня», после добавления ведём в дневник:
+  // человек хочет увидеть, куда легла запись. Задача закончена, поэтому
+  // scanOrigin гасим — иначе он «протёк» бы в следующее открытие камеры.
   function goToDiaryAfterAdd() {
     revokePreview();
     camStopStream();
@@ -1496,6 +1569,7 @@
     state.result = null;
     state.base = null;
     state.edited = null;
+    if (App.state) App.state.scanOrigin = null;
     if (App && typeof App.navigate === "function") {
       App.navigate("diary");
     } else {
@@ -1548,7 +1622,7 @@
         toast(
           L("Добавлено в рацион: ", "Added to diary: ") + mealLabel(state.mealType)
         );
-        // Инвалидируем кэш дневника за дату записи, чтобы вкладка «Мой рацион» обновилась.
+        // Инвалидируем кэш дневника за дату записи, чтобы «Питание» показало свежий день.
         if (App.state && App.state.diaryByDate) {
           delete App.state.diaryByDate[entry.date];
         }
@@ -1656,19 +1730,15 @@
 
   // Показывает paywall голосового ввода в текущем контейнере.
   // Рисуем своим рендером (paywallCardHtml), а не App.paywall: тот подставляет
-  // эмодзи вместо иконок. Кнопка «Назад» возвращает к камере — без неё с
-  // пейволла можно было уйти только через таббар.
+  // эмодзи вместо иконок. «К камере» возвращает к съёмке, крестик в шапке —
+  // туда, откуда камеру открыли.
   function showVoicePaywall() {
     if (!viewEl) return;
     if (App && typeof App.scrollTop === "function") App.scrollTop();
 
     viewEl.innerHTML =
       '<section class="page page-scan">' +
-        '<header class="page-head">' +
-          '<h1 class="page-title">' +
-            esc(L("Голосовой ввод", "Voice input")) +
-          "</h1>" +
-        "</header>" +
+        headHtml(L("Голосовой ввод", "Voice input")) +
         paywallCardHtml(voicePaywallOpts()) +
         paywallCtaHtml() +
         '<button type="button" class="btn btn-ghost btn-block" id="scan-voice-paywall-back">' +
@@ -1940,17 +2010,13 @@
 
     viewEl.innerHTML =
       '<section class="page page-scan">' +
-        '<header class="page-head">' +
-          '<h1 class="page-title">' +
-            esc(L("Голосовой ввод", "Voice input")) +
-          "</h1>" +
-          '<p class="page-subtitle">' +
-            esc(L(
-              "Назовите блюда и примерные порции — затем нажмите «Стоп».",
-              "Say the dishes and rough portions — then tap “Stop”."
-            )) +
-          "</p>" +
-        "</header>" +
+        headHtml(
+          L("Голосовой ввод", "Voice input"),
+          L(
+            "Назовите блюда и примерные порции — затем нажмите «Стоп».",
+            "Say the dishes and rough portions — then tap “Stop”."
+          )
+        ) +
         '<div class="card scan-voice-rec">' +
           '<div class="scan-voice-rec__indicator" aria-hidden="true">' +
             '<span class="scan-voice-rec__pulse"></span>' +
@@ -2004,11 +2070,7 @@
 
     viewEl.innerHTML =
       '<section class="page page-scan">' +
-        '<header class="page-head">' +
-          '<h1 class="page-title">' +
-            esc(L("Голосовой ввод", "Voice input")) +
-          "</h1>" +
-        "</header>" +
+        headHtml(L("Голосовой ввод", "Voice input")) +
         '<div class="card scan-voice-unavailable">' +
           '<span class="scan-voice-unavailable__icon">' + icon("mic", { size: 28 }) + "</span>" +
           '<p class="scan-voice-unavailable__msg">' +
@@ -2037,11 +2099,7 @@
 
     viewEl.innerHTML =
       '<section class="page page-scan">' +
-        '<header class="page-head">' +
-          '<h1 class="page-title">' +
-            esc(L("Что-то пошло не так", "Something went wrong")) +
-          "</h1>" +
-        "</header>" +
+        headHtml(L("Что-то пошло не так", "Something went wrong")) +
         '<div class="card error-card scan-voice-error">' +
           '<span class="error-card__icon">' + icon("warning", { size: 28 }) + "</span>" +
           '<div class="error-card__msg">' + esc(message) + "</div>" +
@@ -2077,11 +2135,7 @@
     if (!items.length) {
       viewEl.innerHTML =
         '<section class="page page-scan">' +
-          '<header class="page-head">' +
-            '<h1 class="page-title">' +
-              esc(L("Голосовой ввод", "Voice input")) +
-            "</h1>" +
-          "</header>" +
+          headHtml(L("Голосовой ввод", "Voice input")) +
           // Пустой результат — без декоративной картинки: объяснение и действие
           // важнее иллюстрации.
           '<div class="card scan-voice-empty">' +
@@ -2144,17 +2198,13 @@
 
     viewEl.innerHTML =
       '<section class="page page-scan">' +
-        '<header class="page-head">' +
-          '<h1 class="page-title">' +
-            esc(L("Распознанные блюда", "Recognized dishes")) +
-          "</h1>" +
-          '<p class="page-subtitle">' +
-            esc(L(
-              "Проверьте и поправьте значения перед добавлением.",
-              "Review and adjust the values before adding."
-            )) +
-          "</p>" +
-        "</header>" +
+        headHtml(
+          L("Распознанные блюда", "Recognized dishes"),
+          L(
+            "Проверьте и поправьте значения перед добавлением.",
+            "Review and adjust the values before adding."
+          )
+        ) +
         '<div class="card scan-voice-card">' +
           transcriptHtml +
           '<div class="meal-picker">' +
@@ -2426,54 +2476,15 @@
     return true;
   }
 
-  // Подсказка вместо разрушения: центральная кнопка таббара на экране, где уже
-  // есть снимок/результат/запись, НЕ сбрасывает состояние (раньше сбрасывала).
-  // Говорим, что делать дальше, и оставляем всё как есть.
-  function hintBusy() {
-    if (state.result) {
-      toast(L(
-        "Результат готов. Нажмите «Снять заново», чтобы переснять",
-        "The result is ready. Tap “Retake” to shoot again"
-      ));
-      return;
-    }
-    if (pending.active) {
-      toast(L(
-        "Кадр сохранён — оформите подписку или снимите другое фото",
-        "The photo is saved — subscribe or take another one"
-      ));
-      return;
-    }
-    if (state.analyzing) {
-      toast(L("Анализируем снимок…", "Analyzing the photo…"));
-      return;
-    }
-    if (state.file) {
-      toast(L(
-        "Снимок уже выбран — повторите анализ или выберите другое фото",
-        "A photo is already selected — retry the analysis or choose another one"
-      ));
-      return;
-    }
-    if (voice.recording) {
-      toast(L("Идёт запись голоса", "Voice recording in progress"));
-      return;
-    }
-    toast(L(
-      "Сначала закончите с распознанными блюдами",
-      "Finish with the recognized dishes first"
-    ));
-  }
-
   // ===== Контроллер страницы =====
   window.PageScan = {
-    // Вызывается при показе вкладки. Получаем контейнер и рисуем главный экран
+    // Вызывается при показе экрана. Получаем контейнер и рисуем главный экран
     // (живую камеру или фолбэк-дропзону).
     onShow: function (el) {
       viewEl = el;
 
-      // ОТЛОЖЕННЫЙ КАДР: вернулись со страницы подписки (или просто переключили
-      // вкладку), а снимок ждёт анализа. Обычную зачистку состояния пропускаем —
+      // ОТЛОЖЕННЫЙ КАДР: вернулись со страницы подписки (или закрыли камеру и
+      // открыли её снова), а снимок ждёт анализа. Обычную зачистку состояния пропускаем —
       // иначе кадр, ради которого человек и уходил оформлять подписку, исчезнет.
       if (pending.active && state.file) {
         camStopStream();
@@ -2524,7 +2535,7 @@
         }, 0);
       }
     },
-    // Вызывается при уходе с вкладки — освобождаем ресурсы превью, камеру и микрофон.
+    // Вызывается при уходе с экрана — освобождаем ресурсы превью, камеру и микрофон.
     onHide: function () {
       // Останавливаем видеопоток камеры при уходе со страницы (важно: иначе
       // индикатор камеры останется гореть).
@@ -2543,39 +2554,7 @@
       // Целевую дату используем один раз: чистим при уходе, чтобы следующий
       // вход на сканер (без FAB) добавлял записи в сегодня (task 5).
       if (App.state) App.state.scanDate = null;
-    },
-    // СПУСК ЗАТВОРА ЖИВЁТ НА ЭКРАНЕ (#scan-shutter). Этот метод — только
-    // обработка повторного тапа по центральной кнопке таббара (app.js), и он
-    // НИЧЕГО НЕ РАЗРУШАЕТ: раньше здесь стоял reset(), который молча стирал
-    // снимок вместе со всеми правками полей результата.
-    capture: function () {
-      if (!viewEl) return;
-
-      // На экране уже есть работа пользователя (снимок, результат, запись,
-      // распознанные блюда) — только подсказываем, как переснять.
-      if (state.file || state.result || voice.recording || voice.result) {
-        hintBusy();
-        return;
-      }
-
-      // Главный экран с камерой — снимаем (та же функция, что и у кнопки).
-      if (cam.active) {
-        shutter();
-        return;
-      }
-
-      // Режим фолбэка/пейволла: открываем системный выбор файла, если он есть.
-      var fallbackInput = viewEl.querySelector("#scan-file");
-      if (fallbackInput) {
-        haptic("light");
-        fallbackInput.click();
-        return;
-      }
-
-      // Прочие экраны без камеры и без выбора файла (пейволл голоса, экран
-      // ошибки/«пусто» голоса) — возвращаемся на главный экран сканера.
-      reset();
-    },
+    }
   };
 
   // Регистрируем контроллер в приложении.

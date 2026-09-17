@@ -4,6 +4,13 @@
  * Регистрирует контроллер страницы через App.registerPage("supplements", {...}).
  * Публичная ссылка — window.PageSupplements.
  *
+ * Это ВКЛАДКА первого уровня (крайняя левая в таббаре), а не подэкран
+ * «Профиля»: добавки становятся самостоятельным разделом. Поэтому кнопки
+ * «Назад» нет, а шапка такая же, как у других корневых экранов, — крупный
+ * заголовок с подписью. Бесплатному пользователю под той же шапкой
+ * показывается пейволл: вкладка не должна «терять» заголовок и выглядеть
+ * чужим экраном только потому, что раздел платный.
+ *
  * Раздел состоит из трёх частей:
  *
  *   1. МОИ ДОБАВКИ
@@ -351,27 +358,29 @@
   }
 
   /**
+   * Шапка корневого экрана: крупный заголовок и строка пояснения. Та же
+   * иерархия, что у «Сегодня» (.td-head): вкладки первого уровня выглядят
+   * одинаково, а «Назад» у вкладки быть не может — возвращаться некуда.
+   */
+  function headHtml() {
+    return (
+      '<header class="sup-head">' +
+      '<h1 class="sup-head__title">' + esc(pick("Добавки", "Supplements")) + "</h1>" +
+      '<p class="sup-head__sub">' +
+      esc(pick("Учёт, напоминания и AI-советы", "Tracking, reminders and AI tips")) +
+      "</p>" +
+      "</header>"
+    );
+  }
+
+  /**
    * Полный каркас страницы. Динамические части (списки) наполняются
    * отдельными функциями после монтирования.
    */
   function pageTemplate() {
-    var backLabel = pick("Профиль", "Profile");
     return (
       '<section class="page page-supplements">' +
-      // Экрана нет в нижней навигации: открывается строкой «Добавки» на
-      // «Профиле». Без явной кнопки «Назад» единственным выходом остаётся
-      // таб внизу — на экране-списке это не очевидно.
-      '<button type="button" class="sub-back" id="supBack" aria-label="' +
-      esc(backLabel) +
-      '">' +
-      '<span class="sub-back__arrow" aria-hidden="true">' +
-      icon("arrow", { size: 18, rotate: 180 }) +
-      "</span>" +
-      "<span>" +
-      esc(backLabel) +
-      "</span>" +
-      "</button>" +
-      '<h1 class="page__title">' + esc(pick("Добавки", "Supplements")) + "</h1>" +
+      headHtml() +
 
       // Раздел «Мои добавки».
       supplementCardHtml() +
@@ -1187,15 +1196,6 @@
    * Навешивает все обработчики событий после монтирования разметки.
    */
   function bindEvents() {
-    // «Назад» — на «Профиль», откуда открывается этот экран.
-    var back = byId("supBack");
-    if (back) {
-      back.addEventListener("click", function () {
-        haptic("light");
-        App.navigate("account");
-      });
-    }
-
     // Форма добавки.
     var supForm = byId("supForm");
     if (supForm) supForm.addEventListener("submit", onSupplementSubmit);
@@ -1241,20 +1241,27 @@
 
       // Гейтинг: добавки — премиум-функция. Если подписки нет, показываем
       // единый paywall и выходим (доступ контролируется сервером).
-      if (
-        App &&
-        typeof App.requirePremium === "function" &&
-        !App.requirePremium(viewEl, {
+      // Пейволл рисуется ПОД шапкой вкладки, а не вместо всего экрана: это
+      // вкладка таббара, и без заголовка она выглядела бы случайной заглушкой.
+      // Заголовок карточки поэтому не повторяет «Добавки» из шапки, а
+      // называет пользу.
+      if (App && typeof App.isPremium === "function" && !App.isPremium()) {
+        viewEl.innerHTML =
+          '<section class="page page-supplements page-supplements--locked">' +
+          headHtml() +
+          '<div id="supGate"></div>' +
+          "</section>";
+        App.paywall(byId("supGate"), {
           // icon — ИМЯ иконки из js/icons.js (App.paywall сам её рисует).
           icon: "pill",
-          title: pick("Добавки", "Supplements"),
+          title: pick("Приём добавок под контролем", "Stay on top of your supplements"),
           desc: pick(
             "Спортпит, напоминания и AI-советы под вашу цель",
             "Sports nutrition, reminders and AI advice for your goal"
           ),
           bullets: paywallBullets()
-        })
-      ) {
+        });
+        App.scrollTop();
         return;
       }
 

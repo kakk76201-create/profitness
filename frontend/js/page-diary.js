@@ -1,5 +1,5 @@
 /**
- * page-diary.js — страница «Мой рацион» / "My Diary".
+ * page-diary.js — страница «Питание» / "Nutrition" (дневник питания).
  *
  * Регистрирует контроллер страницы через App.registerPage("diary", {...}).
  * Возможности:
@@ -24,10 +24,15 @@
  *     openFoodSheet(): название с поиском по базе, количество+единица, кнопка
  *     «Рассчитать КБЖУ» (App.api.calculateFood), КБЖУ, приём пищи; в режиме
  *     добавления снизу — быстрый повтор из «Недавние» и «Вчера».
- *   - Плавающая кнопка «+» открывает нижний лист выбора: Фото / Голос /
- *     Вручную / Активность / Что съесть? (премиум) / AI-план меню (премиум).
- *     Роли разведены: камера в таббаре — быстрый путь «снять еду за сегодня»,
- *     «+» — выбор способа с записью в ВЫБРАННЫЙ в дневнике день.
+ *   - Плавающая кнопка «+» открывает нижний лист выбора: Сфотографировать /
+ *     Голосом / Вручную / Активность / Что съесть? (премиум) / AI-план меню
+ *     (премиум). Камеры в таббаре больше нет, поэтому «Сфотографировать» —
+ *     первый и главный пункт листа; запись ложится в ВЫБРАННЫЙ в дневнике день.
+ *     Пока день пуст, «+» скрыта: в пустом состоянии есть своя кнопка
+ *     «Добавить», и два одинаковых действия стояли друг над другом.
+ *   - Другие экраны могут попросить сразу открыть нужный лист через
+ *     App.state.diaryOpenSheet = "photo" | "voice" | "manual" | "activity"
+ *     (флаг одноразовый; фото и голос сразу уводят на камеру).
  *       • «Активность»: тип, длительность, сожжённые ккал с оценкой через
  *         App.api.estimateWorkout, сохранение через App.api.addWorkout. Место
  *         здесь потому, что расход калорий — часть баланса дня, который ведёт
@@ -664,6 +669,10 @@
       }
       body = sections;
     }
+
+    // «+» только когда есть записи: на пустом дне действие уже есть в самом
+    // пустом состоянии (см. setFabVisible).
+    setFabVisible(totalEntries > 0);
 
     content.innerHTML =
       totalsHtml(day) + actionsHtml() + body +
@@ -1454,14 +1463,16 @@
   // ===========================================================================
   // ПЛАВАЮЩАЯ «+» И ЛИСТ ВЫБОРА СПОСОБА.
   //
-  // Роли кнопок разведены: камера в таббаре — быстрый путь «снять еду»,
-  // плавающая «+» — выбор способа (фото/голос/вручную/активность/AI). Раньше
-  // обе кнопки делали одно и то же и конкурировали друг с другом.
+  // Камеры в таббаре больше нет: «+» — главный вход в добавление еды, и
+  // «Сфотографировать» стоит в её листе первым пунктом.
   // ===========================================================================
 
   /**
    * Строит плавающую кнопку «+» и добавляет её в обёртку страницы,
    * чтобы она оставалась поверх контента при его перерисовке.
+   * Кнопка монтируется СКРЫТОЙ: показать её или нет, решает renderDay, когда
+   * станет известно, пуст ли день (см. setFabVisible). Иначе на пустом дне
+   * «+» на мгновение появлялась поверх кнопки «Добавить» и тут же исчезала.
    */
   function mountFab() {
     if (!state.viewEl) return;
@@ -1472,13 +1483,30 @@
     var fab = document.createElement("button");
     fab.type = "button";
     fab.className = "diary-fab";
+    fab.hidden = true;
     fab.setAttribute("aria-label", pick("Добавить", "Add"));
-    fab.innerHTML = icon("plus", { size: 28 });
+    // Штрих толще обычного: белый плюс на зелёном круге должен читаться
+    // с расстояния вытянутой руки, а не теряться тонкой линией.
+    fab.innerHTML = icon("plus", { size: 28, stroke: 2.25 });
     fab.addEventListener("click", function () {
       App.haptic && App.haptic("light");
       openSheet();
     });
     host.appendChild(fab);
+  }
+
+  /**
+   * Показывает или прячет плавающую «+».
+   * На пустом дне её нет: у пустого состояния своя кнопка «Добавить», и две
+   * одинаковые кнопки стояли друг над другом (на скриншоте владельца круг
+   * наезжал на «Добавить»). Когда записи есть, пустого состояния нет — и «+»
+   * снова единственный вход в добавление.
+   * @param {boolean} visible
+   */
+  function setFabVisible(visible) {
+    if (!state.viewEl) return;
+    var fab = state.viewEl.querySelector(".diary-fab");
+    if (fab) fab.hidden = !visible;
   }
 
   /**
@@ -1498,10 +1526,13 @@
    * @param {string} label подпись (локализованная)
    * @param {string} hint пояснение, чем этот способ отличается от соседнего
    * @param {boolean} locked показывать ли замок (для free)
+   * @param {boolean} [primary] главный пункт листа (выделен цветом действия)
    * @returns {string}
    */
-  function sheetItemHtml(action, iconName, label, hint, locked) {
-    var cls = "diary-sheet__item" + (locked ? " diary-sheet__item--locked" : "");
+  function sheetItemHtml(action, iconName, label, hint, locked, primary) {
+    var cls = "diary-sheet__item" +
+      (locked ? " diary-sheet__item--locked" : "") +
+      (primary ? " diary-sheet__item--primary" : "");
     var lock = locked
       ? '<span class="diary-sheet__item-lock">' + icon("lock", { size: 16 }) + "</span>"
       : "";
@@ -1527,13 +1558,13 @@
       '<div class="diary-sheet__group">' +
       '<div class="diary-sheet__group-title">' +
       App.escapeHtml(pick("Добавить в день", "Add to the day")) + "</div>" +
-      // Фото отсюда логируется в ВЫБРАННЫЙ день, в отличие от камеры в
-      // таббаре, которая всегда снимает «за сегодня».
-      sheetItemHtml("photo", "camera", pick("Фото", "Photo"),
-        pick("Снимок блюда", "Snap the dish"), false) +
+      // Фото — первый и главный пункт: камеры в таббаре больше нет, и это
+      // самый быстрый способ записать еду. Снимок ложится в ВЫБРАННЫЙ день.
+      sheetItemHtml("photo", "camera", pick("Сфотографировать", "Take a photo"),
+        pick("ИИ посчитает калории по снимку", "AI counts calories from the photo"), false, true) +
       // Голос — премиум-функция (бэкенд отдаёт 402 для free): показываем замок,
       // но пункт остаётся тапабельным (уводит в paywall на экране определения).
-      sheetItemHtml("voice", "mic", pick("Голос", "Voice"),
+      sheetItemHtml("voice", "mic", pick("Голосом", "By voice"),
         pick("Продиктовать, что съели", "Say what you ate"), locked) +
       sheetItemHtml("manual", "edit", pick("Вручную", "Manual"),
         pick("Название и КБЖУ", "Name and macros"), false) +
@@ -1579,6 +1610,23 @@
   }
 
   /**
+   * Уводит на экран камеры (фото или сразу голос).
+   * Флаги для page-scan:
+   *   scanDate   — запись ляжет в выбранный в дневнике день, а не в «сегодня»;
+   *   scanMode   — "voice": камера сразу откроет голосовой ввод;
+   *   scanOrigin — камера без таббара, и её «Закрыть» вернёт сюда.
+   * @param {string} mode "photo" | "voice"
+   */
+  function openScan(mode) {
+    if (App.state) {
+      App.state.scanDate = state.date;
+      App.state.scanOrigin = "diary";
+      if (mode === "voice") App.state.scanMode = "voice";
+    }
+    if (App && typeof App.navigate === "function") App.navigate("scan");
+  }
+
+  /**
    * Обрабатывает выбор пункта листа. Сначала закрывает лист.
    * @param {string} action
    */
@@ -1586,20 +1634,8 @@
     App.haptic && App.haptic("light");
     closeSheetById(SHEET_ACTIONS);
 
-    if (action === "photo") {
-      // Логируем скан в выбранный в дневнике день (page-scan читает scanDate).
-      if (App.state) App.state.scanDate = state.date;
-      if (App && typeof App.navigate === "function") App.navigate("scan");
-      return;
-    }
-    if (action === "voice") {
-      // Просим экран определения открыться сразу в режиме голоса
-      // и логировать в текущую выбранную дату дневника.
-      if (App.state) {
-        App.state.scanMode = "voice";
-        App.state.scanDate = state.date;
-      }
-      if (App && typeof App.navigate === "function") App.navigate("scan");
+    if (action === "photo" || action === "voice") {
+      openScan(action);
       return;
     }
     if (action === "manual") {
@@ -4181,6 +4217,21 @@
         state.date = App.state.diaryReturnDate;
         App.state.diaryReturnDate = null;
       }
+
+      // КОНТРАКТ С «СЕГОДНЯ»: другой экран может попросить сразу открыть
+      // нужный лист (App.state.diaryOpenSheet). Флаг одноразовый — гасим сразу,
+      // иначе лист открывался бы при каждом следующем заходе во вкладку.
+      var wantSheet = App.state ? App.state.diaryOpenSheet : null;
+      if (App.state) App.state.diaryOpenSheet = null;
+
+      // Фото и голос живут на экране камеры: уходим туда, не рисуя дневник.
+      // Отрисовка здесь только запустила бы запрос дня, ответ на который
+      // пришёл бы уже на чужой экран.
+      if (wantSheet === "photo" || wantSheet === "voice") {
+        openScan(wantSheet);
+        return;
+      }
+
       // AI-панель при входе на страницу закрыта.
       state.panel = null;
       state.day = null;
@@ -4200,7 +4251,9 @@
       viewEl.innerHTML =
         '<div class="page page-diary">' +
         '<div class="diary-head">' +
-        '<h1 class="page__title">' + App.escapeHtml(pick("Мой рацион", "My Diary")) + "</h1>" +
+        // Заголовок совпадает с подписью вкладки: человек нажал «Питание» —
+        // и должен увидеть «Питание», а не другое имя того же раздела.
+        '<h1 class="page__title">' + App.escapeHtml(pick("Питание", "Nutrition")) + "</h1>" +
         '<span id="diary-streak" class="diary-streak" hidden></span>' +
         "</div>" +
         dateBarHtml() +
@@ -4234,6 +4287,14 @@
 
       // Загружаем данные за выбранную дату.
       loadAndRender();
+
+      // Ручной ввод и активность — нижние листы поверх дня. Листы монтируются
+      // в #view и от загрузки дня не зависят, поэтому открываем сразу.
+      // Для бесплатного пользователя «Активность» ставит state.panel, и
+      // пейволл дорисуется, когда renderDay создаст область панели.
+      if (wantSheet === "manual" || wantSheet === "activity") {
+        onSheetAction(wantSheet);
+      }
     },
 
     /**

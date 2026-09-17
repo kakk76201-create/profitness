@@ -89,12 +89,9 @@ PAYMENT_ID_RE = re.compile(r"[A-Za-z0-9_-]{6,64}")
 # Окно, в котором повторные нажатия «Оплатить» получают один Idempotence-Key.
 IDEMPOTENCE_WINDOW_SEC = 300
 
-# Человекочитаемые названия тарифов для описания платежа (видит плательщик).
-TARIFF_TITLES = {
-    "monthly": "подписка на месяц",
-    "yearly": "подписка на год",
-    "lifetime": "пожизненная подписка",
-}
+# Названия тарифов для описания платежа здесь НЕ храним: единый словарь —
+# config.TARIFF_TITLES_RU рядом с TARIFFS. CloudPayments берёт названия оттуда
+# же, и новый тариф («3 месяца») достаточно назвать в одном месте.
 
 
 def is_enabled() -> bool:
@@ -140,10 +137,12 @@ def build_charge_id(payment_id: str) -> str:
 def build_description(tariff: str, telegram_id: int) -> str:
     """Описание платежа (видно плательщику и в кабинете ЮKassa).
 
+    Пример: «Fitness Up — подписка на 3 месяца (123456789)». Название продукта
+    и тарифа по-русски — это описание сверяет модератор ЮKassa с витриной;
+    telegram_id в скобках нужен поддержке, чтобы по выписке найти плательщика.
     Ограничение API — 128 символов, поэтому строку жёстко подрезаем.
     """
-    title = TARIFF_TITLES.get(tariff, tariff)
-    text = f"Подписка «Калории»: {title} ({int(telegram_id)})"
+    text = f"{config.payment_description(tariff)} ({int(telegram_id)})"
     return text[:128]
 
 

@@ -7,7 +7,9 @@
   * подпись = base64(HMAC-SHA256(СЫРОЕ тело, API Secret)), заголовок Content-HMAC;
   * ответ — HTTP 200 и тело РОВНО {"code": 0}, иначе будут повторы (до 100 раз);
   * платежи с TestMode=1 в проде не должны выдавать доступ;
-  * повторная доставка одного платежа не должна продлевать подписку дважды.
+  * повторная доставка одного платежа не должна продлевать подписку дважды;
+  * тариф «3 месяца» (quarterly) засчитывается только на свою сумму, а описание
+    платежа в виджете — по-русски с названием продукта.
 
 Запуск:  .venv/Scripts/python.exe tests/test_cloudpayments.py
 """
@@ -36,6 +38,7 @@ os.environ["CLOUDPAYMENTS_PUBLIC_ID"] = "pk_test_public_id"
 os.environ["CLOUDPAYMENTS_API_SECRET"] = SECRET
 os.environ["PRICE_MONTHLY_RUB"] = "499"
 os.environ["PRICE_YEARLY_RUB"] = "3990"
+os.environ["PRICE_QUARTERLY_RUB"] = "1790"
 # Вечный тариф намеренно без рублёвой цены — проверяем отказ по нему.
 os.environ["PRICE_LIFETIME_RUB"] = "0"
 
@@ -149,6 +152,25 @@ def main():
           get_user(5003) is not None and get_user(5003).subscription_type == "yearly",
           get_user(5003) and get_user(5003).subscription_type)
 
+    # --- 6b. Тариф «3 месяца»: своя сумма открывает, цена месяца — нет -----
+    quarter_fields = {
+        "OperationType": "Payment", "Status": "Completed", "TransactionId": "1007", "Amount": "1790", "Currency": "RUB",
+        "AccountId": "5007", "InvoiceId": "quarterly:5007:20260916120000", "TestMode": "0",
+    }
+    resp = post_webhook(quarter_fields)
+    check("3 месяца за 1790 -> {'code': 0}", resp.json() == {"code": 0}, resp.json())
+    check("тариф «3 месяца» распознан",
+          get_user(5007) is not None and get_user(5007).subscription_type == "quarterly",
+          get_user(5007) and get_user(5007).subscription_type)
+    quarter_cheap = dict(quarter_fields, TransactionId="1008", AccountId="5008", Amount="499",
+                         InvoiceId="quarterly:5008:20260916120001")
+    resp = post_webhook(quarter_cheap)
+    check("цена месяца за 3 месяца -> код 12",
+          resp.json().get("code") == cloudpayments.CODE_INVALID_AMOUNT, resp.json())
+    check("цена месяца за 3 месяца -> доступ НЕ выдан", get_user(5008) is None, get_user(5008))
+    check("разбор номера заказа quarterly",
+          cloudpayments.parse_invoice_id("quarterly:42:20260101") == ("quarterly", 42))
+
     # --- 7. Тариф по сумме, когда номер заказа чужого формата --------------
     odd_fields = {
         "OperationType": "Payment", "Status": "Completed", "TransactionId": "1004", "Amount": "499", "Currency": "RUB",
@@ -206,6 +228,10 @@ def main():
         check("номер заказа содержит тариф",
               str(body_json.get("invoice_id", "")).startswith("monthly:"),
               body_json.get("invoice_id"))
+        # Описание видят плательщик и модератор: без кода тарифа и старого имени.
+        check("описание виджета по-русски",
+              body_json.get("description") == "Fitness Up — подписка на месяц",
+              body_json.get("description"))
 
     resp = client.get("/payment/cloudpayments/config", params={"tariff": "lifetime"})
     check("тариф без рублёвой цены -> 400", resp.status_code == 400, resp.status_code)
@@ -218,7 +244,8 @@ def main():
 
     print("OK: подпись проверяется корректно (подделка не проходит), ответ ровно")
     print("    {'code': 0}, идемпотентность по TransactionId, TestMode не выдаёт")
-    print("    доступ в проде, тариф из номера заказа и по сумме, секрет не утекает")
+    print("    доступ в проде, тариф из номера заказа и по сумме, секрет не утекает;")
+    print("    «3 месяца» — только за свою сумму; описание виджета по-русски")
     return 0
 
 
