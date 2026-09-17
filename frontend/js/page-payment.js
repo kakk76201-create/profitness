@@ -10,7 +10,7 @@
  *
  * Что показывает (сверху вниз):
  *   1. Шапка с кнопкой «Назад» -> App.navigate("subscription").
- *   2. Карточку выбранного тарифа: иконка, название, срок, цена в рублях,
+ *   2. Карточку выбранного тарифа: название, срок, цена в рублях,
  *      для тарифов длиннее месяца («3 месяца», год) — «≈ N ₽/мес · экономия
  *      M%» против месячной цены, честная строка про разовый платёж без
  *      автопродления и заметку для действующего премиума.
@@ -74,28 +74,22 @@
   // тариф с бэкенда нужно добавить и сюда, и в TARIFF_META.
   var TARIFF_KEYS = ["monthly", "quarterly", "yearly", "lifetime"];
 
-  // Оформление тарифов: иконка, название и срок «по умолчанию» (если сервер
+  // Оформление тарифов: название и срок «по умолчанию» (если сервер
   // не прислал days). Тексты — парами [ru, en], перевод при рендере.
-  // icon — имя из общего набора js/icons.js; имена совпадают с витриной
-  // подписки, чтобы один и тот же тариф выглядел одинаково на обоих экранах.
   var TARIFF_META = {
     monthly: {
-      icon: "calendar",
       title: ["Месячный", "Monthly"],
       term: ["30 дней доступа", "30 days of access"]
     },
     quarterly: {
-      icon: "calendar",
       title: ["3 месяца", "3 months"],
       term: ["90 дней доступа", "90 days of access"]
     },
     yearly: {
-      icon: "trophy",
       title: ["Годовой", "Yearly"],
       term: ["365 дней доступа", "365 days of access"]
     },
     lifetime: {
-      icon: "infinity",
       title: ["Вечный", "Lifetime"],
       term: ["Навсегда", "Forever"]
     }
@@ -387,12 +381,7 @@
       "</span>" +
       "</button>" +
       '<h1 class="page-title sub-title">' +
-      '<span class="sub-title__icon" aria-hidden="true">' +
-      icon("card", { size: 24 }) +
-      "</span>" +
-      "<span>" +
       esc(pick("Оплата", "Payment")) +
-      "</span>" +
       "</h1>" +
       '<p class="page-subtitle sub-subtitle">' +
       // Название продукта то же, что в описании платежа у провайдера
@@ -464,12 +453,14 @@
       }
     }
 
+    // Итог заказа: надзаголовок, тариф крупно, цена ещё крупнее — как на
+    // чеке. Иконки тарифа здесь больше нет: она дублировала название.
     return (
       '<article class="card pay-plan">' +
-      '<div class="pay-plan__head">' +
-      '<span class="pay-plan__icon" aria-hidden="true">' +
-      icon(meta.icon, { size: 24 }) +
+      '<span class="eyebrow pay-plan__eyebrow">' +
+      esc(pick("Ваш заказ", "Your order")) +
       "</span>" +
+      '<div class="pay-plan__head">' +
       '<div class="pay-plan__info">' +
       '<div class="pay-plan__title">' +
       esc(pick(meta.title[0], meta.title[1])) +
@@ -479,7 +470,7 @@
       "</div>" +
       "</div>" +
       "</div>" +
-      '<div class="pay-plan__price">' +
+      '<div class="num pay-plan__price">' +
       esc(formatPrice(price, currency)) +
       "</div>" +
       econHtml +
@@ -517,9 +508,9 @@
 
     return (
       '<section class="card pay-includes">' +
-      '<h2 class="pay-section-title">' +
+      '<span class="eyebrow pay-section-title">' +
       esc(pick("Что входит", "What is included")) +
-      "</h2>" +
+      "</span>" +
       '<ul class="pay-includes__list">' +
       items +
       "</ul>" +
@@ -561,9 +552,9 @@
 
     return (
       '<section class="card pay-method">' +
-      '<h2 class="pay-section-title">' +
+      '<span class="eyebrow pay-section-title">' +
       esc(pick("Способ оплаты", "Payment method")) +
-      "</h2>" +
+      "</span>" +
       '<div class="pay-method__option pay-method__option--active" role="radio" aria-checked="true" tabindex="-1">' +
       '<span class="pay-method__mark" aria-hidden="true"></span>' +
       '<span class="pay-method__icon" aria-hidden="true">' +
@@ -631,7 +622,7 @@
       '<span class="pay-total__label">' +
       esc(pick("Итого", "Total")) +
       "</span>" +
-      '<span class="pay-total__sum">' +
+      '<span class="num pay-total__sum">' +
       esc(shown) +
       "</span>" +
       "</div>" +
@@ -764,9 +755,9 @@
       '<div class="pay-success__icon" aria-hidden="true">' +
       icon("check", { size: 28 }) +
       "</div>" +
-      '<div class="pay-success__title">' +
+      '<h2 class="pay-success__title">' +
       esc(pick("Подписка активна", "Subscription active")) +
-      "</div>" +
+      "</h2>" +
       '<div class="pay-success__until">' +
       esc(untilText) +
       "</div>" +

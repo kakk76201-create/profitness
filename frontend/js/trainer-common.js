@@ -71,6 +71,18 @@
     return "";
   }
 
+  /**
+   * Значение переменной --hero-img для фото тёмного блока (тот же приём,
+   * что на экране «Сегодня»). Путь делаем абсолютным: относительный url()
+   * внутри custom property Chrome разрешает от адреса style.css, где
+   * переменная подставляется, а не от страницы — картинка запрашивалась как
+   * css/img/… и уходила в 404.
+   * @param {string} file имя файла в frontend/img
+   */
+  function heroImg(file) {
+    return App.heroImg(file);
+  }
+
   /* =====================================================================
    *  СЛОВАРИ (пары [ru, en]; ключи = коды из ТЗ §2/§3)
    * ===================================================================== */
@@ -1340,14 +1352,16 @@
         "<span>" + esc(list[i]) + "</span>" +
         "</li>";
     }
+    // Тёмный блок с фото подписки — как экран подписки и тренировка дня:
+    // paywall продаёт спорт, а не показывает замок в кружке.
     viewEl.innerHTML =
       '<section class="page tr-page tr-paywall">' +
-      '<div class="card tr-paywall__card">' +
-      '<div class="tr-paywall__icon" aria-hidden="true">' + icon(opts.icon || "coach", { size: 32 }) + "</div>" +
-      '<h1 class="tr-paywall__title">' + esc(opts.title || pick("AI-тренер", "AI Coach")) + "</h1>" +
-      '<p class="tr-paywall__desc">' + esc(opts.desc || "") + "</p>" +
-      (bullets ? '<ul class="tr-paywall__bullets">' + bullets + "</ul>" : "") +
+      '<div class="hero hero--img tr-paywall__hero" style="' + heroImg("hero-premium.jpg") + '">' +
+      '<span class="eyebrow">' + esc(pick("По подписке", "Subscription")) + "</span>" +
+      '<h1 class="hero__title">' + esc(opts.title || pick("AI-тренер", "AI Coach")) + "</h1>" +
+      '<p class="hero__meta">' + esc(opts.desc || "") + "</p>" +
       "</div>" +
+      (bullets ? '<ul class="card tr-paywall__bullets">' + bullets + "</ul>" : "") +
       '<p class="tr-paywall__note">' +
       icon("lock", { size: 16 }) +
       "<span>" + esc(pick("Доступно по подписке", "Included in the subscription")) + "</span>" +
@@ -1473,6 +1487,7 @@
     returnFromExercise: returnFromExercise,
     isReturning: isReturning,
     headHtml: headHtml,
+    heroImg: heroImg,
     bindBack: bindBack,
     sheet: sheet,
     closeSheet: closeSheet,

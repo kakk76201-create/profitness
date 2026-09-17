@@ -723,7 +723,10 @@
 
     viewEl.innerHTML =
       '<section class="page page-scan">' +
-        headHtml(L("Сфотографировать еду", "Photograph your food")) +
+        // «Снять еду» — так же зовутся входы в камеру на «Сегодня» и в
+        // дневнике; «Сфотографировать» одним словом на 30px не помещалось
+        // в строку рядом с крестиком.
+        headHtml(L("Снять еду", "Snap food")) +
         dateHintHtml +
         '<div class="card scan-cam-card">' +
           '<div class="scan-cam-window">' + frameInner + "</div>" +
@@ -1071,7 +1074,14 @@
             ? '<img class="result-card__img" src="' + esc(src) + '" alt="' +
                 esc(L("Фото блюда", "Dish photo")) + '">'
             : "") +
+          // Табло результата: название крупно и четыре числа КБЖУ. Форма
+          // ниже — для правки; табло повторяет её значения вживую, чтобы
+          // итог был виден одним взглядом, а не собирался по полям.
+          resultSummaryHtml(e) +
           confHtml +
+          '<span class="eyebrow scan-edit-eyebrow">' +
+            esc(L("Поправить значения", "Adjust the values")) +
+          "</span>" +
           '<form class="scan-edit-form" id="scan-edit-form" autocomplete="off">' +
             // Название блюда.
             '<label class="field scan-edit-field scan-edit-field--name">' +
@@ -1184,6 +1194,56 @@
 
   // Привязка обработчиков к редактируемым полям результата.
   // hasBaseWeight: есть ли исходный (ненулевой) вес для пропорционального пересчёта.
+  // Табло результата над формой правки: название блюда и четыре числа.
+  function resultSummaryHtml(e) {
+    var name = e.dish_name == null || e.dish_name === ""
+      ? L("Блюдо", "Dish")
+      : e.dish_name;
+    return (
+      '<div class="scan-sum">' +
+        '<h2 class="scan-sum__name" id="scan-sum-name">' + esc(name) + "</h2>" +
+        '<div class="scan-sum__grid">' +
+          summaryStatHtml("kcal", L("ккал", "kcal"), e.calories) +
+          summaryStatHtml("p", L("Белки", "Protein"), e.proteins) +
+          summaryStatHtml("f", L("Жиры", "Fat"), e.fats) +
+          summaryStatHtml("c", L("Углев.", "Carbs"), e.carbs) +
+        "</div>" +
+      "</div>"
+    );
+  }
+
+  function summaryStatHtml(mod, label, value) {
+    return (
+      '<div class="scan-sum__stat scan-sum__stat--' + mod + '">' +
+        '<span class="eyebrow scan-sum__label">' + esc(label) + "</span>" +
+        '<span class="num scan-sum__value" id="scan-sum-' + mod + '">' +
+          esc(summaryValue(value)) +
+        "</span>" +
+      "</div>"
+    );
+  }
+
+  // Пустое поле формы на табло показываем как «—», а не как 0: ноль выглядел
+  // бы как результат распознавания, которого не было.
+  function summaryValue(v) {
+    if (v === "" || v == null) return "—";
+    return fmt(v);
+  }
+
+  // Переносит текущие значения state.edited на табло (без перерисовки формы).
+  function syncResultSummary() {
+    var e = state.edited || {};
+    var nameEl = viewEl.querySelector("#scan-sum-name");
+    if (nameEl) {
+      nameEl.textContent = e.dish_name ? e.dish_name : L("Блюдо", "Dish");
+    }
+    var map = { kcal: e.calories, p: e.proteins, f: e.fats, c: e.carbs };
+    for (var key in map) {
+      var el = viewEl.querySelector("#scan-sum-" + key);
+      if (el) el.textContent = summaryValue(map[key]);
+    }
+  }
+
   function bindResultInputs(hasBaseWeight) {
     var nameEl = viewEl.querySelector("#scan-edit-name");
     var weightEl = viewEl.querySelector("#scan-edit-weight");
@@ -1211,6 +1271,7 @@
     if (nameEl) {
       nameEl.addEventListener("input", function () {
         state.edited.dish_name = nameEl.value;
+        syncResultSummary();
       });
     }
 
@@ -1239,14 +1300,15 @@
         if (protEl) protEl.value = String(state.edited.proteins);
         if (fatEl) fatEl.value = String(state.edited.fats);
         if (carbEl) carbEl.value = String(state.edited.carbs);
+        syncResultSummary();
       });
     }
 
-    // Ручное редактирование калорий/БЖУ — просто синхронизируем в state.edited.
-    if (calEl) calEl.addEventListener("input", function () { syncField("calories", calEl, true); });
-    if (protEl) protEl.addEventListener("input", function () { syncField("proteins", protEl, false); });
-    if (fatEl) fatEl.addEventListener("input", function () { syncField("fats", fatEl, false); });
-    if (carbEl) carbEl.addEventListener("input", function () { syncField("carbs", carbEl, false); });
+    // Ручное редактирование калорий/БЖУ — синхронизируем в state.edited и на табло.
+    if (calEl) calEl.addEventListener("input", function () { syncField("calories", calEl, true); syncResultSummary(); });
+    if (protEl) protEl.addEventListener("input", function () { syncField("proteins", protEl, false); syncResultSummary(); });
+    if (fatEl) fatEl.addEventListener("input", function () { syncField("fats", fatEl, false); syncResultSummary(); });
+    if (carbEl) carbEl.addEventListener("input", function () { syncField("carbs", carbEl, false); syncResultSummary(); });
   }
 
   // --- Экран ошибки (с возможностью повтора) ---
@@ -2025,7 +2087,7 @@
           '<p class="scan-voice-rec__status">' +
             esc(L("Идёт запись…", "Recording…")) +
           "</p>" +
-          '<div class="scan-voice-rec__timer" id="scan-voice-timer">' +
+          '<div class="scan-voice-rec__timer num" id="scan-voice-timer">' +
             esc(formatVoiceTime(voice.seconds)) +
           "</div>" +
         "</div>" +

@@ -137,9 +137,33 @@
   var DEFAULT_MEAL_TIMES = ["09:00", "13:00", "19:00"];
 
   /**
+   * Значение переменной --hero-img для фото геройского блока.
+   * Путь делаем абсолютным: относительный url() внутри custom property Chrome
+   * разрешает от адреса style.css, где переменная подставляется, а не от
+   * страницы — картинка запрашивалась как css/img/… и уходила в 404.
+   * @param {string} file имя файла в frontend/img
+   */
+  function heroImg(file) {
+    return App.heroImg(file);
+  }
+
+  // Названия месяцев в родительном падеже: «до 12 октября». Числовая дата
+  // «12.10.2026» на тёмной карточке читается как строка из документа, а не
+  // как обещание — статус подписки должен звучать по-человечески.
+  var MONTHS_RU = [
+    "января", "февраля", "марта", "апреля", "мая", "июня",
+    "июля", "августа", "сентября", "октября", "ноября", "декабря"
+  ];
+  var MONTHS_EN = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+  ];
+
+  /**
    * Преобразует ISO-дату подписки (например, "2026-12-31" или
-   * "2026-12-31T10:00:00") в короткий формат "ДД.ММ.ГГГГ".
-   * Возвращает пустую строку, если дату распознать не удалось.
+   * "2026-12-31T10:00:00") в короткую словесную форму: «12 октября»
+   * (год добавляется только если он не текущий). Возвращает пустую
+   * строку, если дату распознать не удалось.
    */
   function formatSubDate(value) {
     if (!value) return "";
@@ -147,51 +171,58 @@
     // Берём только дату, если пришла дата-время.
     var datePart = s.split("T")[0].split(" ")[0];
     var parts = datePart.split("-");
-    if (parts.length === 3) {
-      return parts[2] + "." + parts[1] + "." + parts[0];
-    }
-    return datePart;
+    if (parts.length !== 3) return datePart;
+    var year = Number(parts[0]);
+    var mon = Number(parts[1]) - 1;
+    var day = Number(parts[2]);
+    if (!(mon >= 0 && mon < 12) || !(day > 0)) return datePart;
+    var sameYear = year === new Date().getFullYear();
+    var en = App.lang === "en";
+    var text = en
+      ? MONTHS_EN[mon] + " " + day
+      : day + " " + MONTHS_RU[mon];
+    return sameYear ? text : text + (en ? ", " : " ") + year;
   }
 
   /**
    * Формирует краткий статус подписки из App.subscription.
    * Текст локализуется на момент вызова (RU/EN).
-   * @returns {{ text:string, premium:boolean }}
-   *   premium=true — активная подписка (для подсветки карточки).
+   * @returns {{ text:string, premium:boolean, action:string }}
+   *   premium=true — активная подписка (для подсветки карточки);
+   *   action — подпись кнопки на карточке («Оформить» / «Управлять»).
    */
   function subscriptionStatus() {
     var sub = (App && App.subscription) || {};
     var type = sub.subscription_type || "free";
     var premium = !!sub.is_premium;
+    var manage = L("Управлять", "Manage");
 
     // Владелец и вечная подписка — доступ навсегда.
     if (sub.is_owner || type === "lifetime") {
       return {
-        text: L("Вечная подписка", "Lifetime subscription"),
-        premium: true
+        text: L("Навсегда", "Forever"),
+        premium: true,
+        action: manage
       };
     }
 
     if (premium) {
       var until = formatSubDate(sub.subscription_until);
-      if (until) {
-        return {
-          text: L(
-            "Премиум активен до " + until,
-            "Premium active until " + until
-          ),
-          premium: true
-        };
-      }
       return {
-        text: L("Премиум активен", "Premium active"),
-        premium: true
+        text: until
+          ? L("Активна до " + until, "Active until " + until)
+          : L("Активна", "Active"),
+        premium: true,
+        action: manage
       };
     }
 
     return {
-      text: L("Бесплатный доступ", "Free access"),
-      premium: false
+      text: sub.is_expired
+        ? L("Истекла", "Expired")
+        : L("Не оформлена", "Not active"),
+      premium: false,
+      action: sub.is_expired ? L("Продлить", "Renew") : L("Оформить", "Subscribe")
     };
   }
 
@@ -274,9 +305,9 @@
   function groupHtml(title, rows) {
     return (
       '<div class="acc-group">' +
-      '<div class="acc-group__title">' +
+      '<span class="eyebrow acc-group__title">' +
       esc(title) +
-      "</div>" +
+      "</span>" +
       '<section class="card acc-list">' +
       rows +
       "</section>" +
@@ -620,6 +651,38 @@
     );
   }
 
+  /**
+   * Тело раздела «Тема» — сегмент «Авто / Светлая / Тёмная».
+   * «Авто» означает: как в Telegram, а вне его — как в системе. Это режим
+   * по умолчанию, поэтому он стоит первым.
+   */
+  function themeBodyHtml() {
+    var mode = App.theme ? App.theme.mode() : "auto";
+    var opts = [
+      { key: "auto", label: L("Авто", "Auto") },
+      { key: "light", label: L("Светлая", "Light") },
+      { key: "dark", label: L("Тёмная", "Dark") }
+    ];
+    var html =
+      '<div class="acc-lang__switch" role="group" aria-label="' +
+      esc(L("Выбор темы", "Theme selection")) +
+      '">';
+    for (var i = 0; i < opts.length; i++) {
+      var on = opts[i].key === mode;
+      html +=
+        '<button type="button" class="acc-lang__btn' +
+        (on ? " acc-lang__btn--active" : "") +
+        '" data-theme-mode="' +
+        opts[i].key +
+        '" aria-pressed="' +
+        (on ? "true" : "false") +
+        '">' +
+        esc(opts[i].label) +
+        "</button>";
+    }
+    return html + "</div>";
+  }
+
   /** Тело раздела «Данные» — необратимое удаление аккаунта. */
   function dataBodyHtml() {
     return (
@@ -671,12 +734,12 @@
     return (
       '<section class="page page-account">' +
       // ---- Компактная шапка профиля ----
-      '<header class="acc-header acc-header--compact card">' +
+      '<header class="acc-header acc-header--compact">' +
       avatarHtml +
       '<div class="acc-header__info">' +
-      '<div class="acc-name">' +
+      '<h1 class="acc-name">' +
       esc(displayName) +
-      "</div>" +
+      "</h1>" +
       (u.username
         ? '<div class="acc-username">@' + esc(u.username) + "</div>"
         : "") +
@@ -684,22 +747,23 @@
       "</header>" +
 
       // ---- Карточка-кнопка «Подписка» ----
-      '<button type="button" class="acc-sub-card card' +
+      // Тёмный блок с фотографией — тот же приём, что у тренировки дня на
+      // «Сегодня»: единственный такой на экране, поэтому подписка находится
+      // взглядом сразу. Вся карточка — одна кнопка; «Оформить» внутри —
+      // лишь визуальная подпись действия (span, а не вложенная кнопка).
+      '<button type="button" class="acc-sub-card hero hero--img' +
       (sub.premium ? " acc-sub-card--premium" : "") +
-      '" id="accSubCard">' +
-      '<span class="acc-sub-card__icon" aria-hidden="true">' +
-      icon("gem") +
-      "</span>" +
-      '<span class="acc-sub-card__body">' +
-      '<span class="acc-sub-card__title">' +
+      '" id="accSubCard" style="' + heroImg("hero-premium.jpg") + '">' +
+      '<span class="eyebrow acc-sub-card__title">' +
       esc(L("Подписка", "Subscription")) +
       "</span>" +
       '<span class="acc-sub-card__status" id="accSubStatus">' +
       esc(sub.text) +
       "</span>" +
-      "</span>" +
-      '<span class="acc-sub-card__arrow" aria-hidden="true">' +
-      icon("chevron", { size: 18 }) +
+      '<span class="btn acc-sub-card__action' +
+      (sub.premium ? " acc-sub-card__action--ghost" : " btn--cta") +
+      '" id="accSubAction">' +
+      esc(sub.action) +
       "</span>" +
       "</button>" +
 
@@ -763,6 +827,12 @@
           icon: "bell",
           title: L("Уведомления", "Notifications")
         }) +
+          sectionHtml({
+            key: "theme",
+            icon: "moon",
+            title: L("Тема оформления", "Appearance"),
+            body: themeBodyHtml()
+          }) +
           sectionHtml({
             key: "lang",
             icon: "list",
@@ -3806,6 +3876,13 @@
     if (els.subCard) {
       els.subCard.classList.toggle("acc-sub-card--premium", sub.premium);
     }
+    // Подпись и вид кнопки следуют за статусом: активной подписке — белый
+    // контур «Управлять», остальным — оранжевое «Оформить».
+    if (els.subAction) {
+      els.subAction.textContent = sub.action;
+      els.subAction.classList.toggle("btn--cta", !sub.premium);
+      els.subAction.classList.toggle("acc-sub-card__action--ghost", sub.premium);
+    }
   }
 
   /**
@@ -3816,6 +3893,7 @@
       viewEl: viewEl,
       subCard: viewEl.querySelector("#accSubCard"),
       subStatus: viewEl.querySelector("#accSubStatus"),
+      subAction: viewEl.querySelector("#accSubAction"),
       form: viewEl.querySelector("#accForm"),
       weight: viewEl.querySelector("#accWeight"),
       height: viewEl.querySelector("#accHeight"),
@@ -3887,6 +3965,23 @@
       if (langEn) {
         langEn.addEventListener("click", function () {
           onPickLang("en");
+        });
+      }
+
+      // Переключатель темы (раздел «Тема оформления»). Тема применяется
+      // мгновенно и запоминается; перерисовывать экран не нужно — меняются
+      // только значения токенов, разметка остаётся прежней.
+      var themeBtns = viewEl.querySelectorAll("[data-theme-mode]");
+      for (var ti = 0; ti < themeBtns.length; ti++) {
+        themeBtns[ti].addEventListener("click", function () {
+          var mode = this.getAttribute("data-theme-mode");
+          if (App.theme) App.theme.set(mode);
+          App.haptic("selection");
+          for (var k = 0; k < themeBtns.length; k++) {
+            var on = themeBtns[k] === this;
+            themeBtns[k].classList.toggle("acc-lang__btn--active", on);
+            themeBtns[k].setAttribute("aria-pressed", on ? "true" : "false");
+          }
         });
       }
 

@@ -23,7 +23,8 @@
  *        Месячный (monthly), 3 месяца (quarterly), Годовой (yearly),
  *        Вечный (lifetime). У тарифов длиннее месяца — «≈ N ₽/мес · экономия
  *        M%» относительно месячной цены (только если выгода действительно есть).
- *        У каждого — цена в рублях и кнопка «Выбрать» -> App.goPayment(tariff),
+ *        Карточки работают как переключатель (выбран по умолчанию годовой),
+ *        а под ними одна кнопка «Оформить за N ₽» -> App.goPayment(tariff),
  *        которая открывает отдельную страницу оплаты ("payment"). Сама оплата
  *        здесь НЕ запускается: страница подписки — это витрина.
  *   3. Если задан App.subscription.tribute_url — кнопка «Оплатить через Tribute»
@@ -52,7 +53,6 @@
   // длинному (как и каталог на бэкенде), чтобы «лесенка» цен читалась сверху
   // вниз — каждая следующая ступень дешевле в пересчёте на месяц.
   // Тексты заданы парами [ru, en] и переводятся через pick() в момент рендера.
-  // icon — имя из общего набора js/icons.js (эмодзи в интерфейсе нет).
   // termNote: true — подпись срока строится из days, пришедших с сервера
   // («Доступ на 90 дней»): срок задаётся env и может отличаться от
   // значения по умолчанию, а note — лишь запасной текст, если days нет.
@@ -60,32 +60,26 @@
     {
       key: "monthly",
       title: ["Месячный", "Monthly"],
-      icon: "calendar",
       termNote: true,
       note: ["Доступ на 30 дней", "Access for 30 days"]
     },
     {
       key: "quarterly",
       title: ["3 месяца", "3 months"],
-      // Тот же календарь, что у месячного: оба — «срок в месяцах», а отличает
-      // их крупное название карточки.
-      icon: "calendar",
       termNote: true,
       note: ["Доступ на 90 дней", "Access for 90 days"]
     },
     {
       key: "yearly",
       title: ["Годовой", "Yearly"],
-      // «Кубок» — годовой всегда самый выгодный вариант и всегда несёт бейдж
-      // «Выгодно»: отдельной иконки «год» в наборе нет, а третий календарь
-      // сливался бы с двумя карточками выше.
-      icon: "trophy",
-      note: ["Выгоднее на длинной дистанции", "Better value over time"]
+      // Срок — как у остальных: о выгоде уже говорят бейдж и «экономия N%»,
+      // отдельная рекламная строка только удлиняла карточку.
+      termNote: true,
+      note: ["Доступ на 365 дней", "Access for 365 days"]
     },
     {
       key: "lifetime",
       title: ["Вечный", "Lifetime"],
-      icon: "infinity",
       note: ["Один раз — и навсегда", "Pay once — keep forever"],
       badge: ["Навсегда", "Forever"]
     }
@@ -119,10 +113,31 @@
     ["Фото-прогресс и трекер цикла", "Photo progress and cycle tracker"]
   ];
 
+  // Три коротких обещания на тёмном блоке вверху экрана. Полный список
+  // BENEFITS остаётся ниже, в «Что входит»; здесь — только суть, потому что
+  // поверх фотографии длинные строки не читаются.
+  var HERO_POINTS = [
+    ["AI-тренер и программа под вас", "AI trainer and a program built for you"],
+    ["Питание по фото и голосу", "Food by photo and voice"],
+    ["Добавки и напоминания", "Supplements and reminders"]
+  ];
+
+  // Подпись срока под ценой: «в месяц», «за 3 месяца», «в год».
+  var TARIFF_PERIOD = {
+    monthly: ["в месяц", "per month"],
+    quarterly: ["за 3 месяца", "per 3 months"],
+    yearly: ["в год", "per year"],
+    lifetime: ["навсегда", "forever"]
+  };
+
   // Внутреннее состояние контроллера (живёт между методами через замыкание).
   var state = {
     viewEl: null, // корневой элемент страницы (#view)
-    loading: false // флаг обновления статуса (защита от гонок)
+    loading: false, // флаг обновления статуса (защита от гонок)
+    // Выбранный тариф: карточки работают как переключатель, а оплата
+    // запускается одной кнопкой под ними. Пока человек ничего не выбрал —
+    // выделен годовой: он и помечен «Выгодно».
+    selected: null
   };
 
   /* =====================================================================
@@ -140,6 +155,17 @@
 
   function haptic(kind) {
     if (App && typeof App.haptic === "function") App.haptic(kind);
+  }
+
+  /**
+   * Значение переменной --hero-img для фото геройского блока.
+   * Путь делаем абсолютным: относительный url() внутри custom property Chrome
+   * разрешает от адреса style.css, где переменная подставляется, а не от
+   * страницы — картинка запрашивалась как css/img/… и уходила в 404.
+   * @param {string} file имя файла в frontend/img
+   */
+  function heroImg(file) {
+    return App.heroImg(file);
   }
 
   function toast(msg) {
@@ -362,11 +388,20 @@
       })
       .join("");
 
+    var heroPoints = HERO_POINTS.map(function (p) {
+      return (
+        '<li class="sub-hero__point">' +
+        icon("check", { size: 18 }) +
+        "<span>" + esc(pick(p[0], p[1])) + "</span>" +
+        "</li>"
+      );
+    }).join("");
+
     var backLabel = pick("Назад", "Back");
 
     return (
       '<section class="page sub-page">' +
-      // ---- Шапка с кнопкой «Назад» ----
+      // ---- Кнопка «Назад» ----
       '<header class="sub-head">' +
       '<button type="button" class="sub-back" id="subBack" aria-label="' +
       esc(backLabel) +
@@ -378,46 +413,39 @@
       esc(backLabel) +
       "</span>" +
       "</button>" +
-      '<h1 class="page-title sub-title">' +
-      '<span class="sub-title__icon" aria-hidden="true">' +
-      icon("gem", { size: 24 }) +
-      "</span>" +
-      "<span>" +
-      esc(pick("Подписка", "Subscription")) +
-      "</span>" +
-      "</h1>" +
-      '<p class="page-subtitle sub-subtitle">' +
-      esc(
-        pick(
-          "Премиум-доступ ко всем возможностям трекера.",
-          "Premium access to every feature of the tracker."
-        )
-      ) +
-      "</p>" +
       "</header>" +
 
-      // ---- Карточка текущего статуса (заполняется renderStatus) ----
+      // ---- Тёмный блок с фотографией: что покупает человек ----
+      '<section class="hero hero--img sub-hero" style="' + heroImg("hero-premium.jpg") + '">' +
+      '<span class="eyebrow">' + esc(pick("Fitness Up Premium", "Fitness Up Premium")) + "</span>" +
+      '<h1 class="hero__title sub-hero__title">' +
+      esc(pick("Тренер, питание, добавки", "Coach, nutrition, supplements")) +
+      "</h1>" +
+      '<ul class="sub-hero__points">' + heroPoints + "</ul>" +
+      "</section>" +
+
+      // ---- Текущий статус (заполняется renderStatus) ----
       '<div class="card sub-status" id="subStatus">' +
       '<div class="skeleton skeleton--block"></div>' +
       "</div>" +
 
-      // ---- Список преимуществ ----
-      '<section class="card sub-benefits">' +
-      '<h2 class="sub-section-title">' +
-      esc(pick("Что входит в подписку", "What is included")) +
-      "</h2>" +
-      '<ul class="sub-benefits__list">' +
-      benefitsHtml +
-      "</ul>" +
-      "</section>" +
-
-      // ---- Тарифы (заполняется renderTariffs) ----
+      // ---- Тарифы и кнопка оплаты (заполняется renderTariffs) ----
       '<section class="sub-tariffs" id="subTariffs">' +
       '<div class="skeleton skeleton--block"></div>' +
       "</section>" +
 
       // ---- Оплата через Tribute (показывается при наличии ссылки) ----
       '<div class="sub-tribute" id="subTribute" hidden></div>' +
+
+      // ---- Полный список того, что входит ----
+      '<section class="card sub-benefits">' +
+      '<span class="eyebrow sub-benefits__eyebrow">' +
+      esc(pick("Что входит", "What is included")) +
+      "</span>" +
+      '<ul class="sub-benefits__list">' +
+      benefitsHtml +
+      "</ul>" +
+      "</section>" +
 
       '<p class="sub-foot">' +
       esc(
@@ -427,8 +455,56 @@
         )
       ) +
       "</p>" +
+      // Оферта и политика — те же ссылки, что на экране оплаты; блок пуст,
+      // пока сервер не прислал адреса (заполняется renderLegal).
+      '<p class="sub-legal" id="subLegal" hidden></p>' +
       "</section>"
     );
+  }
+
+  /** Адрес документа, который безопасно открыть снаружи (только http/https). */
+  function safeUrl(url) {
+    var s = String(url || "").trim();
+    return /^https?:\/\//i.test(s) ? s : "";
+  }
+
+  /**
+   * Ссылки на оферту и политику под витриной. Открываются внешним браузером
+   * через Telegram, как на экране оплаты.
+   */
+  function renderLegal() {
+    var box = state.viewEl && state.viewEl.querySelector("#subLegal");
+    if (!box) return;
+    var legal = (App.subscription && App.subscription.legal) || {};
+    var links = [];
+    var offer = safeUrl(legal.offer_url);
+    var privacy = safeUrl(legal.privacy_url);
+    if (offer) {
+      links.push(
+        '<a class="sub-legal__link" href="#" data-url="' + esc(offer) + '">' +
+        esc(pick("Оферта", "Offer")) + "</a>"
+      );
+    }
+    if (privacy) {
+      links.push(
+        '<a class="sub-legal__link" href="#" data-url="' + esc(privacy) + '">' +
+        esc(pick("Политика конфиденциальности", "Privacy policy")) + "</a>"
+      );
+    }
+    if (!links.length) {
+      box.hidden = true;
+      box.innerHTML = "";
+      return;
+    }
+    box.hidden = false;
+    box.innerHTML = links.join('<span class="sub-legal__sep" aria-hidden="true">·</span>');
+    var anchors = box.querySelectorAll(".sub-legal__link");
+    for (var i = 0; i < anchors.length; i++) {
+      anchors[i].addEventListener("click", function (e) {
+        e.preventDefault();
+        onTribute(this.getAttribute("data-url"));
+      });
+    }
   }
 
   /**
@@ -457,8 +533,10 @@
           esc(formatUntil(s.subscription_until)) +
           "</div>";
       }
+      box.hidden = false;
       box.className = "card sub-status sub-status--premium";
       box.innerHTML =
+        '<div class="sub-status__row">' +
         '<div class="sub-status__icon" aria-hidden="true">' +
         icon("check", { size: 24 }) +
         "</div>" +
@@ -467,35 +545,46 @@
         esc(pick("Подписка активна", "Subscription active")) +
         "</div>" +
         untilLine +
+        "</div>" +
         "</div>";
     } else {
       // Не премиум: «истекла» (была платная) или обычный free.
       var expired = s.is_expired;
-      // Истёкшая подписка — часы (время вышло), обычный free — замок.
-      var statusIcon = icon(expired ? "clock" : "lock", { size: 24 });
+      var trialOn = s.is_trial_available && s.trial_days > 0;
+
+      // Обычному free без пробного периода карточка статуса не нужна:
+      // тёмный блок выше уже говорит, что подписки нет, а повторять
+      // «бесплатный доступ» отдельной плашкой — лишний шум перед тарифами.
+      if (!expired && !trialOn) {
+        box.hidden = true;
+        box.innerHTML = "";
+        return;
+      }
+
+      // Истёкшая подписка — часы (время вышло), пробный период — подарок.
+      var statusIcon = icon(expired ? "clock" : "gift", { size: 24 });
       var title = expired
         ? pick("Подписка истекла", "Subscription expired")
-        : pick("Бесплатный доступ", "Free access");
+        : pick("Пробный период", "Free trial");
       var subtitle = expired
         ? pick("Продлите, чтобы вернуть премиум-доступ.", "Renew to get your premium access back.")
-        : pick("Оформите подписку, чтобы открыть все возможности", "Subscribe to unlock every feature");
+        : pick(
+            "Первые " + s.trial_days + " " + daysWordRu(s.trial_days) + " — бесплатно, без карты",
+            "First " + s.trial_days + (s.trial_days === 1 ? " day" : " days") + " free, no card needed"
+          );
 
-      // Кнопка пробного периода — если доступен (одноразово).
+      // Кнопка пробного периода — если доступен (одноразово). Срок уже
+      // назван строкой выше, поэтому подпись короткая и помещается в строку.
       var trialHtml = "";
-      if (s.is_trial_available && s.trial_days > 0) {
+      if (trialOn) {
         trialHtml =
           '<button type="button" class="btn btn--cta btn-block sub-trial" id="subTrial">' +
-          icon("gift") +
-          "<span>" +
-          esc(pick(
-            "Попробовать " + s.trial_days + " " + daysWordRu(s.trial_days) + " бесплатно",
-            "Try " + s.trial_days + (s.trial_days === 1 ? " day" : " days") + " free"
-          )) +
-          "</span>" +
+          esc(pick("Попробовать бесплатно", "Start free trial")) +
           "</button>";
       }
 
-      box.className = "card sub-status " + (expired ? "sub-status--expired" : "sub-status--free");
+      box.hidden = false;
+      box.className = "card sub-status " + (expired ? "sub-status--expired" : "sub-status--trial");
       box.innerHTML =
         '<div class="sub-status__row">' +
         '<div class="sub-status__icon" aria-hidden="true">' + statusIcon + "</div>" +
@@ -553,13 +642,27 @@
 
     // Собираем только те тарифы, для которых сервер вернул рублёвую цену.
     var cards = [];
+    var available = [];
     TARIFF_META.forEach(function (meta) {
       var priceInfo = tariffPrice(s, meta.key);
       if (!priceInfo) return; // цены нет — тариф не показываем
+      available.push(meta.key);
+    });
+
+    // Выбранный тариф должен существовать на витрине: если цены поменялись
+    // и прежний выбор исчез — берём годовой («Выгодно»), иначе первый.
+    if (available.indexOf(state.selected) === -1) {
+      state.selected = available.indexOf("yearly") !== -1 ? "yearly" : available[0] || null;
+    }
+
+    TARIFF_META.forEach(function (meta) {
+      var priceInfo = tariffPrice(s, meta.key);
+      if (!priceInfo) return;
 
       var isYearly = meta.key === "yearly";
       // Подсвечиваем годовой как «самый выгодный» вариант.
       var best = isYearly;
+      var on = meta.key === state.selected;
 
       // Бейдж: для годового — «Выгодно» (best value), иначе — из метаданных.
       var badgeText = best
@@ -588,36 +691,37 @@
           "</div>";
       }
 
+      var period = TARIFF_PERIOD[meta.key] || TARIFF_PERIOD.monthly;
+
+      // Карточка — переключатель (radio): цена крупно, срок под ней, метка
+      // выбора справа. Платёж запускает одна кнопка под всеми карточками.
       cards.push(
-        '<article class="card sub-tariff' +
+        '<button type="button" class="card sub-tariff' +
           (best ? " sub-card--best" : "") +
+          (on ? " sub-tariff--on" : "") +
           '" data-tariff="' +
           esc(meta.key) +
-          '">' +
-          '<div class="sub-tariff__head">' +
-          '<span class="sub-tariff__icon" aria-hidden="true">' +
-          icon(meta.icon, { size: 24 }) +
-          "</span>" +
-          '<div class="sub-tariff__info">' +
-          '<div class="sub-tariff__title">' +
+          '" role="radio" aria-checked="' + (on ? "true" : "false") + '">' +
+          '<span class="sub-tariff__info">' +
+          '<span class="sub-tariff__title">' +
           esc(pick(meta.title[0], meta.title[1])) +
           badgeHtml +
-          "</div>" +
-          '<div class="sub-tariff__note">' +
+          "</span>" +
+          '<span class="sub-tariff__note">' +
           esc(tariffNote(s, meta)) +
-          "</div>" +
+          "</span>" +
           econHtml +
-          "</div>" +
-          '<div class="sub-tariff__price">' +
+          "</span>" +
+          '<span class="sub-tariff__pricing">' +
+          '<span class="num sub-tariff__price">' +
           esc(formatPrice(priceInfo.price, priceInfo.currency)) +
-          "</div>" +
-          "</div>" +
-          '<button type="button" class="btn btn--cta sub-tariff__pay" data-tariff="' +
-          esc(meta.key) +
-          '">' +
-          esc(pick("Выбрать", "Choose")) +
-          "</button>" +
-          "</article>"
+          "</span>" +
+          '<span class="sub-tariff__period">' + esc(pick(period[0], period[1])) + "</span>" +
+          "</span>" +
+          '<span class="sub-tariff__mark" aria-hidden="true">' +
+          icon("check", { size: 16 }) +
+          "</span>" +
+          "</button>"
       );
     });
 
@@ -646,17 +750,41 @@
       ? pick("Продлить", "Extend")
       : pick("Тарифы", "Plans");
 
+    var chosen = tariffPrice(s, state.selected);
     box.innerHTML =
-      '<h2 class="sub-section-title">' +
+      '<span class="eyebrow sub-tariffs__eyebrow">' +
       esc(sectionTitle) +
-      "</h2>" +
-      cards.join("");
+      "</span>" +
+      '<div class="sub-tariffs__list" role="radiogroup" aria-label="' + esc(sectionTitle) + '">' +
+      cards.join("") +
+      "</div>" +
+      // Единственная кнопка оплаты: подпись содержит сумму выбранного тарифа,
+      // чтобы человек видел, за что платит, ещё до экрана оплаты.
+      '<button type="button" class="btn btn--cta btn-block sub-tariff__pay" id="subPay" data-tariff="' +
+      esc(state.selected || "") +
+      '">' +
+      esc(s.is_premium
+        ? pick("Продлить за ", "Extend for ")
+        : pick("Оформить за ", "Subscribe for ")) +
+      esc(chosen ? formatPrice(chosen.price, chosen.currency) : "") +
+      "</button>";
 
-    // Кнопка «Выбрать» ведёт на отдельную страницу оплаты.
-    var payBtns = box.querySelectorAll(".sub-tariff__pay");
-    for (var i = 0; i < payBtns.length; i++) {
-      payBtns[i].addEventListener("click", onChoose);
+    // Карточка — переключатель; кнопка ведёт на отдельную страницу оплаты.
+    var cardBtns = box.querySelectorAll(".sub-tariff");
+    for (var c = 0; c < cardBtns.length; c++) {
+      cardBtns[c].addEventListener("click", onSelectTariff);
     }
+    var payBtn = box.querySelector(".sub-tariff__pay");
+    if (payBtn) payBtn.addEventListener("click", onChoose);
+  }
+
+  /** Выбор карточки тарифа: запоминаем и перерисовываем витрину. */
+  function onSelectTariff(e) {
+    var key = e && e.currentTarget && e.currentTarget.getAttribute("data-tariff");
+    if (!key || key === state.selected) return;
+    haptic("selection");
+    state.selected = key;
+    renderTariffs();
   }
 
   /**
@@ -702,6 +830,7 @@
     renderStatus();
     renderTariffs();
     renderTribute();
+    renderLegal();
   }
 
   /* =====================================================================
@@ -810,6 +939,7 @@
     onHide: function () {
       state.viewEl = null;
       state.loading = false;
+      state.selected = null;
     },
 
     // ---- Общее достояние: единый список выгод ----

@@ -37,15 +37,6 @@
   text-align: center;
 }
 
-/* Надзаголовок карточки: роль блока, а не его содержимое. */
-.td-card__head {
-  font-size: var(--fs-2xs);
-  font-weight: var(--fw-semibold);
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  color: var(--muted);
-}
-
 /* ---------- Кольцо калорий ---------- */
 .td-cal {
   text-align: center;
@@ -53,8 +44,8 @@
 
 .td-ring {
   position: relative;
-  width: 168px;
-  height: 168px;
+  width: 176px;
+  height: 176px;
   margin: 0 auto;
 }
 
@@ -66,16 +57,18 @@
   transform: rotate(-90deg);
 }
 
+/* Дорожка на тон темнее карточки: на белом --surface-2 её почти не было
+   видно, и незаполненная часть кольца читалась как разрыв. */
 .td-ring__track {
   fill: none;
-  stroke: var(--surface-2);
-  stroke-width: 10;
+  stroke: var(--surface-3);
+  stroke-width: 11;
 }
 
 .td-ring__value {
   fill: none;
   stroke: var(--accent);
-  stroke-width: 10;
+  stroke-width: 11;
   stroke-linecap: round;
   transition: stroke-dashoffset var(--dur) var(--ease);
 }
@@ -96,24 +89,30 @@
   gap: 2px;
 }
 
+/* Главное число экрана: сжатый шрифт (.num из style.css) и самый крупный
+   кегль — остаток калорий должен считываться с расстояния. */
 .td-ring__num {
   font-size: var(--fs-display);
-  font-weight: var(--fw-bold);
-  line-height: var(--lh-tight);
-  letter-spacing: -.03em;
-  font-variant-numeric: tabular-nums;
 }
 
-.td-ring__cap {
-  font-size: var(--fs-xs);
-  color: var(--muted);
-}
-
+/* «Съедено из нормы»: числа сжатым шрифтом, служебные слова — мелкие и
+   приглушённые, чтобы взгляд цеплялся за цифры, а не за предлоги. */
 .td-cal__sum {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: var(--s2);
   margin-top: var(--s3);
-  font-size: var(--fs-body);
-  font-weight: var(--fw-medium);
-  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-h2);
+}
+
+.td-cal__sum-of {
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-btn);
+  color: var(--muted);
 }
 
 .td-cal__burned {
@@ -146,21 +145,16 @@
   margin-bottom: var(--s1);
 }
 
-.td-macro__label {
-  font-size: var(--fs-sm);
-  color: var(--muted);
-}
-
+/* Подпись нутриента — надзаголовок (.eyebrow), окрашенный в цвет своей
+   полосы: так подпись и полоса связываются без легенды. */
 .td-macro__value {
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-h3);
 }
 
 .td-macro__track {
-  height: 6px;
+  height: 8px;
   border-radius: var(--radius-pill);
-  background: var(--surface-2);
+  background: var(--surface-3);
   overflow: hidden;
 }
 
@@ -176,11 +170,17 @@
 .td-macro--f .td-macro__fill { background: var(--data-fat); }
 .td-macro--c .td-macro__fill { background: var(--data-carb); }
 
+.td-macro--p .td-macro__label { color: var(--data-protein); }
+.td-macro--f .td-macro__label { color: var(--data-fat); }
+.td-macro--c .td-macro__label { color: var(--data-carb); }
+
 /* ---------- Быстрые действия с едой ----------
    Ряд из двух кнопок под кольцом калорий. Вес второстепенный: карточная
-   поверхность с контуром, текст цвета текста, а цвет действия — только у
-   иконки. Залитые зелёные кнопки спорили бы с «Начать» в карточке
-   тренировки, а на экране должно быть одно главное действие. */
+   поверхность с контуром, подпись цвета текста, а цвет действия — только у
+   иконки. Залитые оранжевые кнопки спорили бы с «Начать» в блоке
+   тренировки, а на экране должно быть одно главное действие.
+   Иконка над подписью: подпись сжатым капсом в одну строку никогда не
+   переносится, а кнопка получает высоту, за которую удобно взяться. */
 .td-quick {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -190,49 +190,78 @@
 
 .td-quick__btn {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--s2);
+  gap: var(--s1);
   min-width: 0;
-  min-height: var(--tap-min);
-  padding: var(--s2);
+  min-height: 72px;
+  padding: var(--s3) var(--s2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--text);
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  line-height: var(--lh-tight);
-  text-align: center;
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease);
 }
 
-.td-quick__btn svg {
-  flex-shrink: 0;
+.td-quick__icon {
+  display: inline-flex;
   color: var(--accent);
+}
+
+.td-quick__label {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-btn);
 }
 
 .td-quick__btn:active {
   background: var(--surface-2);
 }
 
-/* ---------- Карточка тренировки ---------- */
-.td-workout__title {
-  margin: var(--s2) 0 0;
-  font-size: var(--fs-h2);
-  font-weight: var(--fw-bold);
-  line-height: var(--lh-tight);
+/* ---------- Блок тренировки (.hero из style.css) ----------
+   Тёмный блок с фотографией и белым заголовком. Заголовок крупнее, чем у
+   карточек: это главное действие дня. */
+.td-workout {
+  margin-bottom: var(--s3);
+  min-height: 176px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
 }
 
-.td-workout__meta {
-  margin: var(--s1) 0 0;
-  font-size: var(--fs-sm);
-  color: var(--muted);
+.td-workout__title {
+  font-size: var(--fs-display);
 }
 
 .td-workout__btn {
   margin-top: var(--s4);
+}
+
+/* Приглашение без подписки: текст по центру на том же тёмном блоке. */
+.td-workout--locked {
+  text-align: center;
+  justify-content: center;
+}
+
+.td-workout--locked .td-empty__icon {
+  color: var(--accent);
+}
+
+.td-workout--locked .td-empty__title {
+  color: var(--hero-text);
+}
+
+.td-workout--locked .td-empty__text {
+  color: var(--hero-muted);
 }
 
 /* Разделы без действия (отдых, «сделано») ведут внутрь ссылкой, а не
@@ -246,24 +275,36 @@
   padding: 0;
   border: none;
   background: none;
-  color: var(--accent);
-  font-size: var(--fs-body);
-  font-weight: var(--fw-semibold);
+  color: var(--hero-text);
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-btn);
   cursor: pointer;
 }
 
-/* Идущая тренировка — единственный блок с цветной кромкой на экране:
-   он должен находиться взглядом мгновенно. */
+.td-workout__link svg {
+  color: var(--accent);
+}
+
+/* Идущая тренировка: оранжевая полоса по левому краю тёмного блока —
+   человек в процессе, это должно бросаться в глаза. */
 .td-workout--active {
-  border-left: 3px solid var(--accent);
+  box-shadow: inset 4px 0 0 var(--accent);
 }
 
-.td-workout--done .td-workout__title {
-  color: var(--muted);
+/* Сделано и отдых — блок спокойнее: без фото, обычный тёмный фон. */
+.td-workout--done,
+.td-workout--rest {
+  background-image: none;
+  min-height: 0;
 }
 
+.td-workout--done .td-workout__title,
 .td-workout--rest .td-workout__title {
-  font-weight: var(--fw-semibold);
+  font-size: var(--fs-h1);
+  color: var(--hero-muted);
 }
 
 /* ---------- Плитки «вес» и «серия» ---------- */
@@ -292,19 +333,28 @@
   background: var(--surface-2);
 }
 
+/* Надзаголовок плитки (.eyebrow) с иконкой в цвет действия. */
 .td-tile__label {
   display: inline-flex;
   align-items: center;
   gap: var(--s1);
-  font-size: var(--fs-xs);
-  color: var(--muted);
+  margin-bottom: var(--s1);
 }
 
+.td-tile__label svg {
+  color: var(--accent);
+}
+
+/* Значение плитки — крупное число (.num); единица рядом мельче и тише,
+   чтобы «72,4 кг» читалось как показание табло, а не как фраза. */
 .td-tile__value {
-  font-size: var(--fs-h2);
-  font-weight: var(--fw-bold);
-  font-variant-numeric: tabular-nums;
-  line-height: var(--lh-tight);
+  font-size: var(--fs-h1);
+}
+
+.td-tile__unit {
+  margin-left: var(--s1);
+  font-size: var(--fs-h3);
+  color: var(--muted);
 }
 
 .td-tile__delta {
@@ -335,8 +385,7 @@
 
 .td-empty__title {
   margin: 0;
-  font-size: var(--fs-h3);
-  font-weight: var(--fw-semibold);
+  font-size: var(--fs-h2);
 }
 
 .td-empty__text {
@@ -354,30 +403,22 @@
 
 /* ---------- Скелетон под кольцо ---------- */
 .td-skel-ring {
-  height: 168px;
+  height: 176px;
   border-radius: var(--radius-lg);
 }
 
 /* ---------- Узкие экраны ---------- */
 @media (max-width: 360px) {
   .td-ring {
-    width: 144px;
-    height: 144px;
+    width: 152px;
+    height: 152px;
   }
 
   .td-tiles {
     grid-template-columns: 1fr;
   }
 
-  /* «Добавить вручную» 13px с иконкой на 360px не влезала в половину ряда
-     и переносилась на две строки. Шаг кегля вниз и узкие поля держат обе
-     подписи в одну строку; перенос остаётся запасным путём для 320px. */
   .td-quick {
     gap: var(--s2);
-  }
-
-  .td-quick__btn {
-    padding: var(--s2) var(--s1);
-    font-size: var(--fs-xs);
   }
 }

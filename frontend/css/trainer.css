@@ -1,18 +1,18 @@
 /* ============================================================
-   trainer.css — раздел «AI-тренер» (ТЗ §6.2): общие стили, онбординг,
-   экран «Сегодня» и база для «Программы».
+   trainer.css — раздел «AI-тренер»: оболочка с вкладками, вкладка
+   «Сегодня», онбординг, общие листы и paywall раздела.
 
-   Владелец — этап F1. Экран сессии — trainer-session.css (F2),
-   прогресс/упражнения — trainer-progress.css (F3).
+   Экран сессии — trainer-session.css, «Программа» / «Прогресс» /
+   «Упражнения» — trainer-progress.css.
 
-   Переиспользуются существующие классы style.css: .page .sub-page
-   .sub-head .sub-back .sub-title .sub-subtitle .card .btn .btn-cta
-   .btn-ghost .btn-danger .btn-block .field .field__input .chip
-   .chip--active .wk-rem-days .wk-rem-day .skeleton .skeleton-line
-   .wk-empty .wk-error .rec-disclaimer .acc-fold.
-   Цвета — ТОЛЬКО через токены палитры (--bg --card --accent --cta --text
-   --muted --danger --white --radius --shadow); полупрозрачные тона —
-   rgba тех же цветов (как в style.css).
+   ОБЛИК. Тот же приём, что на экране «Сегодня» приложения: один тёмный
+   блок с фотографией и оранжевым действием наверху, под ним спокойные
+   карточки с плотными сжатыми заголовками и крупными числами. Никаких
+   «таблеток» и рамок вокруг вкладок — спортивные вкладки с оранжевой
+   чертой, как на табло.
+
+   Цвета — только через токены tokens.css; текст на тёмной и оранжевой
+   заливке — --hero-text / --hero-muted / --on-accent.
    ============================================================ */
 
 /* ===== trainer: common ===== */
@@ -26,6 +26,17 @@
 /* Атрибут hidden должен побеждать display у .field/.card и т.п. */
 .tr-page [hidden] {
   display: none !important;
+}
+
+/* Выбранный чип внутри раздела. Общий .chip--active заливает чип
+   оранжевым с белой подписью 14px — для мелкого текста такой контраст
+   не проходит. Здесь выбор показываем оранжевой рамкой и подложкой, а
+   подпись — тёмным оранжевым, который читается на светлом. */
+.tr-page .chip--active,
+.tr-page .wk-rem-day.is-active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* Шапка: наследует .sub-head. Заголовок — флекс, потому что рядом с текстом
@@ -59,18 +70,10 @@
 }
 
 /* Шапка КОРНЯ раздела (вкладка «Тренировка»): крупный заголовок без кнопки
-   возврата — тот же приём, что на экране «Сегодня». Отступ снизу меньше
-   обычного: под заголовком сразу идут сегменты, и они должны читаться
-   частью шапки, а не отдельным блоком. */
+   возврата. Отступ снизу меньше обычного: под заголовком сразу идут
+   вкладки, и они должны читаться частью шапки, а не отдельным блоком. */
 .tr-head--root {
   margin-bottom: var(--s3);
-}
-
-.tr-head--root .sub-title {
-  font-size: var(--fs-h1);
-  font-weight: var(--fw-bold);
-  line-height: var(--lh-tight);
-  letter-spacing: -.02em;
 }
 
 /* Иконка-действие в углу заголовка. Зона нажатия — не меньше --tap-min:
@@ -100,10 +103,8 @@
    Вкладки Сегодня · Программа · Прогресс · Упражнения — виды ОДНОГО экрана:
    шапка и полоса стоят на месте, меняется только панель под ними. */
 
-/* Под шапкой сразу полоса вкладок со своим верхним полем — собственный
-   отступ шапки сокращаем, чтобы заголовок и вкладки читались одним блоком. */
 .tr-shell .tr-head--root {
-  margin-bottom: var(--s1);
+  margin-bottom: 0;
 }
 
 /* Полоса липкая: «Прогресс» и «Программа» длиннее экрана, и сменить вид
@@ -116,67 +117,54 @@
   position: sticky;
   top: var(--tg-safe-top, 0px);
   z-index: 10;
-  margin: 0 calc(-1 * var(--gutter)) var(--s2);
-  padding: var(--s2) var(--gutter);
+  margin: 0 calc(-1 * var(--gutter)) var(--s3);
+  padding: 0 var(--gutter);
   background: var(--bg);
-  border-bottom: 1px solid transparent;
-  transition: border-color var(--dur-fast) var(--ease);
 }
 
-/* Прилипшая полоса отделяется волосяной линией (класс ставит page-trainer.js):
-   без границы содержимое «ныряет» под неё незаметно. Тени нет — полоса
-   лежит в плоскости экрана, а не парит над ним. */
-.tr-tabs-bar.is-stuck {
-  border-bottom-color: var(--border);
-}
-
-/* Дорожка вкладок — вложенная поверхность --surface-2. */
+/* Дорожка вкладок — волосяная линия снизу, по которой ездит оранжевая
+   черта активной вкладки. Без заливки: спортивные вкладки живут на самом
+   фоне, а не в «таблетке». Прокрутка вбок — страховка: если сжатый шрифт
+   не загрузился и подписи набраны запасным широким, полоса прокручивается,
+   а не режет последнюю вкладку. */
 .tr-tabs {
   display: flex;
-  padding: var(--s1);
-  border-radius: var(--radius-pill);
-  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
-/* Вкладка — основной переключатель раздела, по нему бьют пальцем не глядя:
-   высота не меньше --tap-min. Ширина по подписи (flex-basis auto), а не
-   поровну: «Упражнения» заметно длиннее «Сегодня», и при равных долях на
-   узком экране длинная подпись обрезалась бы многоточием, а переключатель
-   перестал бы называть разделы. Сжиматься ниже своей подписи вкладка не
-   может (min-width: auto у flex-элемента) — многоточия нет в принципе. */
+.tr-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+/* Вкладка — сжатый шрифт в верхнем регистре, как подписи нижней панели.
+   Ширина по подписи (flex-basis auto), а не поровну: «Упражнения» заметно
+   длиннее «Сегодня», и при равных долях длинная подпись обрезалась бы.
+   Сжиматься ниже своей подписи вкладка не может — многоточия нет в
+   принципе. Высота не меньше --tap-min: по вкладкам бьют не глядя.
+   Кегль на телефонах --fs-xs: сжатым шрифтом четыре подписи входят и в
+   --fs-sm, но запасной широкий шрифт (Inter) в 13px на 375px уже не
+   помещается; крупнее — от 400px, где место есть в любом случае. */
 .tr-tab {
+  position: relative;
   flex: 1 1 auto;
   min-height: var(--tap-min);
   padding: 0 var(--s1);
   border: none;
-  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--muted);
+  font-family: var(--font-display);
   font-size: var(--fs-xs);
-  font-weight: var(--fw-semibold);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: .03em;
   line-height: var(--lh-tight);
   white-space: nowrap;
   cursor: pointer;
-  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+  transition: color var(--dur) var(--ease);
 }
 
-/* Выбранная — белая «таблетка» на дорожке. Отличается только заливкой и
-   цветом текста: тень дала бы третий уровень высоты внутри полосы. */
-.tr-tab.is-active {
-  background: var(--surface);
-  color: var(--text);
-}
-
-.tr-tab:not(.is-active):active {
-  color: var(--text);
-}
-
-/* Кегль по ширине экрана. Замер на Inter: четыре русские подписи кеглем
-   --fs-sm с полями --s2 занимают ~338px, а на телефоне 375px дорожке
-   доступно 335px — уже переполнение, и запаса на запасной системный шрифт
-   нет. Поэтому базовый размер --fs-xs (~285px, входит от 360px с запасом),
-   крупнее — только там, где место заведомо есть; на самых узких (320px) —
-   ещё ступень ниже. */
 @media (min-width: 400px) {
   .tr-tab {
     padding: 0 var(--s2);
@@ -184,6 +172,28 @@
   }
 }
 
+.tr-tab.is-active {
+  color: var(--text);
+}
+
+/* Оранжевая черта под выбранной вкладкой. Лежит на линии дорожки
+   (bottom: -1px), чтобы не получалось двух линий разной толщины. */
+.tr-tab.is-active::after {
+  content: "";
+  position: absolute;
+  left: var(--s1);
+  right: var(--s1);
+  bottom: -1px;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--accent);
+}
+
+.tr-tab:not(.is-active):active {
+  color: var(--text);
+}
+
+/* На самых узких экранах (320px) — ещё ступень ниже. */
 @media (max-width: 339px) {
   .tr-tab {
     font-size: var(--fs-2xs);
@@ -192,23 +202,25 @@
 
 /* Прокрутка к карточке внутри вкладки (разбор недели, ответ «Самочувствия»)
    останавливается ниже липкой полосы, а не под ней: высота полосы =
-   вкладка + поля дорожки + поля полосы, плюс зазор. */
+   вкладка + линия, плюс зазор. */
 .tr-seg-panel .card {
-  scroll-margin-top: calc(var(--tg-safe-top, 0px) + var(--tap-min) + var(--s1) * 2 + var(--s2) * 2 + var(--s3));
+  scroll-margin-top: calc(var(--tg-safe-top, 0px) + var(--tap-min) + var(--s4));
 }
 
-/* Небольшой заголовок секции («Питание сегодня», «Неделя»). */
+/* Небольшой заголовок секции («Питание сегодня», «Неделя») — надзаголовок:
+   мелкий сжатый капс с разрядкой, как .eyebrow, только с отступами списка. */
 .tr-section-title {
+  margin: var(--s1) 0 var(--s2);
+  font-family: var(--font-display);
   font-size: var(--fs-2xs);
-  font-weight: var(--fw-semibold);
+  font-weight: var(--fw-bold);
   text-transform: uppercase;
-  letter-spacing: .06em;
+  letter-spacing: var(--ls-eyebrow);
+  line-height: var(--lh-heading);
   color: var(--muted);
-  margin: var(--s1) var(--s1) var(--s2);
 }
 
-/* Плашка-предупреждение. Фон был var(--accent): в новой палитре это цвет
-   действия, и предупреждение заливалось сплошным зелёным. */
+/* Плашка-предупреждение. */
 .tr-warn {
   display: flex;
   align-items: flex-start;
@@ -240,36 +252,39 @@
 /* Экран ожидания генерации (.tr-gen-wait). */
 .tr-gen-wait {
   text-align: center;
-  padding: 36px 20px 30px;
+  padding: var(--s6) var(--s4) var(--s5);
   background: var(--surface);
 }
 
 .tr-gen-wait__spinner {
   width: 46px;
   height: 46px;
-  margin: 0 auto 18px;
-  border: 4px solid var(--surface-2);
+  margin: 0 auto var(--s4);
+  border: 4px solid var(--surface-3);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin .8s linear infinite;
 }
 
 .tr-gen-wait__title {
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 8px;
+  margin-bottom: var(--s2);
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  line-height: var(--lh-tight);
 }
 
 .tr-gen-wait__line {
-  font-size: 15px;
+  font-size: var(--fs-body);
   color: var(--text);
   min-height: 22px;
   animation: fadeIn .4s ease;
 }
 
 .tr-gen-wait__hint {
-  margin-top: 12px;
-  font-size: 12.5px;
+  margin-top: var(--s3);
+  font-size: var(--fs-xs);
   color: var(--muted);
 }
 
@@ -283,7 +298,7 @@
 .tr-sheet__backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(23, 26, 22, .38);
+  background: var(--overlay);
   opacity: 0;
   transition: opacity .22s ease;
   touch-action: none;
@@ -301,9 +316,9 @@
   max-width: 480px;
   margin: 0 auto;
   background: var(--bg);
-  border-radius: var(--radius) var(--radius) 0 0;
-  box-shadow: 0 -8px 28px rgba(23, 26, 22, .18);
-  padding: 8px 16px calc(var(--safe-bottom) + 20px);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: var(--shadow-2);
+  padding: var(--s2) var(--s4) calc(var(--safe-bottom) + var(--s5));
   transform: translateY(100%);
   transition: transform .24s cubic-bezier(.22, .61, .36, 1);
   max-height: 88vh;
@@ -320,14 +335,18 @@
   width: 40px;
   height: 4px;
   border-radius: 2px;
-  background: var(--border);
+  background: var(--border-strong);
   margin: 6px auto 14px;
 }
 
+/* Заголовок листа — сжатым капсом: это название действия или упражнения. */
 .tr-sheet__title {
-  font-size: 15px;
-  font-weight: 700;
-  margin: 0 4px 10px;
+  margin: 0 var(--s1) var(--s3);
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  line-height: var(--lh-tight);
 }
 
 .tr-sheet__item {
@@ -341,15 +360,15 @@
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--text);
-  font-size: 16px;
-  font-weight: 600;
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-semibold);
   text-align: left;
   cursor: pointer;
   transition: background .15s ease, transform .08s ease;
 }
 
 .tr-sheet__item + .tr-sheet__item {
-  margin-top: 8px;
+  margin-top: var(--s2);
 }
 
 .tr-sheet__item:active {
@@ -373,7 +392,7 @@
   align-items: center;
   justify-content: center;
   width: 28px;
-  color: var(--muted);
+  color: var(--accent);
 }
 
 .tr-sheet__item--danger .tr-sheet__icon {
@@ -393,36 +412,36 @@
 
 .tr-sheet__desc {
   display: block;
-  font-size: 12.5px;
-  font-weight: 500;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
   color: var(--muted);
   margin-top: 2px;
 }
 
 .tr-sheet__cancel {
-  margin-top: 12px;
+  margin-top: var(--s3);
 }
 
-/* Тумблер-карточка (напоминание в онбординге). */
+/* Тумблер-карточка (напоминание в онбординге). Контур --border-strong,
+   как у полей: это элемент управления, а не карточка содержимого. */
 .tr-toggle {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--s3);
   width: 100%;
   text-align: left;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
+  padding: 14px var(--s4);
+  border: 1.5px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--text);
   cursor: pointer;
-  transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
+  transition: border-color .18s ease, background .18s ease;
 }
 
 .tr-toggle--on {
-  border-color: var(--cta);
-  background: rgba(47, 111, 78, .12);
-  box-shadow: 0 0 0 3px rgba(47, 111, 78, .16);
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .tr-toggle__icon {
@@ -438,13 +457,13 @@
 
 .tr-toggle__title {
   display: block;
-  font-size: 15px;
-  font-weight: 700;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-bold);
 }
 
 .tr-toggle__hint {
   display: block;
-  font-size: 12.5px;
+  font-size: var(--fs-xs);
   color: var(--muted);
   margin-top: 2px;
 }
@@ -474,27 +493,28 @@
   display: block;
 }
 
-/* Полоса прогресса из N сегментов. */
+/* Полоса прогресса из N сегментов: пройденные — оранжевые, текущий —
+   полупрозрачный оранжевый, остальные — дорожка. */
 .tr-onb-progress {
   display: flex;
-  gap: 4px;
-  margin: 0 0 16px;
+  gap: var(--s1);
+  margin: 0 0 var(--s4);
 }
 
 .tr-onb-progress__seg {
   flex: 1;
   height: 4px;
   border-radius: 2px;
-  background: var(--surface-2);
+  background: var(--surface-3);
   transition: background var(--dur) var(--ease);
 }
 
 .tr-onb-progress__seg.is-done {
-  background: var(--cta);
+  background: var(--accent);
 }
 
 .tr-onb-progress__seg.is-current {
-  background: var(--cta);
+  background: var(--accent);
   opacity: .55;
 }
 
@@ -503,29 +523,28 @@
   display: block;
 }
 
+/* Заголовок шага — вопрос анкеты крупно, сжатым капсом (h2 уже капс). */
 .tr-onb-step__title {
-  font-size: 20px;
-  font-weight: 700;
-  margin-bottom: 6px;
+  margin-bottom: var(--s2);
+  font-size: var(--fs-h2);
 }
 
 .tr-onb-step__hint {
-  font-size: 13.5px;
+  font-size: var(--fs-sm);
   color: var(--muted);
-  line-height: 1.5;
+  line-height: var(--lh-normal);
   margin-bottom: 14px;
 }
 
-/* Поясняющая «квип»-подсказка внутри шага. */
+/* Поясняющая подсказка внутри шага: вложенный блок — только заливка
+   --surface-2, без собственной границы и тени. */
 .tr-onb-quip {
   display: flex;
-  gap: 8px;
+  gap: var(--s2);
   align-items: flex-start;
-  margin: 12px 0 0;
-  padding: 10px 12px;
+  margin: var(--s3) 0 0;
+  padding: 10px var(--s3);
   border-radius: var(--radius-sm);
-  /* Вложенный блок ВНУТРИ карточки: только заливка --surface-2,
-     без собственной границы и тени (иначе карточка в карточке). */
   background: var(--surface-2);
   font-size: var(--fs-xs);
   color: var(--muted);
@@ -552,22 +571,23 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-/* Карточка-опция (крупная, тапабельная). */
+/* Карточка-опция (крупная, тапабельная). Контур --border-strong: это
+   переключатель, и его границу надо видеть до выбора; выбранная — оранжевая
+   рамка и оранжевая подложка. */
 .tr-option {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--s3);
   width: 100%;
   min-height: 60px;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
+  padding: var(--s3) 14px;
+  border: 1.5px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--text);
   text-align: left;
   cursor: pointer;
-  transition: border-color .18s ease, background .18s ease, box-shadow .18s ease,
-    transform .08s ease;
+  transition: border-color .18s ease, background .18s ease, transform .08s ease;
 }
 
 .tr-option:active {
@@ -575,9 +595,8 @@
 }
 
 .tr-option.is-active {
-  border-color: var(--cta);
-  background: rgba(47, 111, 78, .12);
-  box-shadow: 0 0 0 3px rgba(47, 111, 78, .16);
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .tr-option__icon {
@@ -597,15 +616,19 @@
   min-width: 0;
 }
 
+/* Название опции — сжатым шрифтом: короткие слова («Зал», «Новичок»)
+   получают вес заголовка, не съедая ширину узкой ячейки. */
 .tr-option__title {
   display: block;
-  font-size: 15px;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-heading);
 }
 
 .tr-option__desc {
   display: block;
-  font-size: 12.5px;
+  font-size: var(--fs-xs);
   color: var(--muted);
   margin-top: 2px;
   line-height: 1.4;
@@ -636,7 +659,7 @@
   justify-content: center;
   text-align: center;
   gap: 6px;
-  padding: 12px 8px;
+  padding: var(--s3) var(--s2);
 }
 
 .tr-option--compact .tr-option__body {
@@ -644,12 +667,12 @@
 }
 
 .tr-option--compact .tr-option__title {
-  font-size: 14px;
+  font-size: var(--fs-body);
   overflow-wrap: anywhere;
 }
 
 .tr-option--compact .tr-option__desc {
-  font-size: 11.5px;
+  font-size: var(--fs-2xs);
 }
 
 .tr-option--compact .tr-option__mark {
@@ -660,41 +683,45 @@
 .tr-onb-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--s2);
   margin-bottom: 6px;
 }
 
-/* Крупные чипы-числа одинаковой ширины (2/3/4/5/6, 20/30/45…). */
+/* Крупные чипы-числа одинаковой ширины (2/3/4/5/6, 20/30/45…) — числа
+   набраны сжатым шрифтом, как всё числовое в приложении. */
 .tr-onb-chips--even .chip {
   flex: 1 1 0;
   justify-content: center;
   min-width: 48px;
   min-height: 46px;
-  padding: 0 8px;
+  padding: 0 var(--s2);
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
 }
 
 /* Подпись между блоками одного шага. */
 .tr-onb-label {
   display: block;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
   color: var(--muted);
-  margin: 14px 0 8px;
+  margin: 14px 0 var(--s2);
 }
 
 /* Счётчик символов у текстового поля. */
 .tr-onb-count {
   display: block;
   text-align: right;
-  font-size: 11.5px;
+  font-size: var(--fs-2xs);
   color: var(--muted);
-  margin-top: 4px;
+  margin-top: var(--s1);
 }
 
 /* Текстовое поле «Опишите подробнее». */
 .tr-onb-textarea {
   min-height: 84px;
-  padding: 12px 14px;
+  padding: var(--s3) 14px;
   resize: vertical;
   line-height: 1.4;
 }
@@ -704,10 +731,6 @@
   display: flex;
   gap: 10px;
   margin-top: 18px;
-}
-
-.tr-onb-nav .btn {
-  min-height: 50px;
 }
 
 .tr-onb-nav__back {
@@ -720,19 +743,19 @@
 
 /* Сводка ответов на последнем шаге. */
 .tr-onb-summary {
-  margin: 14px 0 4px;
-  padding: 4px 0 0;
-  border-top: 1px solid rgba(220, 224, 214, .6);
+  margin: 14px 0 var(--s1);
+  padding: var(--s1) 0 0;
+  border-top: 1px solid var(--border);
 }
 
 .tr-onb-summary__row {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--s3);
   padding: 9px 0;
-  border-bottom: 1px solid rgba(220, 224, 214, .45);
-  font-size: 13.5px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm);
 }
 
 .tr-onb-summary__row:last-child {
@@ -746,153 +769,146 @@
 
 .tr-onb-summary__val {
   text-align: right;
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   min-width: 0;
   word-break: break-word;
 }
 
-/* ===== trainer: today/program ===== */
+/* ===== trainer: today ===== */
 
 .tr-today {
   display: block;
 }
 
-/* Карточка дня. */
-.tr-today-card {
-  display: block;
-  background: var(--surface);
-}
-
-.tr-today-card--rest {
-  background: var(--surface-2);
-}
-
-/* Незаконченная тренировка — единственное состояние, которое человек должен
-   находить взглядом мгновенно: он уже в процессе, и всё остальное на экране
-   подождёт. Кромка цветом действия, как у той же карточки на «Сегодня». */
-.tr-today-card--progress {
-  border-left: 3px solid var(--accent);
-}
-
-.tr-today-card__title {
+/* ---------- Тёмный блок дня ----------
+   Тот же приём, что .td-workout на экране «Сегодня»: тёмный блок с фото,
+   белый заголовок крупнее, чем у карточек, оранжевая кнопка. Это главное
+   действие раздела, и оно должно находиться взглядом мгновенно. */
+.tr-hero {
+  margin-bottom: var(--s3);
+  min-height: 176px;
   display: flex;
-  align-items: center;
-  gap: var(--s2);
-  font-size: var(--fs-h2);
-  font-weight: var(--fw-bold);
-  margin: var(--s2) 0 var(--s1);
-  line-height: var(--lh-tight);
+  flex-direction: column;
+  justify-content: flex-end;
 }
 
-/* Галочка «сделано» перед названием дня — иконка, а не символ в тексте. */
-.tr-today-card__check {
-  flex-shrink: 0;
-  color: var(--success);
-}
-
-.tr-today-card__meta {
-  font-size: 13.5px;
-  color: var(--muted);
-  line-height: 1.45;
-}
-
-.tr-today-card__sub {
-  font-size: 14px;
-  color: var(--text);
-  margin-top: 6px;
-  line-height: 1.45;
-}
-
-.tr-today-card__actions {
-  margin-top: 14px;
-}
-
-.tr-today-card__link {
-  display: inline-block;
-  margin-top: 12px;
-  border: none;
-  background: transparent;
-  color: var(--cta);
-  font-size: 14px;
-  font-weight: 600;
-  text-decoration: underline;
-  cursor: pointer;
-  padding: 4px 0;
-}
-
-/* Бейдж состояния дня. */
-.tr-day-badge {
+/* Надзаголовок может нести иконку (галочка «сделано»). */
+.tr-hero .eyebrow {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 11.5px;
-  font-weight: 700;
+  gap: var(--s1);
+}
+
+.tr-hero .eyebrow svg {
+  color: var(--accent);
+}
+
+.tr-hero__title {
+  font-size: var(--fs-display);
+}
+
+.tr-hero__btn {
+  margin-top: var(--s4);
+}
+
+/* Идущая тренировка: оранжевая полоса по левому краю тёмного блока —
+   человек в процессе, это должно бросаться в глаза. */
+.tr-hero--active {
+  box-shadow: inset 4px 0 0 var(--accent);
+}
+
+/* Отдых, «сделано», неделя закрыта — блок спокойнее: без фото, обычный
+   тёмный фон, заголовок меньше и приглушён. */
+.tr-hero--calm {
+  min-height: 0;
+}
+
+.tr-hero--calm .tr-hero__title {
+  font-size: var(--fs-h1);
+  color: var(--hero-muted);
+}
+
+/* Состояния без главного действия (отдых, сделано) ведут внутрь ссылкой,
+   а не кнопкой: кнопка обещает действие, которого сейчас нет. */
+.tr-hero__link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  min-height: var(--tap-min);
+  margin-top: var(--s2);
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--hero-text);
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
   text-transform: uppercase;
-  letter-spacing: .03em;
-  background: var(--surface-2);
-  color: var(--muted);
+  letter-spacing: var(--ls-btn);
+  cursor: pointer;
 }
 
-.tr-day-badge--today {
-  background: rgba(47, 111, 78, .18);
-  color: var(--cta);
+.tr-hero__link svg {
+  color: var(--accent);
 }
 
-.tr-day-badge--rest {
-  background: rgba(91, 97, 87, .16);
-  color: var(--muted);
+/* Вторая ссылка под кнопкой («Изменить настройки») — на той же строке, что
+   и кнопка, она бы спорила с главным действием; под ней читается как
+   второстепенная. */
+.tr-hero__btn + .tr-hero__link {
+  margin-top: var(--s1);
 }
 
-.tr-day-badge--progress {
-  background: var(--cta);
-  color: var(--on-accent);
+/* ---------- Упражнения дня под тёмным блоком ----------
+   Строки: номер сжатым шрифтом, название, цель «3×8–12 · 14 кг» справа. */
+.tr-day-list {
+  padding-top: var(--s3);
+  padding-bottom: var(--s2);
 }
 
-/* Превью первых упражнений дня. */
-.tr-ex-preview {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(220, 224, 214, .5);
-}
-
-.tr-ex-preview__item {
+.tr-day-list__row {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  padding: 6px 0;
-  font-size: 14px;
+  align-items: center;
+  gap: var(--s3);
+  min-height: var(--tap-min);
+  padding: var(--s1) 0;
+  border-top: 1px solid var(--border);
 }
 
-.tr-ex-preview__name {
-  flex: 1;
+.tr-day-list__row:first-of-type {
+  border-top: none;
+}
+
+.tr-day-list__num {
+  flex: 0 0 24px;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+  color: var(--accent-text);
+  text-align: center;
+}
+
+.tr-day-list__name {
+  flex: 1 1 auto;
   min-width: 0;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-heading);
+}
+
+.tr-day-list__meta {
+  flex: 0 0 auto;
+  font-size: var(--fs-h3);
+  color: var(--text);
   white-space: nowrap;
 }
 
-.tr-ex-preview__meta {
-  flex-shrink: 0;
-  font-size: 12.5px;
-  color: var(--muted);
-}
-
-.tr-ex-preview__more {
-  font-size: 12.5px;
-  color: var(--muted);
-  padding-top: 4px;
-}
-
-/* Лента недели Пн–Вс. */
+/* ---------- Лента недели Пн–Вс ---------- */
 .tr-week-strip {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 4px;
-  margin-bottom: 4px;
+  gap: var(--s1);
+  margin-top: var(--s3);
 }
 
 .tr-week-day {
@@ -902,28 +918,33 @@
   gap: 5px;
   padding: 6px 0;
   border-radius: var(--radius-sm);
-  font-size: 11px;
   color: var(--muted);
   text-align: center;
 }
 
 .tr-week-day__label {
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: .04em;
   line-height: 1;
 }
 
-/* Кружок с числом дня; статус меняет заливку/рамку. */
+/* Кружок с числом дня; статус меняет заливку/рамку. Сделанные дни —
+   сплошные оранжевые, запланированные — оранжевый контур. */
 .tr-week-day__dot {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border);
   background: var(--surface);
   color: var(--text);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--fs-xs);
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
   font-weight: var(--fw-bold);
   line-height: 1;
 }
@@ -934,12 +955,12 @@
 }
 
 .tr-week-day--planned .tr-week-day__dot {
-  border-color: var(--cta);
+  border-color: var(--accent);
 }
 
 .tr-week-day--done .tr-week-day__dot {
-  background: var(--cta);
-  border-color: var(--cta);
+  background: var(--accent);
+  border-color: var(--accent);
   color: var(--on-accent);
 }
 
@@ -949,19 +970,15 @@
 }
 
 .tr-week-day--today {
-  background: rgba(47, 111, 78, .12);
+  background: var(--accent-soft);
   color: var(--text);
 }
 
 .tr-week-day--today .tr-week-day__label {
-  color: var(--cta);
+  color: var(--accent-text);
 }
 
-.tr-week-day--today .tr-week-day__dot {
-  box-shadow: 0 0 0 2px rgba(47, 111, 78, .35);
-}
-
-/* Стрик. */
+/* ---------- Серия ---------- */
 .tr-streak {
   display: block;
 }
@@ -969,121 +986,128 @@
 .tr-streak__row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 14px;
-  font-weight: 600;
+  gap: var(--s3);
+  margin-top: var(--s2);
 }
 
 .tr-streak__icon {
   display: flex;
   flex-shrink: 0;
-  color: var(--warning);
+  color: var(--accent);
 }
 
+/* Серия — число с подписью: сжатый шрифт, как у всех чисел приложения. */
 .tr-streak__text {
   flex: 1;
   min-width: 0;
-  line-height: 1.35;
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
 }
 
 .tr-streak__sub {
   display: block;
-  font-size: 12.5px;
-  font-weight: 500;
+  margin-top: 2px;
+  font-family: var(--font-body);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
   color: var(--muted);
 }
 
 .tr-streak__bar {
   height: 8px;
   border-radius: 4px;
-  background: rgba(220, 224, 214, .55);
+  background: var(--surface-3);
   overflow: hidden;
-  margin-top: 10px;
+  margin-top: var(--s3);
 }
 
 .tr-streak__fill {
   height: 100%;
   border-radius: 4px;
-  background: var(--cta);
+  background: var(--accent);
   transition: width .35s ease;
 }
 
-/* Карточка «Питание сегодня» (ленивая загрузка). */
+/* ---------- Карточка «Питание сегодня» (ленивая загрузка) ---------- */
 .tr-nutrition-card {
   display: block;
 }
 
 .tr-nutrition-card__title {
-  font-size: 16px;
-  font-weight: 700;
-  margin-bottom: 8px;
+  font-size: var(--fs-h3);
+  margin-bottom: var(--s2);
 }
 
 .tr-nutrition-card__headline {
-  font-size: 14.5px;
-  font-weight: 600;
-  line-height: 1.45;
-  margin-bottom: 8px;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-normal);
+  margin-bottom: var(--s2);
 }
 
 .tr-nutrition-card__row {
-  font-size: 13.5px;
+  font-size: var(--fs-sm);
   line-height: 1.5;
   padding: 5px 0;
-  border-top: 1px solid rgba(220, 224, 214, .5);
+  border-top: 1px solid var(--border);
 }
 
 .tr-nutrition-card__label {
-  font-weight: 700;
-  color: var(--muted);
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: .03em;
   display: block;
+  font-family: var(--font-display);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-eyebrow);
 }
 
+/* Числа дня — сжатым шрифтом, чтобы «1 850» читалось цифрой, а не словом. */
 .tr-nutrition-card__numbers {
   display: flex;
   flex-wrap: wrap;
   gap: 6px 14px;
-  font-size: 12.5px;
+  font-size: var(--fs-xs);
   color: var(--muted);
-  margin-bottom: 8px;
+  margin-bottom: var(--s2);
 }
 
 .tr-nutrition-card__numbers b {
   color: var(--text);
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
 }
 
 .tr-nutrition-card .btn {
-  margin-top: 12px;
+  margin-top: var(--s3);
 }
 
 .tr-nutrition-card__muted {
-  font-size: 13px;
+  font-size: var(--fs-sm);
   color: var(--muted);
-  line-height: 1.45;
+  line-height: var(--lh-normal);
 }
 
 .tr-nutrition-card__retry {
-  margin-top: 8px;
+  margin-top: var(--s2);
   width: auto;
   min-height: 40px;
   padding: 0 14px;
-  font-size: 14px;
+  font-size: var(--fs-h3);
 }
 
-/* Баннер «Недельный разбор готов». */
+/* ---------- Баннер «Недельный разбор готов» ---------- */
 .tr-review-banner {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--s3);
   width: 100%;
   text-align: left;
-  /* Карточка = поверхность + волосяная граница и БЕЗ тени. Раньше здесь была
-     заливка var(--accent), то есть в новой палитре сплошной зелёный. */
-  border: 1px solid var(--border);
-  background: var(--surface);
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
   color: var(--text);
   cursor: pointer;
   transition: transform var(--dur-fast) var(--ease);
@@ -1102,86 +1126,116 @@
 .tr-review-banner__text {
   flex: 1;
   min-width: 0;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.35;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-heading);
 }
 
 .tr-review-banner__arrow {
   flex-shrink: 0;
   display: flex;
-  color: var(--muted);
+  color: var(--accent);
 }
 
-/* Пустое состояние «Программа не создана». */
-.tr-empty {
-  background: var(--surface);
-}
+/* ---------- Чипы состояния и фазы ---------- */
 
-.tr-empty .btn {
-  margin-top: 8px;
-}
-
-/* --- База для страницы «Программа» (детали дорисовывает F3) --- */
-
-.tr-program-head {
-  display: block;
-}
-
-.tr-program-head__title {
-  font-size: 20px;
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-
-.tr-program-head__meta {
-  font-size: 13.5px;
-  color: var(--muted);
-  line-height: 1.45;
-}
-
-.tr-program-head__summary {
-  margin-top: 10px;
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-/* Чип фазы периодизации. */
+/* Чип фазы периодизации. Мелкий текст на оранжевом не проходит по
+   контрасту, поэтому «пик» — оранжевая подложка и тёмно-оранжевый текст. */
 .tr-phase-chip {
   display: inline-flex;
   align-items: center;
   padding: 3px 9px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-display);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
   text-transform: uppercase;
-  letter-spacing: .03em;
+  letter-spacing: .04em;
   background: var(--surface-2);
   color: var(--muted);
 }
 
 .tr-phase-chip--base {
-  background: rgba(220, 224, 214, .6);
+  background: var(--surface-2);
 }
 
-.tr-phase-chip--build {
-  background: rgba(47, 111, 78, .18);
-  color: var(--cta);
-}
-
+.tr-phase-chip--build,
 .tr-phase-chip--peak {
-  background: var(--cta);
-  color: var(--on-accent);
+  background: var(--accent-soft);
+  color: var(--accent-text);
 }
 
 .tr-phase-chip--deload {
-  background: rgba(91, 97, 87, .16);
+  background: var(--surface-3);
   color: var(--muted);
 }
 
-/* День плана — аккордеон на .acc-fold. */
+/* Мышцы дня в «Программе» и на карточке упражнения — мелкие текстовые
+   чипы без рамки: они сообщают, а не переключают. */
+.tr-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tr-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  line-height: 1.4;
+}
+
+.tr-tag--accent {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+/* ---------- Шапка программы ---------- */
+.tr-program-head {
+  display: block;
+}
+
+.tr-program-head__title {
+  font-size: var(--fs-h2);
+  margin-bottom: var(--s1);
+}
+
+.tr-program-head__meta {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  line-height: var(--lh-normal);
+}
+
+.tr-program-head__summary {
+  margin-top: 10px;
+  font-size: var(--fs-body);
+  line-height: 1.5;
+}
+
+/* ---------- День плана — аккордеон на .acc-fold ---------- */
 .tr-plan-day {
   display: block;
+}
+
+/* Название дня — сжатым капсом: «ДЕНЬ 1 — ВЕРХ ТЕЛА» читается как
+   заголовок на табло, а не как строка списка. */
+.tr-plan-day .acc-fold__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  line-height: var(--lh-heading);
+}
+
+/* Сегодняшний день — оранжевая полоса слева, как у идущей тренировки. */
+.tr-plan-day--today {
+  box-shadow: inset 4px 0 0 var(--accent);
 }
 
 /* Статус дня перед названием: иконка вместо символа внутри строки. */
@@ -1199,16 +1253,23 @@
   color: var(--muted);
 }
 
+/* Мета и чипы мышц под названием — обычным шрифтом без капса. */
 .tr-plan-day__meta {
-  font-size: 12.5px;
-  color: var(--muted);
-  font-weight: 500;
   display: block;
   margin-top: 2px;
+  font-family: var(--font-body);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  text-transform: none;
+  color: var(--muted);
+}
+
+.tr-plan-day__tags {
+  margin-top: var(--s2);
 }
 
 .tr-plan-day--done .acc-fold__title {
-  color: var(--cta);
+  color: var(--muted);
 }
 
 .tr-plan-day--skipped .acc-fold__title {
@@ -1218,8 +1279,7 @@
 
 /* Строка упражнения в плане: «Жим гантелей лёжа · 3×8–12 · 14 кг · отдых 90 с».
    Это <button> (тап открывает карточку упражнения), поэтому стиль кнопки
-   браузера снимаем явно: без сброса строки рисовались серыми выпуклыми
-   плашками по центру, шириной по тексту, а не списком. */
+   браузера снимаем явно. */
 .tr-plan-item {
   display: flex;
   flex-direction: column;
@@ -1246,16 +1306,16 @@
 }
 
 .tr-plan-item__name {
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
 .tr-plan-item__meta {
-  font-size: 12.5px;
+  font-size: var(--fs-xs);
   color: var(--muted);
 }
 
 .tr-plan-item--aux .tr-plan-item__name {
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   color: var(--muted);
 }
 
@@ -1266,16 +1326,10 @@
   }
 }
 
-/* Карточка «Сегодня сделано» — зелёная кромка, как у выполненного дня. */
-.tr-today-card--done {
-  border-left: 4px solid var(--cta);
-}
-
 /* ============================================================
    САМОЧУВСТВИЕ (совет по восстановлению)
    ------------------------------------------------------------
-   Переехало сюда из удалённого раздела «Тренировки». Разметка
-   ответа переиспользует .rec-* из style.css; здесь — только
+   Разметка ответа переиспользует .rec-* из style.css; здесь — только
    шапка карточки, чипы зон и отступы.
    ============================================================ */
 .tr-recovery {
@@ -1288,7 +1342,6 @@
   gap: var(--s2);
   margin: 0 0 var(--s1);
   font-size: var(--fs-h3);
-  font-weight: var(--fw-bold);
 }
 
 .tr-recovery__title .icon {
@@ -1327,67 +1380,54 @@
 /* ============================================================
    PAYWALL РАЗДЕЛА (Trainer.paywall)
    ------------------------------------------------------------
-   Свой, а не общий App.paywall: тот печатает иконку как текст,
-   а здесь нужен App.icon и вторая, бесплатная кнопка.
+   Тёмный блок с фото подписки наверху, список возможностей карточкой
+   и две кнопки: оранжевая — оформить, контурная — заполнить анкету.
    ============================================================ */
 .tr-paywall {
   display: block;
   animation: fadeIn .28s ease;
 }
 
-.tr-paywall__card {
-  text-align: center;
-  padding: var(--s5) var(--s4);
-}
-
-.tr-paywall__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 64px;
-  height: 64px;
+.tr-paywall__hero {
   margin-bottom: var(--s3);
-  border-radius: 50%;
-  /* Вложенная поверхность внутри карточки: без границы и без тени. */
-  background: var(--accent-soft);
-  color: var(--accent);
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
 }
 
-.tr-paywall__title {
-  margin: 0 0 var(--s2);
-  font-size: var(--fs-h1);
-  font-weight: var(--fw-bold);
-  line-height: var(--lh-tight);
-}
-
-.tr-paywall__desc {
-  margin: 0 0 var(--s4);
-  font-size: var(--fs-body);
-  color: var(--muted);
-  line-height: var(--lh-normal);
+.tr-paywall__hero .hero__title {
+  font-size: var(--fs-display);
 }
 
 .tr-paywall__bullets {
-  margin: 0;
-  padding: 0;
+  margin: 0 0 var(--s3);
+  padding: var(--s2) var(--s4);
   list-style: none;
-  text-align: left;
 }
 
 .tr-paywall__bullet {
   display: flex;
   align-items: flex-start;
-  gap: var(--s2);
-  padding: var(--s2) 0;
+  gap: var(--s3);
+  padding: var(--s3) 0;
   border-top: 1px solid var(--border);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-body);
   line-height: var(--lh-normal);
 }
 
+.tr-paywall__bullet:first-child {
+  border-top: none;
+}
+
+/* Галочка в оранжевом круге: это список того, что даёт подписка. */
 .tr-paywall__tick {
   flex-shrink: 0;
-  margin-top: 1px;
-  color: var(--success);
+  box-sizing: content-box;
+  padding: 3px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 .tr-paywall__note {
@@ -1395,7 +1435,7 @@
   align-items: center;
   justify-content: center;
   gap: var(--s2);
-  margin: var(--s4) 0;
+  margin: var(--s3) 0;
   color: var(--muted);
   font-size: var(--fs-sm);
   font-weight: var(--fw-medium);

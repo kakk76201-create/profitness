@@ -332,10 +332,17 @@
     var meta = [];
     if (day.duration_min) meta.push(day.duration_min + " " + pick("мин", "min"));
     if (exs.length) meta.push(exs.length + " " + exWord(exs.length));
+    // Мышцы дня — чипами, а не через запятую в мете: их ищут глазами
+    // быстрее, чем читают.
     var muscles = day.focus_muscles || [];
-    if (muscles.length) meta.push(T.labels("muscle", muscles));
+    var tags = "";
+    for (var m = 0; m < muscles.length; m++) {
+      tags += '<span class="tr-tag">' + esc(T.label("muscle", muscles[m])) + "</span>";
+    }
 
     var cls = "card acc-fold tr-plan-day";
+    // Сегодняшний день — оранжевая полоса слева, как у идущей тренировки.
+    if (day.scheduled_date && day.scheduled_date === App.todayStr()) cls += " tr-plan-day--today";
     // Статус дня несёт иконка перед названием, а не символ внутри текста:
     // так он не попадает в переводимую строку и не ломает её при переносе.
     var mark = "";
@@ -360,6 +367,7 @@
       '<button type="button" class="acc-fold__head" data-fold>' +
       '<span class="acc-fold__title">' + mark + esc(title) +
       '<span class="tr-plan-day__meta">' + esc([when].concat(meta).filter(Boolean).join(" · ")) + "</span>" +
+      (tags ? '<span class="tr-tags tr-plan-day__tags">' + tags + "</span>" : "") +
       "</span>" +
       '<span class="acc-fold__chevron" aria-hidden="true">' + icon("chevron", { size: 18, rotate: 90 }) + "</span>" +
       "</button>" +
@@ -401,9 +409,11 @@
         "</div>"
       );
     }
+    // Пересборка и архив — контурные кнопки: главное действие раздела —
+    // тренироваться, а не пересобирать план.
     return (
       '<div class="tr-program-actions">' +
-      '<button type="button" class="btn btn-cta btn-block" id="trPgmRegen">' +
+      '<button type="button" class="btn btn-ghost btn-block" id="trPgmRegen">' +
       esc(pick("Архивировать и создать новую", "Archive and build a new one")) +
       "</button>" +
       '<button type="button" class="btn btn-ghost btn-block" id="trPgmArchive">' +
@@ -413,19 +423,19 @@
     );
   }
 
-  /** Экран «Программа не создана» (404 от сервера). */
+  /** Экран «Программа не создана» (404 от сервера) — тёмный блок с фото. */
   function emptyHtml() {
     return (
-      '<section class="card wk-empty tr-empty">' +
-      '<div class="wk-empty__icon" aria-hidden="true">' + icon("list", { size: 36 }) + "</div>" +
-      '<p class="wk-empty__title">' + esc(pick("Программа не создана", "No program yet")) + "</p>" +
-      '<p class="wk-empty__text">' +
+      '<section class="hero hero--img tr-hero" style="' + T.heroImg("empty-program.jpg") + '">' +
+      '<span class="eyebrow"><span>' + esc(pick("Программа", "Program")) + "</span></span>" +
+      '<h2 class="hero__title tr-hero__title">' + esc(pick("Программы пока нет", "No program yet")) + "</h2>" +
+      '<p class="hero__meta">' +
       esc(pick(
         "Соберём программу под вашу цель, уровень и оборудование — это займёт до минуты.",
         "Let’s build a program for your goal, level and equipment — it takes under a minute."
       )) +
       "</p>" +
-      '<button type="button" class="btn btn-cta btn-block" id="trPgmGenerate">' +
+      '<button type="button" class="btn btn--cta tr-hero__btn" id="trPgmGenerate">' +
       esc(pick("Собрать программу", "Build my program")) +
       "</button>" +
       "</section>"

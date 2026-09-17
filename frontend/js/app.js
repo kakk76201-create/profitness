@@ -93,7 +93,7 @@
 
     var map = {
       supplements: App.pick("Добавки", "Supplements"),
-      trainer: App.pick("Тренировка", "Workout"),
+      trainer: App.pick("Тренер", "Trainer"),
       today: App.pick("Сегодня", "Today"),
       diary: App.pick("Питание", "Nutrition"),
       account: App.pick("Профиль", "Profile")
@@ -1148,6 +1148,18 @@
    * @param {object} [opts] { icon, title, desc, bullets:[...] }
    *        icon — ИМЯ иконки из набора js/icons.js (не эмодзи).
    */
+  /**
+   * Инлайн-объявление фона для тёмного блока с фото: style="…".
+   * Путь делаем АБСОЛЮТНЫМ намеренно: относительный url() внутри custom
+   * property Chrome разрешает от адреса style.css (где стоит var()), а не
+   * от страницы — запрос уходил в css/img/… и получал 404.
+   * @param {string} file имя файла в frontend/img, например "hero-workout.jpg"
+   * @returns {string} "--hero-img:url(https://…/img/hero-workout.jpg)"
+   */
+  App.heroImg = function (file) {
+    return "--hero-img:url(" + new URL("img/" + file, document.baseURI).href + ")";
+  };
+
   App.paywall = function (viewEl, opts) {
     if (!viewEl) {
       return;
@@ -1199,9 +1211,11 @@
       priceLine = priceLine ? trial + " · " + priceLine : trial;
     }
 
+    // Пейволл — тот же тёмный блок с фотографией, что и карточка подписки
+    // в профиле: премиум везде выглядит одинаково.
     var html =
       '<section class="paywall">' +
-      '<div class="card paywall-card">' +
+      '<div class="paywall-card hero hero--img" style="' + App.heroImg("hero-premium.jpg") + '">' +
       '<div class="paywall-icon">' +
       // Страховка: если страница передала имя, которого нет в наборе (или
       // по недосмотру эмодзи), показываем замок, а не пустое место.
@@ -1515,6 +1529,26 @@
    * Критично при открытии из поиска/по ссылке (полноэкранный режим), иначе
    * контент уезжает под верхние элементы Telegram (Close/«…»).
    */
+  // Вне Telegram (обычный браузер) режим «как в системе» должен
+  // переключаться вместе с системной темой без перезагрузки.
+  try {
+    if (window.matchMedia) {
+      var mq = window.matchMedia("(prefers-color-scheme: dark)");
+      var onSystemTheme = function () {
+        if (App.theme && App.theme.mode() === "auto" && !App.tg) {
+          App.theme.apply();
+        }
+      };
+      if (typeof mq.addEventListener === "function") {
+        mq.addEventListener("change", onSystemTheme);
+      } else if (typeof mq.addListener === "function") {
+        mq.addListener(onSystemTheme);
+      }
+    }
+  } catch (e) {
+    /* подписка на системную тему не критична */
+  }
+
   function applySafeArea() {
     if (!App.tg) return;
     try {
@@ -1534,6 +1568,119 @@
    * Применяет тему Telegram к CSS-переменным (если данные доступны).
    * Делается мягко: при отсутствии данных просто используется дизайн по умолчанию.
    */
+  /* =====================================================================
+   *  ТЕМА: светлая (белый и оранжевый) и тёмная (чёрный, серый, оранжевый)
+   *
+   *  Режимы: "auto" — как в Telegram (а вне его — как в системе), "light",
+   *  "dark". Выбор хранится в localStorage и переживает перезапуск.
+   *  Первичная установка темы происходит ещё в <head> index.html, до первой
+   *  отрисовки: иначе тёмная тема начиналась бы с белой вспышки.
+   * ===================================================================== */
+
+  var THEME_KEY = "fu-theme";
+
+  /** Прочитать сохранённый режим. Приватный режим браузера может запретить. */
+  function readThemeMode() {
+    try {
+      var v = localStorage.getItem(THEME_KEY);
+      return v === "light" || v === "dark" ? v : "auto";
+    } catch (e) {
+      return "auto";
+    }
+  }
+
+  /** Какая тема должна быть сейчас: учитываем Telegram, затем систему. */
+  function resolveTheme(mode) {
+    if (mode === "light" || mode === "dark") {
+      return mode;
+    }
+    if (App.tg && App.tg.colorScheme) {
+      return App.tg.colorScheme === "dark" ? "dark" : "light";
+    }
+    try {
+      if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        return "dark";
+      }
+    } catch (e) {
+      /* matchMedia может отсутствовать */
+    }
+    return "light";
+  }
+
+  /** Цвет фона текущей темы — им же красим системные области Telegram. */
+  function themeBgColor() {
+    try {
+      var v = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+      if (/^#[0-9a-f]{3,8}$/i.test(v)) {
+        return v;
+      }
+    } catch (e) {
+      /* ниже фолбэк */
+    }
+    return document.documentElement.getAttribute("data-theme") === "dark" ? "#0B0B0D" : "#F4F4F5";
+  }
+
+  App.theme = {
+    /** Текущий режим: "auto" | "light" | "dark". */
+    mode: function () {
+      return readThemeMode();
+    },
+
+    /** Какая тема показана сейчас: "light" | "dark". */
+    current: function () {
+      return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+    },
+
+    /**
+     * Применить режим к документу и к системным областям Telegram.
+     * Вызывается при запуске, при смене выбора и при смене темы в Telegram.
+     */
+    apply: function () {
+      var theme = resolveTheme(readThemeMode());
+      document.documentElement.setAttribute("data-theme", theme);
+      try {
+        var meta = document.querySelector('meta[name="color-scheme"]');
+        if (meta) {
+          meta.setAttribute("content", theme);
+        }
+      } catch (e) {
+        /* не критично */
+      }
+      // Шапка и фон Telegram красятся под фон приложения, иначе над мини-
+      // приложением остаётся полоса чужого цвета.
+      try {
+        var bg = themeBgColor();
+        if (App.tg && typeof App.tg.setHeaderColor === "function") {
+          App.tg.setHeaderColor(bg);
+        }
+        if (App.tg && typeof App.tg.setBackgroundColor === "function") {
+          App.tg.setBackgroundColor(bg);
+        }
+        if (App.tg && typeof App.tg.setBottomBarColor === "function") {
+          App.tg.setBottomBarColor(bg);
+        }
+      } catch (e) {
+        /* старый клиент Telegram не знает этих методов */
+      }
+      return theme;
+    },
+
+    /** Сохранить выбор пользователя и сразу применить его. */
+    set: function (mode) {
+      var next = mode === "light" || mode === "dark" ? mode : "auto";
+      try {
+        if (next === "auto") {
+          localStorage.removeItem(THEME_KEY);
+        } else {
+          localStorage.setItem(THEME_KEY, next);
+        }
+      } catch (e) {
+        /* приватный режим: тема продержится до перезапуска */
+      }
+      return App.theme.apply();
+    }
+  };
+
   function applyTheme() {
     // Светлая пастельная тема: фиксируем схему через <meta name="color-scheme">,
     // чтобы вебвью не переключал элементы формы в тёмный режим. Добавляем тег,
@@ -1543,7 +1690,7 @@
       if (!meta) {
         meta = document.createElement("meta");
         meta.setAttribute("name", "color-scheme");
-        meta.setAttribute("content", "light");
+        meta.setAttribute("content", App.theme.current());
         var head = document.head || document.getElementsByTagName("head")[0];
         if (head) {
           head.appendChild(meta);
@@ -1557,17 +1704,21 @@
       return;
     }
 
-    // Красим шапку и фон Telegram под пастельный --bg (#FAF7F2), чтобы
-    // системная область над мини-приложением совпадала с дизайном.
+    // Тему и покраску системных областей держит App.theme.
+    App.theme.apply();
+
+    // Пользователь сменил тему прямо в Telegram — подхватываем на лету, но
+    // только если он не выбрал тему вручную в профиле.
     try {
-      if (typeof App.tg.setHeaderColor === "function") {
-        App.tg.setHeaderColor("#FAF7F2");
-      }
-      if (typeof App.tg.setBackgroundColor === "function") {
-        App.tg.setBackgroundColor("#FAF7F2");
+      if (typeof App.tg.onEvent === "function") {
+        App.tg.onEvent("themeChanged", function () {
+          if (App.theme.mode() === "auto") {
+            App.theme.apply();
+          }
+        });
       }
     } catch (e) {
-      /* цвета Telegram — не критично, игнорируем */
+      /* подписка не критична */
     }
 
     try {

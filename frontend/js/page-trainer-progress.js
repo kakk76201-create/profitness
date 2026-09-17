@@ -174,17 +174,29 @@
    *  РАЗМЕТКА: СВОДКА, МЫШЦЫ, ГРАФИК, РЕКОРДЫ
    * ===================================================================== */
 
-  /** Плитка сводки (.rep-stat). */
-  function statHtml(value, label, mod) {
+  /**
+   * Плитка ключевой цифры: число крупно сжатым шрифтом, единица отдельно
+   * и мельче (иначе «кг» растягивает число), подпись — надзаголовком.
+   * @param {object} o {value, unit, label, delta, mod}
+   */
+  function kpiHtml(o) {
     return (
-      '<div class="rep-stat' + (mod ? " " + mod : "") + '">' +
-      '<span class="rep-stat__value">' + esc(value) + "</span>" +
-      '<span class="rep-stat__label">' + esc(label) + "</span>" +
+      '<div class="tr-kpi' + (o.mod ? " " + o.mod : "") + '">' +
+      '<span class="tr-kpi__value num">' + esc(o.value) +
+      (o.unit ? '<span class="tr-kpi__unit">' + esc(o.unit) + "</span>" : "") +
+      "</span>" +
+      '<span class="tr-kpi__label">' + esc(o.label) + "</span>" +
+      (o.delta ? '<span class="tr-kpi__delta">' + esc(o.delta) + "</span>" : "") +
       "</div>"
     );
   }
 
-  /** Сводка: стрик, тренировки за 4 недели, объём и подходы этой недели. */
+  /** Число с разделителем тысяч без единицы: «3 200». */
+  function fmtThousands(v) {
+    return String(Math.round(Number(v) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  }
+
+  /** Сводка: серия, тренировки за 4 недели, тоннаж и подходы этой недели. */
   function summaryHtml(d) {
     var streak = d.streak || {};
     var totals = d.totals_4w || {};
@@ -193,41 +205,54 @@
     var prev = wc.prev || {};
 
     var weeks = Number(streak.weeks) || 0;
-    var streakValue = weeks ? weeks + " " + weekWord(weeks) : "—";
-    var streakLabel = streak.this_week_goal
-      ? pick("Стрик · ", "Streak · ") +
-        (Number(streak.this_week_done) || 0) + pick(" из ", " of ") + streak.this_week_goal +
-        pick(" на неделе", " this week")
-      : pick("Стрик по неделям", "Weekly streak");
+    var streakDelta = streak.this_week_goal
+      ? (Number(streak.this_week_done) || 0) + pick(" из ", " of ") + streak.this_week_goal +
+        pick(" на этой неделе", " this week")
+      : "";
 
     var curVol = Number(cur.volume_kg) || 0;
     var prevVol = Number(prev.volume_kg) || 0;
     var mod = "";
-    var deltaText = pick("Объём этой недели", "Volume this week");
+    var deltaText = "";
     if (prevVol > 0) {
       var pct = Math.round(((curVol - prevVol) / prevVol) * 100);
       if (pct > 0) {
-        mod = "rep-stat--up";
-        deltaText = pick("Объём: +", "Volume: +") + pct + pick("% к прошлой", "% vs last week");
+        mod = "tr-kpi--up";
+        deltaText = "+" + pct + pick("% к прошлой неделе", "% vs last week");
       } else if (pct < 0) {
-        mod = "rep-stat--down";
-        deltaText = pick("Объём: ", "Volume: ") + pct + pick("% к прошлой", "% vs last week");
+        mod = "tr-kpi--down";
+        deltaText = pct + pick("% к прошлой неделе", "% vs last week");
       } else {
-        deltaText = pick("Объём как на прошлой", "Volume same as last week");
+        deltaText = pick("Как на прошлой неделе", "Same as last week");
       }
     }
 
     return (
       '<section class="card tr-progress-summary">' +
-      '<h3 class="rep-stats-title">' + esc(pick("Сводка", "Summary")) + "</h3>" +
-      '<div class="rep-stats">' +
-      statHtml(streakValue, streakLabel) +
-      statHtml(App.fmt(totals.sessions || 0), pick("Тренировок за 4 недели", "Workouts in 4 weeks")) +
-      statHtml(fmtVolume(curVol), deltaText, mod) +
-      statHtml(
-        App.fmt(cur.sets || 0) + " / " + App.fmt(cur.minutes || 0) + " " + pick("мин", "min"),
-        pick("Подходы и минуты недели", "Sets and minutes this week")
-      ) +
+      '<span class="eyebrow">' + esc(pick("Сводка", "Summary")) + "</span>" +
+      '<div class="tr-kpi-grid">' +
+      kpiHtml({
+        value: weeks ? String(weeks) : "—",
+        unit: weeks ? weekWord(weeks) : "",
+        label: pick("Серия недель", "Week streak"),
+        delta: streakDelta
+      }) +
+      kpiHtml({
+        value: App.fmt(totals.sessions || 0),
+        label: pick("Тренировок за 4 недели", "Workouts in 4 weeks")
+      }) +
+      kpiHtml({
+        value: fmtThousands(curVol),
+        unit: pick("кг", "kg"),
+        label: pick("Тоннаж недели", "Weekly tonnage"),
+        delta: deltaText,
+        mod: mod
+      }) +
+      kpiHtml({
+        value: App.fmt(cur.sets || 0),
+        unit: App.fmt(cur.minutes || 0) + " " + pick("мин", "min"),
+        label: pick("Подходов за неделю", "Sets this week")
+      }) +
       "</div>" +
       "</section>"
     );
@@ -536,7 +561,8 @@
     }
     if (ch.type === "swap") {
       var newName = T.exName({ name_ru: ch.new_exercise_name_ru, name_en: ch.new_exercise_name_en });
-      return (name || "?") + " → " + (newName || ch.new_slug || "?");
+      // Без стрелки-пиктограммы: текст уходит в esc(), и иконку туда не вставить.
+      return (name || "?") + ": " + pick("заменить на ", "swap for ") + (newName || ch.new_slug || "?");
     }
     if (ch.type === "rest_sec") {
       return (name ? name + ": " : "") + pick("отдых ", "rest ") + T.fmtNum(value) + " " + pick("с", "s");

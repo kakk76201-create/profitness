@@ -33,11 +33,11 @@ html {
 }
 
 body {
-  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-body);
   background: var(--bg);
   color: var(--text);
-  line-height: 1.45;
-  font-size: 16px;
+  line-height: var(--lh-normal);
+  font-size: var(--fs-body);
   /* Поддержка стабильной высоты вьюпорта Telegram */
   min-height: 100vh;
   min-height: var(--tg-viewport-stable-height, 100vh);
@@ -141,10 +141,23 @@ html.is-pointer [role="button"]:focus {
 /* ============================================================
    ТИПОГРАФИКА И ЗАГОЛОВКИ СТРАНИЦ
    ============================================================ */
+/* Заголовки набраны сжатым гротеском. Он уже сам по себе читается как
+   спортивная графика, а на узком экране даёт запас ширины: длинные русские
+   слова помещаются в строку там, где обычный гротеск их переносил.
+   Верхний регистр даём только h1 и h2 — это короткие названия разделов;
+   h3 часто стоит в карточках рядом с обычным текстом, и капсом он бы
+   выглядел криком. */
 h1, h2, h3 {
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-weight: var(--fw-bold);
   color: var(--text);
-  line-height: 1.25;
+  line-height: var(--lh-heading);
+  letter-spacing: .01em;
+}
+
+h1, h2 {
+  text-transform: uppercase;
+  line-height: var(--lh-tight);
 }
 
 /* Шапка страницы (page-head) — у scan-страницы */
@@ -153,11 +166,86 @@ h1, h2, h3 {
 }
 
 /* Главный заголовок страницы: page-title (scan) и page__title (diary) */
+/* Заголовок экрана набран сжатым шрифтом в верхнем регистре: это главный
+   приём спортивного оформления — крупно, плотно, как на табло. Сжатый
+   рисунок позволяет ставить длинные русские слова («ТРЕНИРОВКА») большим
+   кеглем, не перенося строку на узком экране. */
 .page-title,
 .page__title {
-  font-size: 24px;
-  font-weight: 700;
-  margin-bottom: 8px;
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+  text-transform: uppercase;
+  letter-spacing: .01em;
+  margin-bottom: var(--s2);
+}
+
+/* Надзаголовок секции: мелкий верхний регистр с разрядкой. Отделяет блоки
+   без лишних линий и рамок. */
+.eyebrow {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-eyebrow);
+  color: var(--muted);
+}
+
+/* Крупное число: остаток калорий, вес, таймер, рабочий вес. Моноширинные
+   цифры, чтобы значения не «прыгали» при пересчёте. */
+.num {
+  font-family: var(--font-display);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+/* ============================================================
+   ТЁМНЫЙ БЛОК (.hero)
+   Плотный тёмный прямоугольник с белым заголовком и оранжевым
+   акцентом — в обеих темах. Именно он задаёт спортивный характер
+   и отделяет главное действие от остального экрана.
+   Фоновое изображение подставляется переменной --hero-img;
+   поверх него лежит затемнение, иначе белый текст не читается.
+   ============================================================ */
+.hero {
+  position: relative;
+  overflow: hidden;
+  padding: var(--s5);
+  border-radius: var(--radius-xl);
+  background-color: var(--hero);
+  color: var(--hero-text);
+}
+
+.hero--img {
+  background-image:
+    linear-gradient(180deg, rgba(0, 0, 0, .18) 0%, rgba(0, 0, 0, .74) 100%),
+    var(--hero-img, none);
+  background-size: cover;
+  background-position: center;
+}
+
+.hero .eyebrow,
+.hero__meta {
+  color: var(--hero-muted);
+}
+
+.hero__title {
+  margin: var(--s2) 0 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+  text-transform: uppercase;
+  color: var(--hero-text);
+}
+
+.hero__meta {
+  margin: var(--s2) 0 0;
+  font-size: var(--fs-sm);
 }
 
 /* page__title в дневнике стоит над датабаром — даём чуть больше отступа */
@@ -167,9 +255,9 @@ h1, h2, h3 {
 
 /* Подзаголовок страницы (page-subtitle) */
 .page-subtitle {
-  font-size: 14px;
+  font-size: var(--fs-body);
   color: var(--muted);
-  line-height: 1.5;
+  line-height: var(--lh-normal);
 }
 
 /* ============================================================
@@ -204,14 +292,20 @@ h1, h2, h3 {
   justify-content: center;
   gap: 8px;
   width: 100%;
-  min-height: 48px;
+  min-height: 52px;
   padding: 0 var(--s4);
   border: none;
   border-radius: var(--radius);
   background: var(--surface-2);
   color: var(--text);
-  font-weight: var(--fw-semibold);
-  font-size: var(--fs-h3);
+  /* Сжатый шрифт в верхнем регистре: кнопка читается как команда, а не как
+     фраза. Кегль 20px жирным — это ещё и «крупный текст» по WCAG, поэтому
+     белая подпись на ярком оранжевом проходит по контрасту. */
+  font-family: var(--font-display);
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-btn);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-btn);
   cursor: pointer;
   user-select: none;
   transition: background .18s ease, transform .08s ease, opacity .18s ease,
@@ -265,13 +359,13 @@ h1, h2, h3 {
 
 .btn-ghost:active,
 .btn--ghost:active {
-  background: rgba(220, 224, 214, .25);
+  background: var(--surface-2);
 }
 
 /* Опасная кнопка (на будущее / удаление) */
 .btn-danger {
   background: var(--danger);
-  color: var(--white);
+  color: var(--on-accent);
 }
 
 .btn-danger:active {
@@ -317,27 +411,57 @@ h1, h2, h3 {
   transition: color .18s ease;
 }
 
+/* Значки сплошные: контурная линия на 24 пикселях выглядит бледной
+   «палкой», а силуэт читается мгновенно даже боковым зрением. */
 .tab-icon {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   transition: transform var(--dur-fast) var(--ease);
 }
 
+/* Прорези внутри силуэта (перемычка таблетки) красятся цветом панели,
+   поэтому одинаково работают в светлой и тёмной теме. */
+.tab-icon__cut {
+  fill: var(--surface);
+}
+
 .tab-label {
-  font-size: var(--fs-2xs);
-  font-weight: var(--fw-medium);
-  letter-spacing: .01em;
+  font-family: var(--font-display);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  text-transform: uppercase;
+  letter-spacing: .03em;
 }
 
 /* Активная вкладка: цвет действия и более плотная подпись.
    Иконка не «подпрыгивает» и не меняет размер — прыжок при переключении
    вкладок читается как дефект отрисовки. */
+.tab {
+  position: relative;
+}
+
 .tab.active {
   color: var(--accent);
 }
 
 .tab.active .tab-label {
-  font-weight: var(--fw-semibold);
+  font-weight: var(--fw-bold);
+}
+
+/* Оранжевая черта сверху у активной вкладки: цвет значка сам по себе на
+   маленьком силуэте заметен слабо, а черта видна сразу.
+   Центральную вкладку исключаем: её ::before — распорка на месте иконки,
+   и превращать её в черту нельзя, иначе подпись «Сегодня» съедет вверх. */
+.tab:not(.tab-home).active::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 30px;
+  height: 3px;
+  margin-left: -15px;
+  border-radius: 0 0 3px 3px;
+  background: var(--accent);
 }
 
 .tab:active .tab-icon {
@@ -470,7 +594,7 @@ body.is-task-screen #view {
   flex: 1 1 calc(50% - 4px);
   min-height: 44px;
   padding: 0 12px;
-  border: 1.5px solid var(--accent);
+  border: 1.5px solid var(--border-strong);
   border-radius: 12px;
   background: var(--white);
   color: var(--text);
@@ -489,7 +613,7 @@ body.is-task-screen #view {
 .meal-chip.is-active {
   background: var(--cta);
   border-color: var(--cta);
-  color: var(--white);
+  color: var(--on-accent);
 }
 
 /* --- Карточка ошибки сканирования --- */
@@ -546,7 +670,7 @@ body.is-task-screen #view {
 .ai-debug__pre {
   margin: 0;
   padding: 12px 14px;
-  border-top: 1px solid var(--accent);
+  border-top: 1px solid var(--border);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
   line-height: 1.5;
@@ -667,7 +791,7 @@ body.is-task-screen #view {
   align-items: center;
   gap: 10px;
   padding: 10px 0;
-  border-top: 1px solid rgba(23, 26, 22, .08);
+  border-top: 1px solid var(--border);
 }
 
 .diary-entry:first-child {
@@ -721,7 +845,7 @@ body.is-task-screen #view {
 }
 
 .diary-entry__del:active {
-  background: rgba(192, 57, 43, .15);
+  background: var(--danger-soft);
   transform: scale(.92);
 }
 
@@ -904,7 +1028,7 @@ body.is-task-screen #view {
   align-items: center;
   justify-content: center;
   font-size: 30px;
-  color: var(--white);
+  color: var(--on-accent);
   background: var(--cta);
 }
 
@@ -958,7 +1082,7 @@ body.is-task-screen #view {
   width: 100%;
   min-height: 52px;
   padding: 0 14px;
-  border: 1.5px solid var(--accent);
+  border: 1.5px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--white);
   color: var(--text);
@@ -968,14 +1092,14 @@ body.is-task-screen #view {
 
 .field__input:focus {
   border-color: var(--cta);
-  box-shadow: 0 0 0 3px rgba(47, 111, 78, .18);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 /* Стилизованная стрелка для select-полей */
 select.field__input {
   appearance: none;
   -webkit-appearance: none;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%238A8178' d='M1 1l5 5 5-5'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%238A8A93' d='M1 1l5 5 5-5'/></svg>");
   background-repeat: no-repeat;
   background-position: right 16px center;
   padding-right: 38px;
@@ -1048,7 +1172,7 @@ select.field__input {
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(255, 255, 255, .45),
+    var(--surface),
     transparent
   );
   animation: shimmer 1.3s infinite;
@@ -1117,7 +1241,7 @@ select.field__input {
   display: none;
   align-items: center;
   justify-content: center;
-  background: rgba(23, 26, 22, .35);
+  background: var(--overlay);
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
 }
@@ -1132,7 +1256,7 @@ select.field__input {
 .spinner {
   width: 48px;
   height: 48px;
-  border: 4px solid rgba(255, 255, 255, .5);
+  border: 4px solid var(--surface);
   border-top-color: var(--cta);
   border-radius: 50%;
   animation: spin .8s linear infinite;
@@ -1147,8 +1271,8 @@ select.field__input {
   display: inline-block;
   width: 18px;
   height: 18px;
-  border: 2.5px solid rgba(255, 255, 255, .5);
-  border-top-color: var(--white);
+  border: 2.5px solid var(--surface);
+  border-top-color: var(--on-accent);
   border-radius: 50%;
   animation: spin .8s linear infinite;
   vertical-align: middle;
@@ -1170,7 +1294,7 @@ select.field__input {
   padding: 12px 18px;
   border-radius: 12px;
   background: var(--text);
-  color: var(--white);
+  color: var(--bg);
   font-size: 14px;
   font-weight: 500;
   text-align: center;
@@ -1257,12 +1381,12 @@ select.field__input {
   position: relative;
 }
 
-/* Распорка на месте иконки: высота совпадает с .tab-icon (24px). */
+/* Распорка на месте иконки: высота совпадает с .tab-icon (26px). */
 .tab-home::before {
   content: "";
   display: block;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   flex-shrink: 0;
 }
 
@@ -1271,9 +1395,9 @@ select.field__input {
    свободной и стоит в общей строке. Приподнятый плавающий элемент,
    поэтому допустимы белое кольцо-обводка (отделяет круг от контента, проплывающего под ним) и
    --shadow-2.
-   НЕАКТИВНА: белая заливка, кольцо --accent, иконка --accent — центр не
-   «кричит» зелёным, пока человек в другом разделе.
-   АКТИВНА: заливка --accent, иконка --on-accent — сразу видно, где ты. */
+   Круг всегда залит оранжевым: это опорная точка всей панели и главная
+   кнопка приложения. Активность показываем не цветом заливки, а лёгким
+   увеличением и свечением — так центр не теряется среди серых значков. */
 .tab-home__disc {
   position: absolute;
   left: 50%;
@@ -1284,26 +1408,25 @@ select.field__input {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid var(--accent);
+  border: none;
   border-radius: var(--radius-pill);
-  background: var(--surface);
-  color: var(--accent);
-  box-shadow: 0 0 0 4px var(--surface), var(--shadow-2);
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: 0 0 0 5px var(--surface), var(--shadow-accent);
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
     transform var(--dur-fast) var(--ease);
 }
 
 .tab-home__icon {
   display: block;
-  width: 26px;
-  height: 26px;
+  width: 27px;
+  height: 27px;
 }
 
 /* Активное состояние. Префикс #tabbar нужен, чтобы правило гарантированно
    перебивало базовые .tab.active при любом порядке каскада. */
 #tabbar .tab-home.active .tab-home__disc {
-  background: var(--accent);
-  color: var(--on-accent);
+  transform: scale(1.06);
 }
 
 /* Нажатие: круг чуть «утапливается», подпись не двигается. */
@@ -1312,6 +1435,11 @@ select.field__input {
 }
 
 #tabbar .tab-home.active:active .tab-home__disc {
+  transform: scale(.94);
+}
+
+.tab-home:active .tab-home__disc,
+.tab-home.active:active .tab-home__disc {
   background: var(--accent-press);
 }
 
@@ -1485,7 +1613,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   align-items: center;
   gap: 10px;
   padding: 12px 0;
-  border-top: 1px solid rgba(23, 26, 22, .08);
+  border-top: 1px solid var(--border);
 }
 
 .sup-item:first-child {
@@ -1531,7 +1659,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   font-size: 11px;
   font-weight: 600;
   color: var(--cta);
-  background: rgba(47, 111, 78, .14);
+  background: var(--accent-soft);
   border-radius: 999px;
   padding: 2px 8px;
   white-space: nowrap;
@@ -1558,7 +1686,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
 }
 
 .sup-item__del:active {
-  background: rgba(192, 57, 43, .15);
+  background: var(--danger-soft);
   transform: scale(.92);
 }
 
@@ -1622,7 +1750,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   display: block;
   margin-top: 6px;
   padding-top: 16px;
-  border-top: 1px solid rgba(23, 26, 22, .08);
+  border-top: 1px solid var(--border);
 }
 
 .sup-form__title {
@@ -1671,7 +1799,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   padding: 10px 14px;
   border-radius: var(--radius-sm);
   border-left: 3px solid var(--danger);
-  background: rgba(192, 57, 43, .1);
+  background: var(--danger-soft);
   color: var(--text);
   font-size: 12px;
   line-height: 1.5;
@@ -1728,7 +1856,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
 .diary-actions__btn.is-active {
   background: var(--cta);
   border-color: var(--cta);
-  color: var(--white);
+  color: var(--on-accent);
 }
 
 /* Контейнер разворачиваемой панели (ручной ввод / рекомендации). */
@@ -1783,7 +1911,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   display: block;
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid rgba(23, 26, 22, .08);
+  border-top: 1px solid var(--border);
 }
 
 .recent__meal .field__label {
@@ -2064,7 +2192,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   font-size: 13px;
   font-weight: 600;
   /* База — нейтральная; модификаторами задаём цвет по уровню. */
-  background: rgba(91, 97, 87, .15);
+  background: var(--surface-3);
   color: var(--muted);
 }
 
@@ -2079,19 +2207,19 @@ html.is-pointer .tab-home:focus .tab-home__disc {
 
 /* Низкая уверенность — тёплый персиковый (тревожный, но мягкий). */
 .scan-edit-confidence--low {
-  background: rgba(192, 57, 43, .15);
+  background: var(--danger-soft);
   color: var(--danger);
 }
 
 /* Средняя уверенность — нейтральный бежевый акцент. */
 .scan-edit-confidence--medium {
-  background: rgba(220, 224, 214, .35);
+  background: var(--surface-2);
   color: var(--text);
 }
 
 /* Высокая уверенность — зелёный акцент. */
 .scan-edit-confidence--high {
-  background: rgba(47, 111, 78, .18);
+  background: var(--accent-soft);
   color: var(--cta);
 }
 
@@ -2197,7 +2325,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   gap: 6px;
   min-height: 40px;
   padding: 0 14px;
-  border: 1.5px solid var(--accent);
+  border: 1.5px solid var(--border-strong);
   border-radius: 999px;
   background: var(--white);
   color: var(--text);
@@ -2213,11 +2341,14 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   transform: scale(.96);
 }
 
-/* Выбранный чип (модификатор chip--active добавляется в JS). */
+/* Выбранный чип (модификатор chip--active добавляется в JS).
+   Не оранжевая заливка с белой подписью: белое на оранжевом при 14px
+   даёт 3.4:1 и не проходит для мелкого текста. Выбор показываем
+   оранжевой рамкой и подложкой, подпись — тёмным оранжевым. */
 .chip--active {
-  background: var(--cta);
-  border-color: var(--cta);
-  color: var(--white);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* ============================================================
@@ -2257,7 +2388,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   min-width: 40px;
   min-height: 44px;
   padding: 0 6px;
-  border: 1.5px solid var(--accent);
+  border: 1.5px solid var(--border-strong);
   border-radius: 12px;
   background: var(--white);
   color: var(--text);
@@ -2276,7 +2407,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
 .wk-rem-day.is-active {
   background: var(--cta);
   border-color: var(--cta);
-  color: var(--white);
+  color: var(--on-accent);
 }
 
 /* ============================================================
@@ -2387,7 +2518,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   align-items: center;
   gap: 10px;
   padding: 12px 0;
-  border-top: 1px solid rgba(23, 26, 22, .08);
+  border-top: 1px solid var(--border);
 }
 
 .sup-rem-item:first-child {
@@ -2451,7 +2582,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
 }
 
 .sup-rem-item__del:active {
-  background: rgba(192, 57, 43, .15);
+  background: var(--danger-soft);
   transform: scale(.92);
 }
 
@@ -2515,7 +2646,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   display: block;
   margin-top: 6px;
   padding-top: 16px;
-  border-top: 1px solid rgba(23, 26, 22, .08);
+  border-top: 1px solid var(--border);
 }
 
 .sup-rem-form__title {
@@ -2568,7 +2699,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  border: 1.5px solid var(--accent);
+  border: 1.5px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--white);
   cursor: pointer;
@@ -2577,7 +2708,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
 }
 
 .sup-rem-pick:active {
-  background: rgba(220, 224, 214, .2);
+  background: var(--surface-2);
 }
 
 .sup-rem-pick__input {
@@ -2640,7 +2771,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
 .sup-ai-chip--active {
   background: var(--cta);
   border-color: var(--cta);
-  color: var(--white);
+  color: var(--on-accent);
 }
 
 /* Поле свободного ввода цели улучшения. */
@@ -2732,7 +2863,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   background: var(--white);
   border-radius: var(--radius-sm);
   padding: 12px 14px;
-  box-shadow: 0 2px 8px rgba(23, 26, 22, .08);
+  box-shadow: var(--shadow-1);
 }
 
 .sup-ai-suggest__head {
@@ -2774,7 +2905,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   padding: 10px 14px;
   border-radius: var(--radius-sm);
   border-left: 3px solid var(--danger);
-  background: rgba(192, 57, 43, .1);
+  background: var(--danger-soft);
   color: var(--text);
   font-size: 12px;
   line-height: 1.5;
@@ -2926,14 +3057,15 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   animation: fadeIn .28s ease;
 }
 
-/* Карточка-превью фичи: крупная иконка, заголовок, описание, буллеты. */
+/* Блок-превью фичи — тёмный .hero с фото (см. App.paywall): крупная
+   иконка, заголовок, описание, буллеты. Все цвета — «геройские»: белый
+   текст, приглушённый белый, оранжевый акцент. */
 .paywall-card {
   text-align: center;
-  /* Чуть больше внутреннего воздуха, чем у обычной .card. */
-  padding: 24px 18px;
+  margin-bottom: var(--s3);
 }
 
-/* Крупная иконка фичи в кружке-подложке. */
+/* Крупная иконка фичи в кружке на тёмном. */
 .paywall-icon {
   display: inline-flex;
   align-items: center;
@@ -2942,7 +3074,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   height: 64px;
   margin: 0 auto var(--s3);
   border-radius: var(--radius-pill);
-  background: var(--accent-soft);
+  background: var(--hero-2);
   color: var(--accent);
 }
 
@@ -2952,21 +3084,25 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   margin: var(--s4) 0 var(--s3);
   font-size: var(--fs-body);
   font-weight: var(--fw-semibold);
-  color: var(--text);
+  color: var(--hero-text);
   text-align: center;
 }
 
 .paywall-title {
-  font-size: 21px;
-  font-weight: 700;
-  margin-bottom: 8px;
+  margin-bottom: var(--s2);
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+  text-transform: uppercase;
+  color: var(--hero-text);
 }
 
 .paywall-desc {
-  font-size: 14px;
-  color: var(--muted);
-  line-height: 1.5;
-  margin-bottom: 16px;
+  font-size: var(--fs-body);
+  color: var(--hero-muted);
+  line-height: var(--lh-normal);
+  margin-bottom: var(--s4);
 }
 
 /* Список буллетов ценности — выровнен по левому краю внутри карточки. */
@@ -2987,7 +3123,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   gap: 10px;
 }
 
-/* Маркер-галочка в зелёном кружке. */
+/* Маркер-галочка в оранжевом кружке на тёмном. */
 .paywall-bullet-mark {
   display: inline-flex;
   align-items: center;
@@ -2997,17 +3133,15 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   height: 22px;
   margin-top: 1px;
   border-radius: 50%;
-  background: rgba(47, 111, 78, .16);
-  color: var(--cta);
-  font-size: 13px;
-  font-weight: 700;
+  background: var(--accent);
+  color: var(--on-accent);
   line-height: 1;
 }
 
 .paywall-bullet-text {
-  font-size: 14px;
-  color: var(--text);
-  line-height: 1.45;
+  font-size: var(--fs-sm);
+  color: var(--hero-text);
+  line-height: var(--lh-normal);
 }
 
 /* Плашка-замок «🔒 Недоступно — нужна подписка»: мягкий персиковый фон,
@@ -3066,7 +3200,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
 }
 
 .sub-back:active {
-  background: rgba(220, 224, 214, .25);
+  background: var(--surface-2);
   color: var(--text);
   transform: scale(.98);
 }
@@ -3180,7 +3314,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   height: 22px;
   margin-top: 1px;
   border-radius: 50%;
-  background: rgba(47, 111, 78, .16);
+  background: var(--accent-soft);
   color: var(--cta);
   font-size: 13px;
   font-weight: 700;
@@ -3221,12 +3355,6 @@ html.is-pointer .tab-home:focus .tab-home__disc {
 /* Карточка одного тарифа. */
 .sub-tariff {
   background: var(--white);
-}
-
-/* Рекомендованный тариф (есть бейдж) — выделяем зелёной рамкой и подложкой. */
-.sub-tariff[data-tariff="yearly"] {
-  border: 2px solid var(--accent);
-  box-shadow: none;
 }
 
 /* Шапка тарифа: иконка | название+примечание | цена. */
@@ -3273,7 +3401,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   align-items: center;
   font-size: 11px;
   font-weight: 700;
-  color: var(--white);
+  color: var(--on-accent);
   background: var(--cta);
   border-radius: 999px;
   padding: 2px 9px;
@@ -3351,7 +3479,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
 .scan-counter--premium {
   color: var(--cta);
   font-weight: 600;
-  background: rgba(47, 111, 78, .12);
+  background: var(--accent-soft);
 }
 
 /* Бесплатно: остаток сканирований — нейтральный приглушённый. */
@@ -3364,7 +3492,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
 .scan-counter--empty {
   color: var(--danger);
   font-weight: 600;
-  background: rgba(192, 57, 43, .1);
+  background: var(--danger-soft);
 }
 
 /* Заблокированная (платная) кнопка для free-пользователя: приглушаем,
@@ -3493,7 +3621,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   display: flex;
   gap: 8px;
   margin-top: 10px;
-  background: rgba(220, 224, 214, .18);
+  background: var(--surface-2);
   border-radius: 14px;
   padding: 4px;
 }
@@ -3518,8 +3646,8 @@ html.is-pointer .tab-home:focus .tab-home__disc {
 /* Активный язык — заметная «пилюля» в зелёном CTA-цвете. */
 .acc-lang__btn--active {
   background: var(--cta);
-  color: var(--white);
-  box-shadow: 0 4px 12px rgba(47, 111, 78, .28);
+  color: var(--on-accent);
+  box-shadow: var(--shadow-1);
 }
 
 /* ============================================================
@@ -3573,7 +3701,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   margin: 0 auto 16px;
   border-radius: 50%;
   /* Мягкая персиковая подложка — «горит» во время записи. */
-  background: rgba(192, 57, 43, .12);
+  background: var(--danger-soft);
 }
 
 /* Пульсирующее кольцо вокруг микрофона (расходящаяся волна). */
@@ -3581,7 +3709,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: rgba(192, 57, 43, .35);
+  background: var(--danger-soft);
   /* Бесконечная пульсация — визуальный признак активной записи. */
   animation: scanVoicePulse 1.6s ease-out infinite;
 }
@@ -3763,7 +3891,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
 }
 
 .scan-voice-item__remove:active {
-  background: rgba(192, 57, 43, .15);
+  background: var(--danger-soft);
   transform: scale(.92);
 }
 
@@ -3909,13 +4037,13 @@ html.is-pointer .tab-home:focus .tab-home__disc {
 
 @keyframes scan-cam-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(47, 111, 78, .55);
+    box-shadow: var(--shadow-1);
   }
   70% {
-    box-shadow: 0 0 0 7px rgba(47, 111, 78, 0);
+    box-shadow: 0 0 0 7px var(--accent-soft);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(47, 111, 78, 0);
+    box-shadow: var(--shadow-1);
   }
 }
 
@@ -4081,7 +4209,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
 /* Точки замеров. */
 .wt-dot {
   fill: var(--accent);
-  stroke: var(--white);
+  stroke: var(--surface);
   stroke-width: 1;
 }
 
@@ -4211,7 +4339,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
 
 /* Выделенная строка «Новая цель». */
 .adapt-stat--accent {
-  background: rgba(47, 111, 78, .16);
+  background: var(--accent-soft);
 }
 
 .adapt-stat__label {
@@ -4241,7 +4369,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
 
 .adapt-note--warn {
   color: var(--text);
-  background: rgba(192, 57, 43, .12);
+  background: var(--danger-soft);
 }
 
 /* ============================================================
@@ -4266,7 +4394,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
 .tpl-actions__btn.is-active {
   background: var(--cta);
   border-color: var(--cta);
-  color: var(--white);
+  color: var(--on-accent);
 }
 
 /* Заблокированная (free) кнопка шаблона: пунктир + лёгкое затемнение.
@@ -4463,7 +4591,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  background: rgba(47, 111, 78, .14);
+  background: var(--accent-soft);
   border: 1.5px solid var(--cta);
   border-radius: var(--radius-sm);
   padding: 14px 16px;
@@ -4757,7 +4885,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   flex-shrink: 0;
   min-height: 40px;
   padding: 0 12px;
-  border: 1.5px solid var(--accent);
+  border: 1.5px solid var(--border-strong);
   border-radius: 10px;
   background: var(--bg);
   color: var(--text);
@@ -4996,8 +5124,8 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   padding: 14px 16px;
   margin-bottom: 14px;
   /* Базовый (нейтральный) тон — переопределяется модификаторами фаз. */
-  background: rgba(163, 70, 103, .16);
-  border: 1.5px solid rgba(163, 70, 103, .55);
+  background: var(--surface-2);
+  border: 1.5px solid var(--data-cycle);
 }
 
 .cyc-phase__icon {
@@ -5027,23 +5155,23 @@ html.is-pointer .tab-home:focus .tab-home__disc {
 
 /* Оттенки по фазам (деликатные пастельные тона). */
 .cyc-phase--menstrual {
-  background: rgba(192, 57, 43, .13);
-  border-color: rgba(192, 57, 43, .5);
+  background: var(--danger-soft);
+  border-color: var(--danger);
 }
 
 .cyc-phase--follicular {
-  background: rgba(47, 111, 78, .16);
-  border-color: rgba(47, 111, 78, .55);
+  background: var(--accent-soft);
+  border-color: var(--accent);
 }
 
 .cyc-phase--ovulation {
-  background: rgba(154, 96, 0, .18);
-  border-color: rgba(154, 96, 0, .6);
+  background: var(--warning-soft);
+  border-color: var(--warning);
 }
 
 .cyc-phase--luteal {
-  background: rgba(107, 92, 158, .16);
-  border-color: rgba(107, 92, 158, .55);
+  background: var(--surface-2);
+  border-color: var(--data-neutral);
 }
 
 /* ---- Прогнозы (следующая менструация, овуляция, фертильное окно) ---- */
@@ -5328,8 +5456,8 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   height: 26px;
   border: none;
   border-radius: 50%;
-  background: rgba(23, 26, 22, .6);
-  color: var(--white);
+  background: var(--overlay);
+  color: var(--on-accent);
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
@@ -5384,7 +5512,7 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   left: 50%;
   width: 2px;
   background: var(--white);
-  box-shadow: 0 0 6px rgba(0, 0, 0, .4);
+  box-shadow: var(--shadow-1);
   z-index: 2;
   pointer-events: none;
   transform: translateX(-1px);
@@ -5560,7 +5688,7 @@ button.cal-cell:active {
 /* Выбранный день — залит CTA, белый текст (перебивает --today). */
 .cal-cell--selected {
   background: var(--cta);
-  color: var(--white);
+  color: var(--on-accent);
   font-weight: 700;
   box-shadow: none;
 }
@@ -5595,7 +5723,7 @@ button.cal-cell--selected:active {
   border: none;
   border-radius: 50%;
   background: var(--cta);
-  color: var(--white);
+  color: var(--on-accent);
   font-size: 33px;
   line-height: 1;
   font-weight: 400;
@@ -5603,7 +5731,7 @@ button.cal-cell--selected:active {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8px 22px rgba(23, 26, 22, .28);
+  box-shadow: var(--shadow-2);
   transition: background .18s ease, transform .1s ease, box-shadow .18s ease;
 }
 
@@ -5628,7 +5756,7 @@ button.cal-cell--selected:active {
 .diary-sheet__backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(23, 26, 22, .38);
+  background: var(--overlay);
   opacity: 0;
   transition: opacity .22s ease;
   /* Тап/перетаскивание по фону не должны прокручивать страницу под листом. */
@@ -5647,7 +5775,7 @@ button.cal-cell--selected:active {
   bottom: 0;
   background: var(--bg);
   border-radius: var(--radius) var(--radius) 0 0;
-  box-shadow: 0 -8px 28px rgba(23, 26, 22, .18);
+  box-shadow: var(--shadow-2);
   padding: 8px 16px calc(var(--safe-bottom) + 20px);
   transform: translateY(100%);
   transition: transform .24s cubic-bezier(.22, .61, .36, 1);
@@ -5845,7 +5973,7 @@ button.cal-cell--selected:active {
   border: none;
   border-radius: 50%;
   background: var(--cta);
-  color: var(--white);
+  color: var(--on-accent);
   font-size: 20px;
   line-height: 1;
   cursor: pointer;
@@ -5917,7 +6045,7 @@ button.cal-cell--selected:active {
 }
 
 .acc-fold__head:active {
-  background: rgba(23, 26, 22, .08);
+  background: var(--surface-2);
 }
 
 /* Заголовок — как у карточек (.acc-title). */
@@ -5999,14 +6127,14 @@ button.cal-cell--selected:active {
   border: none;
   border-radius: 50%;
   background: var(--cta);
-  color: var(--white);
+  color: var(--on-accent);
   font-size: 28px;
   line-height: 1;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8px 22px rgba(23, 26, 22, .28);
+  box-shadow: var(--shadow-2);
   transition: background .18s ease, transform .1s ease, box-shadow .18s ease;
 }
 
@@ -6028,7 +6156,7 @@ button.cal-cell--selected:active {
   border: none;
   border-radius: var(--radius-sm);
   background: var(--cta);
-  color: var(--white);
+  color: var(--on-accent);
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
@@ -6109,7 +6237,7 @@ button.cal-cell--selected:active {
 /* Цель достигнута — зелёная заливка, белый текст. */
 .hist-cal__cell--met {
   background: var(--cta);
-  color: var(--white);
+  color: var(--on-accent);
 }
 
 /* Залогировано, но цель не достигнута — приглушённый серый. */
@@ -6234,7 +6362,7 @@ body::-webkit-scrollbar-track {
 
 #view::-webkit-scrollbar-thumb,
 body::-webkit-scrollbar-thumb {
-  background: var(--accent);
+  background: var(--border-strong);
   border-radius: 8px;
 }
 
@@ -6356,7 +6484,7 @@ body::-webkit-scrollbar-thumb:hover {
   width: 100%;
   min-height: 52px;
   padding: 0 14px;
-  border: 1.5px solid var(--accent);
+  border: 1.5px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--white);
   color: var(--text);
@@ -6368,7 +6496,7 @@ body::-webkit-scrollbar-thumb:hover {
 select.onb-field__input {
   appearance: none;
   -webkit-appearance: none;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%238A8178' d='M1 1l5 5 5-5'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%238A8A93' d='M1 1l5 5 5-5'/></svg>");
   background-repeat: no-repeat;
   background-position: right 16px center;
   padding-right: 38px;
@@ -6389,7 +6517,7 @@ select.onb-field__input {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border: 1.5px solid var(--accent);
+  border: 1.5px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--white);
   color: var(--text);
@@ -6408,8 +6536,8 @@ select.onb-field__input {
 /* Выбранная кнопка пола — зелёная рамка/подсветка (--cta). */
 .onb-choice--on {
   border-color: var(--cta);
-  background: rgba(47, 111, 78, .12);
-  box-shadow: 0 0 0 3px rgba(47, 111, 78, .18);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 /* Ряд действий (обычно одна CTA + при необходимости «Назад»). */
@@ -6432,12 +6560,12 @@ select.onb-field__input {
   border: none;
   border-radius: 14px;
   background: var(--cta);
-  color: var(--white);
+  color: var(--on-accent);
   font-weight: 600;
   font-size: 16px;
   cursor: pointer;
   user-select: none;
-  box-shadow: 0 6px 16px rgba(47, 111, 78, .28);
+  box-shadow: var(--shadow-2);
   transition: background .18s ease, transform .08s ease, opacity .18s ease;
 }
 
@@ -6524,7 +6652,7 @@ select.onb-field__input {
   width: 100%;
   text-align: left;
   padding: 14px 16px;
-  border: 1.5px solid var(--accent);
+  border: 1.5px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--white);
   color: var(--text);
@@ -6533,8 +6661,8 @@ select.onb-field__input {
 }
 .onb-toggle--on {
   border-color: var(--cta);
-  background: rgba(47, 111, 78, .12);
-  box-shadow: 0 0 0 3px rgba(47, 111, 78, .16);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .onb-toggle__emoji {
   font-size: 26px;
@@ -6561,7 +6689,7 @@ select.onb-field__input {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  border: 2px solid var(--accent);
+  border: 2px solid var(--border-strong);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6572,7 +6700,7 @@ select.onb-field__input {
 .onb-toggle--on .onb-toggle__mark {
   border-color: var(--cta);
   background: var(--cta);
-  color: var(--white);
+  color: var(--on-accent);
 }
 
 /* ============================================================
@@ -6616,10 +6744,10 @@ select.onb-field__input {
   border: none;
   border-radius: 14px;
   background: var(--cta);
-  color: var(--white);
+  color: var(--on-accent);
   font-weight: 600;
   font-size: 16px;
-  box-shadow: 0 6px 16px rgba(47, 111, 78, .28);
+  box-shadow: var(--shadow-2);
 }
 
 /* Затвор — одна круглая кнопка на экране камеры (#scan-shutter, стили —
@@ -6695,7 +6823,7 @@ select.onb-field__input {
   box-shadow: none;
 }
 .btn--danger:active {
-  background: rgba(192, 57, 43, .12);
+  background: var(--danger-soft);
 }
 
 /* Пояснение над кнопкой удаления данных в листе настроек. */
@@ -6742,7 +6870,7 @@ select.onb-field__input {
   cursor: pointer;
 }
 .diary-entry:active {
-  background: rgba(220, 224, 214, .18);
+  background: var(--surface-2);
 }
 /* Кнопка удаления не должна наследовать «палец» строки. */
 .diary-entry__del {
@@ -6760,7 +6888,7 @@ select.onb-field__input {
 .rec-zone.is-active {
   background: var(--cta);
   border-color: var(--cta);
-  color: var(--white);
+  color: var(--on-accent);
 }
 
 /* --- Результат совета --- */
@@ -6773,8 +6901,8 @@ select.onb-field__input {
   font-size: 12px;
   font-weight: 700;
 }
-.rec-badge--ok { background: rgba(47, 111, 78, .18); color: var(--cta); }
-.rec-badge--warn { background: rgba(47, 111, 78, .18); color: #245A3F; }
+.rec-badge--ok { background: var(--success-soft); color: var(--success); }
+.rec-badge--warn { background: var(--warning-soft); color: var(--warning); }
 
 .rec-cause {
   margin: 10px 0 4px;
@@ -6810,7 +6938,7 @@ select.onb-field__input {
   padding: 10px 12px;
   border-radius: 12px;
   border: 1.5px solid var(--danger);
-  background: rgba(192, 57, 43, .07);
+  background: var(--danger-soft);
 }
 .rec-block--flags .rec-block__title { color: var(--danger); }
 
@@ -6873,7 +7001,7 @@ select.onb-field__input {
 }
 
 .fsearch__list {
-  border: 1px solid rgba(23, 26, 22, .12);
+  border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
   background: var(--white);
@@ -6889,14 +7017,14 @@ select.onb-field__input {
   width: 100%;
   padding: 9px 12px;
   border: none;
-  border-top: 1px solid rgba(23, 26, 22, .08);
+  border-top: 1px solid var(--border);
   background: transparent;
   text-align: left;
   cursor: pointer;
 }
 
 .fsearch__item:first-child { border-top: none; }
-.fsearch__item:active { background: rgba(220, 224, 214, .22); }
+.fsearch__item:active { background: var(--surface-2); }
 
 .fsearch__name {
   font-size: 14px;
@@ -6926,7 +7054,7 @@ select.onb-field__input {
   margin: 0 0 10px;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
-  background: rgba(47, 111, 78, .12);
+  background: var(--accent-soft);
   font-size: 13px;
   line-height: 1.45;
   color: var(--text);

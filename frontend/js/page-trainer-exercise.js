@@ -281,6 +281,7 @@
       '<span class="tr-lib-item__meta">' + esc(itemMeta(ex)) + "</span>" +
       "</span>" +
       '<span class="tr-lib-item__diff" aria-hidden="true">' + difficultyMark(ex.difficulty) + "</span>" +
+      '<span class="tr-lib-item__chev" aria-hidden="true">' + icon("chevron", { size: 18 }) + "</span>" +
       "</button>"
     );
   }
@@ -319,21 +320,22 @@
    *  РАЗМЕТКА: КАРТОЧКА УПРАЖНЕНИЯ
    * ===================================================================== */
 
-  /** Шапка карточки: название, мышцы, оборудование, сложность. */
+  /**
+   * Шапка карточки: мышцы и оборудование чипами, сложность, противопоказания.
+   * Название здесь не повторяем — оно уже стоит заголовком экрана.
+   */
   function exHeadHtml(ex) {
-    var meta = [];
-    if (ex.muscle_group) meta.push(T.label("muscle", ex.muscle_group));
-    if (ex.equipment) meta.push(T.label("equipment", ex.equipment));
-    if (ex.category) meta.push(T.label("category", ex.category));
-    if (ex.measure_type) meta.push(T.label("measure", ex.measure_type));
-
-    var secondary = "";
-    if (ex.secondary_muscles && ex.secondary_muscles.length) {
-      secondary =
-        '<p class="tr-ex-head__secondary">' +
-        esc(pick("Дополнительно: ", "Also works: ") + T.labels("muscle", ex.secondary_muscles)) +
-        "</p>";
+    // Целевая мышца — оранжевым чипом, вспомогательные и оборудование —
+    // нейтральными: главное отличается сразу.
+    var tags = "";
+    if (ex.muscle_group) {
+      tags += '<span class="tr-tag tr-tag--accent">' + esc(T.label("muscle", ex.muscle_group)) + "</span>";
     }
+    var secondary = ex.secondary_muscles || [];
+    for (var i = 0; i < secondary.length; i++) {
+      tags += '<span class="tr-tag">' + esc(T.label("muscle", secondary[i])) + "</span>";
+    }
+    if (ex.equipment) tags += '<span class="tr-tag">' + esc(T.label("equipment", ex.equipment)) + "</span>";
     var contra = "";
     if (ex.contraindications && ex.contraindications.length) {
       contra =
@@ -344,17 +346,23 @@
     }
     return (
       '<section class="card tr-ex-head">' +
-      '<h2 class="tr-ex-head__name">' + esc(T.exName(ex)) + "</h2>" +
-      '<p class="tr-ex-head__meta">' + esc(meta.join(" · ")) + "</p>" +
+      (tags ? '<div class="tr-tags tr-ex-head__tags">' + tags + "</div>" : "") +
       '<p class="tr-ex-head__diff">' +
       esc(pick("Сложность: ", "Difficulty: ")) +
       '<span aria-hidden="true">' + difficultyMark(ex.difficulty) + "</span>" +
       (ex.is_unilateral ? esc(" · " + pick("на одну сторону", "one side at a time")) : "") +
       "</p>" +
-      secondary +
       contra +
       "</section>"
     );
+  }
+
+  /** Подзаголовок карточки: тип · измерение (мышцы и оборудование — чипами в карточке). */
+  function detailSubtitle(ex) {
+    var parts = [];
+    if (ex.category) parts.push(T.label("category", ex.category));
+    if (ex.measure_type) parts.push(T.label("measure", ex.measure_type));
+    return parts.join(" · ");
   }
 
   /** Вкладки «Техника» / «История». */
@@ -782,7 +790,7 @@
     var ex = state.exercise;
     state.viewEl.innerHTML = shellHtml(
       ex ? T.exName(ex) : pick("Упражнение", "Exercise"),
-      ex ? itemMeta(ex) : "",
+      ex ? detailSubtitle(ex) : "",
       "dumbbell"
     );
     T.bindBack(state.viewEl, onDetailBack);

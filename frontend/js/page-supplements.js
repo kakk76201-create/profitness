@@ -327,6 +327,7 @@
   function aiCardHtml() {
     return (
       '<section class="card sup-ai-card">' +
+      '<span class="eyebrow sup-ai-card__eyebrow">' + esc(pick("Совет тренера", "Coach’s advice")) + "</span>" +
       '<h2 class="sup-ai-card__title">' + esc(pick("AI-советы по добавкам", "AI supplement advice")) + "</h2>" +
       '<p class="sup-ai-card__subtitle">' +
       esc(pick(
@@ -403,25 +404,33 @@
    */
   function supplementRowHtml(s) {
     // Собираем строку с деталями (дозировка / время), пропуская пустые.
-    var parts = [];
-    if (s.dosage) parts.push(esc(s.dosage));
-    if (s.intake_time) parts.push(esc(timeValue(s.intake_time)));
-    var meta = parts.join(" · ");
-
-    var reminder = s.reminder_enabled
-      ? '<span class="sup-item__badge">' +
+    // Дозировка — приглушённой строкой под названием, время приёма — чипом:
+    // время ищут взглядом чаще всего, и в общей строке «5 г · 08:00» оно
+    // терялось.
+    var meta = s.dosage ? '<span class="sup-item__meta">' + esc(s.dosage) + "</span>" : "";
+    var chips = "";
+    if (s.intake_time) {
+      chips +=
+        '<span class="sup-item__chip">' +
+        icon("clock", { size: 14 }) +
+        "<span>" + esc(timeValue(s.intake_time)) + "</span>" +
+        "</span>";
+    }
+    if (s.reminder_enabled) {
+      chips +=
+        '<span class="sup-item__chip sup-item__badge">' +
         icon("bell", { size: 14 }) +
         "<span>" +
         esc(pick("напоминание", "reminder")) +
-        "</span></span>"
-      : "";
+        "</span></span>";
+    }
 
     return (
       '<li class="sup-item" data-id="' + esc(s.id) + '">' +
       '<div class="sup-item__main">' +
       '<span class="sup-item__name">' + esc(s.name || pick("Без названия", "Untitled")) + "</span>" +
-      (meta ? '<span class="sup-item__meta">' + meta + "</span>" : "") +
-      reminder +
+      meta +
+      (chips ? '<span class="sup-item__chips">' + chips + "</span>" : "") +
       "</div>" +
       '<button class="sup-item__del" type="button" data-id="' + esc(s.id) + '" ' +
       'aria-label="' + esc(pick("Удалить добавку", "Delete supplement")) + '" ' +
@@ -1261,6 +1270,18 @@
           ),
           bullets: paywallBullets()
         });
+        // Пейволл — тот же тёмный блок с фотографией, что и карточка подписки
+        // в профиле: разметку рисует App.paywall, а фон и палитру задаём
+        // здесь, чтобы не трогать общий код.
+        // Путь абсолютный: относительный url() внутри custom property Chrome
+        // разрешает от адреса style.css, а не от страницы (уходил в 404).
+        var gateCard = byId("supGate") && byId("supGate").querySelector(".paywall-card");
+        if (gateCard) {
+          // .card задаёт background сокращённо и стирал бы фотографию блока.
+          gateCard.classList.remove("card");
+          gateCard.classList.add("hero", "hero--img");
+          gateCard.style.cssText += ";" + App.heroImg("hero-premium.jpg");
+        }
         App.scrollTop();
         return;
       }

@@ -33,14 +33,10 @@
   margin-bottom: var(--s5);
 }
 
-/* Надзаголовок группы: называет роль строк под ним, а не их содержимое. */
+/* Надзаголовок группы (.eyebrow): называет роль строк под ним, а не их
+   содержимое. Оформление — общее из style.css, здесь только отступы. */
 .acc-group__title {
   margin: 0 var(--s1) var(--s2);
-  font-size: var(--fs-2xs);
-  font-weight: var(--fw-semibold);
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  color: var(--muted);
 }
 
 /* Карточка-список: строки разделяются волосяной линией, а не зазором —
@@ -86,8 +82,9 @@
   background: var(--surface-2);
 }
 
-/* Иконка раздела на мягкой подложке — вложенный блок внутри карточки,
-   поэтому без границы и тени. */
+/* Иконка раздела в оранжевом кружке — вложенный блок внутри карточки,
+   поэтому без границы и тени. Цвет штриха — --accent-text: чистый оранжевый
+   на светлой подложке слишком бледен для тонкой линии. */
 .acc-sec__icon {
   display: inline-flex;
   align-items: center;
@@ -95,9 +92,9 @@
   flex-shrink: 0;
   width: 36px;
   height: 36px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill);
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* Закрытый раздел не притворяется активным: подложка нейтральная. */
@@ -115,8 +112,8 @@
 }
 
 .acc-sec__title {
-  font-size: var(--fs-h3);
-  font-weight: var(--fw-semibold);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-medium);
   color: var(--text);
 }
 
@@ -161,25 +158,110 @@
    ШАПКА ПРОФИЛЯ И КАРТОЧКА ПОДПИСКИ
    ============================================================ */
 
-/* Заглушка аватара: раньше кегль 30px держал эмодзи, теперь внутри SVG. */
+/* Шапка без карточки: имя набрано как заголовок экрана — сжатым шрифтом в
+   верхнем регистре, аватар в оранжевом кольце. Рамка вокруг «имени и
+   аватара» делала шапку ещё одной одинаковой карточкой в столбике. */
+.acc-header--compact {
+  gap: var(--s4);
+  margin-bottom: var(--s4);
+  padding: var(--s1) var(--s1) 0;
+}
+
+/* Кольцо 2px с зазором в цвет фона: кольцо не прилипает к фотографии. */
+.acc-header--compact .acc-avatar {
+  width: 56px;
+  height: 56px;
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+}
+
+.acc-header--compact .acc-name {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+  text-transform: uppercase;
+  letter-spacing: .01em;
+}
+
+.acc-header--compact .acc-username {
+  margin-top: var(--s1);
+  font-size: var(--fs-sm);
+}
+
+/* Заглушка аватара: мягкая подложка с оранжевым силуэтом. Сплошной оранжевый
+   круг сливался с оранжевым кольцом вокруг него. */
 .acc-avatar--empty {
-  color: var(--on-accent);
-  background: var(--accent);
-  font-size: 0;
-}
-
-/* Иконка и стрелка карточки подписки наследуют цвет, а не рисуются
-   эмодзи: прежний кегль 22px больше ничего не держит. */
-.acc-sub-card__icon {
+  color: var(--accent-text);
   background: var(--accent-soft);
-  color: var(--accent);
   font-size: 0;
 }
 
-.acc-sub-card__arrow {
-  display: inline-flex;
-  align-items: center;
-  font-size: 0;
+/* Карточка подписки — тёмный блок с фотографией (.hero.hero--img), вся
+   целиком кнопка. Сбрасываем то, что .acc-sub-card задаёт в style.css для
+   прежней строки «иконка · текст · шеврон». */
+.acc-sub-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  min-height: 176px;
+  margin-bottom: var(--s5);
+  padding: var(--s5);
+  justify-content: flex-end;
+  font: inherit;
+  text-align: left;
+}
+
+.acc-sub-card:active {
+  transform: scale(.99);
+}
+
+/* Модификатор премиума в style.css рисовал оранжевую полосу слева —
+   на тёмном блоке с фото она лишняя. */
+.acc-sub-card--premium {
+  border-left: none;
+}
+
+/* Надзаголовок «Подписка»: style.css ниже по файлу задаёт этому классу
+   16px/700 для прежней строки, поэтому повторяем оформление .eyebrow явно. */
+.acc-sub-card__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-eyebrow);
+  color: var(--hero-muted);
+}
+
+/* Статус — крупно, белым сжатым: это главная строка карточки. Селектор с
+   родителем перебивает оранжевую подсветку премиума из style.css. */
+.acc-sub-card .acc-sub-card__status {
+  display: block;
+  margin-top: var(--s2);
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+  text-transform: uppercase;
+  color: var(--hero-text);
+}
+
+/* Подпись действия — по размеру своего текста, а не во всю ширину:
+   на фотографии длинная оранжевая полоса перекрывала бы половину кадра. */
+.acc-sub-card__action {
+  width: auto;
+  min-width: 160px;
+  margin-top: var(--s4);
+  pointer-events: none;
+}
+
+/* Активная подписка — белый контур: действие вторично, доступ уже есть. */
+.acc-sub-card__action--ghost {
+  background: transparent;
+  border: 1.5px solid var(--hero-border);
+  color: var(--hero-text);
 }
 
 /* ============================================================
@@ -332,6 +414,33 @@
   flex-direction: column;
   gap: var(--s2);
   padding: 0 0 var(--s3) calc(32px + var(--s3));
+}
+
+/* ---------- Сегменты: язык и тема ---------- */
+
+/* Подписи сегментов — сжатым шрифтом в верхнем регистре, как у кнопок:
+   белое на оранжевом проходит по контрасту только крупным текстом. */
+.acc-lang__switch {
+  gap: var(--s1);
+  padding: var(--s1);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.acc-lang__btn {
+  border-radius: var(--radius-sm);
+  font-family: var(--font-display);
+  font-size: var(--fs-btn);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-btn);
+  color: var(--muted);
+}
+
+.acc-lang__btn--active {
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: none;
 }
 
 /* ---------- Тумблер ---------- */
@@ -582,21 +691,18 @@
 
 /* ============================================================
    ЭКРАН ПОДПИСКИ (sub-*)
+   Сверху — тёмный блок с фотографией и тремя обещаниями, ниже — тарифы
+   как переключатель и одна кнопка оплаты. Прежние правила sub-* из
+   style.css перекрываем здесь, не трогая общий файл.
    ============================================================ */
 
-/* Заголовок с иконкой: раньше эмодзи стоял прямо в тексте заголовка
-   и попадал в переводимую строку. */
-.sub-title {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
+/* Атрибут hidden должен побеждать display:flex у статуса из style.css. */
+.sub-page [hidden] {
+  display: none !important;
 }
 
-.sub-title__icon {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-  color: var(--accent);
+.sub-head {
+  margin-bottom: var(--s2);
 }
 
 .sub-back__arrow {
@@ -605,45 +711,530 @@
   font-size: 0;
 }
 
+/* ---------- Тёмный блок ---------- */
+
+.sub-hero {
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  margin-bottom: var(--s4);
+}
+
+.sub-hero__title {
+  font-size: var(--fs-display);
+}
+
+.sub-hero__points {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin: var(--s4) 0 0;
+  padding: 0;
+}
+
+.sub-hero__point {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--hero-text);
+}
+
+.sub-hero__point svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+/* ---------- Статус: активна / истекла / пробный период ---------- */
+
+.sub-status {
+  display: block;
+}
+
+.sub-status--premium,
+.sub-status--trial {
+  border-left: none;
+}
+
+.sub-status--expired {
+  border: 1px solid var(--border);
+  box-shadow: inset 4px 0 0 var(--warning);
+}
+
+.sub-status__icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 0;
+}
+
+.sub-status--expired .sub-status__icon {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.sub-status__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+}
+
+/* Дата окончания — мелкий оранжевый текст, поэтому --accent-text. */
+.sub-status--premium .sub-status__until {
+  color: var(--accent-text);
+}
+
+.sub-trial {
+  margin-top: var(--s3);
+}
+
+/* ---------- Тарифы ---------- */
+
+.sub-tariffs {
+  margin-bottom: var(--s4);
+}
+
+.sub-tariffs__eyebrow {
+  margin: 0 var(--s1) var(--s2);
+}
+
+.sub-tariffs__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin-bottom: var(--s3);
+}
+
+/* Карточка-переключатель: кнопка на всю ширину с раскладкой
+   «название · цена · метка». Границу держим 2px всегда, чтобы выбор
+   не сдвигал соседей на пиксель. */
+.sub-tariff {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  width: 100%;
+  margin: 0;
+  padding: var(--s3) var(--s4);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+
+.sub-tariff:active {
+  transform: scale(.99);
+}
+
+/* Годовой без выбора остаётся нейтральным: подсветка — только у выбранного,
+   иначе на экране две «главные» карточки. Селектор с атрибутом повторяет
+   правило из style.css, которое красило годовой оранжевой рамкой всегда. */
+.sub-card--best,
+.sub-tariff[data-tariff="yearly"] {
+  border-color: var(--border);
+}
+
+.sub-tariff.sub-tariff--on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.sub-tariff__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.sub-tariff__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: .01em;
+}
+
+/* Бейдж «Выгодно»: белое на оранжевом — только крупным сжатым текстом. */
+.sub-tariff__badge {
+  padding: 1px var(--s2);
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-btn);
+}
+
+.sub-tariff__note {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.sub-tariff__econ {
+  margin-top: 0;
+}
+
+.sub-tariff__permonth {
+  font-size: var(--fs-xs);
+}
+
+.sub-tariff__save {
+  background: var(--surface);
+  color: var(--accent-text);
+}
+
+.sub-tariff--on .sub-tariff__save {
+  background: var(--surface);
+}
+
+/* Цена — крупное число справа, срок под ним. */
+.sub-tariff__pricing {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.sub-tariff__price {
+  display: block;
+  font-size: var(--fs-h1);
+  color: var(--text);
+}
+
+.sub-tariff__period {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Метка выбора: пустое кольцо, у выбранного — оранжевый круг с галочкой. */
+.sub-tariff__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--border-strong);
+  color: transparent;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+
+.sub-tariff--on .sub-tariff__mark {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.sub-tariff__pay {
+  margin-top: 0;
+}
+
+/* ---------- Что входит ---------- */
+
+.sub-benefits__eyebrow {
+  margin-bottom: var(--s3);
+}
+
 .sub-benefit__check {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 0;
 }
 
-.sub-status__icon,
-.sub-tariff__icon {
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 0;
+/* ---------- Подвал ---------- */
+
+.sub-tribute__btn {
+  margin-top: 0;
 }
 
-/* Бесплатный и истёкший статусы — нейтральная подложка: зелёный кружок
-   на них обещал бы доступ, которого нет. */
-.sub-status--free .sub-status__icon,
-.sub-status--expired .sub-status__icon {
-  background: var(--surface-2);
+.sub-foot {
+  margin-top: var(--s2);
+}
+
+/* Оферта и политика — те же ссылки, что на экране оплаты. */
+.sub-legal {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: var(--s2);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+}
+
+.sub-legal__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap-min);
+  color: var(--accent-text);
+  font-weight: var(--fw-semibold);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-line);
+}
+
+.sub-legal__sep {
   color: var(--muted);
 }
 
 /* ============================================================
    МАСТЕР ОНБОРДИНГА (onb-*)
+   Заголовок шага — сжатым капсом слева, прогресс — оранжевая полоса,
+   цель — три карточки с фотографией. Прежние правила onb-* из style.css
+   перекрываем здесь.
    ============================================================ */
+
+.onb-wizard {
+  padding-left: var(--gutter);
+  padding-right: var(--gutter);
+}
+
+/* ---------- Прогресс ---------- */
+
+.onb-progress {
+  max-width: 440px;
+  width: 100%;
+  margin: 0 auto var(--s4);
+}
+
+.onb-progress__label {
+  margin-bottom: var(--s2);
+}
+
+.onb-progress__bar {
+  display: flex;
+  gap: var(--s1);
+}
+
+.onb-progress__seg {
+  flex: 1;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+  transition: background var(--dur) var(--ease);
+}
+
+.onb-progress__seg--on {
+  background: var(--accent);
+}
+
+/* ---------- Шаг ---------- */
+
+/* Шаг не центрируем по вертикали: заголовок должен стоять на одном месте
+   при переходе между шагами, а не прыгать вслед за высотой содержимого. */
+.onb-step {
+  justify-content: flex-start;
+  gap: var(--s4);
+}
+
+.onb-title {
+  font-size: var(--fs-h1);
+  line-height: var(--lh-tight);
+  text-align: left;
+}
+
+.onb-subtitle {
+  margin: calc(-1 * var(--s2)) 0 var(--s1);
+  text-align: left;
+}
+
+/* Выбор пола — те же кнопки, но подпись сжатым капсом, как у кнопок. */
+.onb-choice {
+  min-height: 72px;
+  border-radius: var(--radius);
+  font-family: var(--font-display);
+  font-size: var(--fs-btn);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-btn);
+}
+
+.onb-choice--on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: none;
+}
+
+/* ---------- Цель: три карточки с фото ---------- */
+
+.onb-goals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+/* Широкая карточка-баннер: фото под затемнением, название белым капсом
+   слева, метка выбора справа. Три в колонку, а не в ряд: в ряд по 110px
+   слово «Поддерживать» не помещается и рвётся посередине.
+   Граница 2px всегда, чтобы выбор не менял размер соседей. */
+.onb-goal {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-height: 88px;
+  width: 100%;
+  margin: 0;
+  padding: var(--s3) var(--s4);
+  border: 2px solid transparent;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background-color: var(--hero);
+  background-image:
+    linear-gradient(90deg, rgba(0, 0, 0, .78) 0%, rgba(0, 0, 0, .35) 100%),
+    var(--hero-img, none);
+  background-size: cover;
+  background-position: center;
+  color: var(--hero-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+
+.onb-goal:active {
+  transform: scale(.98);
+}
+
+.onb-goal--on {
+  border-color: var(--accent);
+}
+
+.onb-goal__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.onb-goal__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+  text-transform: uppercase;
+  letter-spacing: .01em;
+  color: var(--hero-text);
+}
+
+.onb-goal__hint {
+  font-size: var(--fs-xs);
+  line-height: var(--lh-heading);
+  color: var(--hero-muted);
+}
+
+/* Метка выбора справа: пустое кольцо, у выбранной — оранжевый круг с
+   галочкой. В разметке метка стоит первой, поэтому переставляем её в конец. */
+.onb-goal__mark {
+  order: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--hero-muted);
+  color: transparent;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+
+.onb-goal--on .onb-goal__mark {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* ---------- Действия ---------- */
+
+.onb-actions {
+  gap: var(--s2);
+  margin-top: var(--s4);
+}
+
+/* «Далее» и «Назад» — обычные .btn: style.css задавал им собственный
+   кегль и радиус, возвращаем токены кнопок. */
+.onb-next,
+.onb-back {
+  border-radius: var(--radius);
+  font-family: var(--font-display);
+  font-size: var(--fs-btn);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-btn);
+  box-shadow: none;
+}
+
+/* style.css делает .onb-back прозрачной текстовой ссылкой — возвращаем
+   контур вторичной кнопки. */
+.onb-back {
+  align-self: stretch;
+  padding: 0 var(--s4);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.onb-back:active {
+  opacity: 1;
+}
+
+/* Тумблер вечерней сводки: иконка в оранжевом кружке, метка выбора — как у
+   карточек цели. */
+.onb-toggle {
+  border-radius: var(--radius-lg);
+}
+
+.onb-toggle--on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: none;
+}
 
 .onb-toggle__emoji {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-sm);
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-pill);
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 0;
 }
 
+.onb-toggle--on .onb-toggle__emoji {
+  background: var(--surface);
+}
+
+.onb-toggle__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+}
+
 .onb-toggle__mark {
-  color: var(--accent);
+  color: transparent;
   font-size: 0;
 }
 
@@ -659,11 +1250,89 @@
   justify-content: center;
   min-height: var(--tap-min);
   padding: 0 var(--s3);
+  text-decoration: none;
 }
 
 /* ============================================================
    ДОБАВКИ (sup-*)
+   Названия карточек — сжатым шрифтом, добавка — название крупно и чипы
+   времени, форма — переключатель напоминания, AI-совет — с надзаголовком.
    ============================================================ */
+
+.sup-head__title {
+  letter-spacing: .01em;
+}
+
+/* Заголовки карточек — h2 нового облика (сжатый, верхний регистр). */
+.sup-card__title,
+.sup-rem-card__title,
+.sup-ai-card__title {
+  font-size: var(--fs-h2);
+  margin-bottom: var(--s1);
+}
+
+.sup-card__subtitle,
+.sup-rem-card__subtitle,
+.sup-ai-card__subtitle {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  margin-bottom: var(--s4);
+}
+
+.sup-ai-card__eyebrow {
+  margin-bottom: var(--s1);
+}
+
+/* ---------- Строка добавки ---------- */
+
+.sup-item {
+  padding: var(--s3) 0;
+}
+
+.sup-item__main {
+  gap: var(--s1) var(--s2);
+}
+
+.sup-item__name {
+  flex-basis: 100%;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+}
+
+.sup-item__meta {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+.sup-item__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  flex-basis: 100%;
+  margin-top: var(--s1);
+}
+
+/* Чип времени приёма: нейтральная подложка, чип напоминания — оранжевая. */
+.sup-item__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  min-height: 24px;
+  padding: 0 var(--s2);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sup-item__badge {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
 
 /* Зоны удаления — 44px вместо прежних 32×32. */
 .sup-item__del,
@@ -688,9 +1357,96 @@
   opacity: .5;
 }
 
-.sup-item__badge {
-  gap: var(--s1);
+/* ---------- Строка напоминания ---------- */
+
+/* Время — крупным числом: его ищут взглядом в первую очередь. */
+.sup-rem-item__head {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
 }
+
+.sup-rem-item__sups {
+  font-family: var(--font-body);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-regular);
+}
+
+/* ---------- Формы ---------- */
+
+.sup-form__title,
+.sup-rem-form__title {
+  font-size: var(--fs-h3);
+}
+
+/* «Напоминать о приёме» — переключатель, а не квадратик: строка читается
+   как настройка, и включённое состояние видно оранжевой дорожкой.
+   Сам input остаётся чекбоксом — меняется только его отрисовка. */
+.sup-form__check {
+  justify-content: space-between;
+  margin: 0 0 var(--s4);
+}
+
+.sup-form__check-label {
+  order: -1;
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-medium);
+}
+
+.sup-form__checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  box-sizing: content-box;
+  width: 44px;
+  height: 24px;
+  margin: 0;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.sup-form__checkbox::after {
+  content: "";
+  position: absolute;
+  top: var(--s1);
+  left: var(--s1);
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+  transition: transform var(--dur) var(--ease);
+}
+
+.sup-form__checkbox:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.sup-form__checkbox:checked::after {
+  transform: translateX(20px);
+}
+
+.sup-form__checkbox:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Чекбоксы выбора добавок в напоминании — оранжевые. */
+.sup-rem-pick {
+  border-color: var(--border);
+}
+
+.sup-rem-pick__input {
+  accent-color: var(--accent);
+}
+
+/* ---------- AI-советы ---------- */
 
 .sup-ai-chip__icon {
   display: inline-flex;
@@ -703,6 +1459,47 @@
 .sup-ai-chip,
 .sup-ai-suggest__use {
   min-height: var(--tap-min);
+}
+
+.sup-ai-chip {
+  border-color: var(--border);
+}
+
+.sup-ai-chip.chip--active {
+  border-color: var(--accent);
+}
+
+/* Результат — вложенный блок: только заливка, без границы и тени. */
+.sup-ai-box__inner,
+.sup-ai-box__loading,
+.sup-ai-box__error {
+  background: var(--surface-2);
+  border-radius: var(--radius);
+}
+
+.sup-ai-box__heading {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+}
+
+.sup-ai-box__goal {
+  color: var(--accent-text);
+}
+
+.sup-ai-suggest {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: none;
+}
+
+.sup-ai-suggest__name {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+}
+
+.sup-ai-suggest__dosage {
+  color: var(--accent-text);
 }
 
 /* Строки с галочкой («Напоминать о приёме», выбор добавок в напоминании):
@@ -723,7 +1520,7 @@
   margin: 0 auto var(--s3);
   border-radius: var(--radius-pill);
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 0;
 }
 
@@ -754,9 +1551,73 @@
   color: var(--danger);
 }
 
+/* Кнопки совета: «Заполнить форму» занимает свою ширину, «Купить» — остаток;
+   когда вдвоём не помещаются, вторая уходит на следующую строку, а не
+   ломает подпись первой на две. */
+.sup-ai-suggest__actions {
+  flex-wrap: wrap;
+}
+
+.sup-ai-suggest__actions .btn {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+
 /* Кнопка «Купить» — иконка корзины рядом с подписью. */
 .sup-ai-suggest__buy {
   gap: var(--s2);
+}
+
+/* ---------- Пейволл без подписки ---------- */
+
+/* Карточка пейволла получает классы .hero.hero--img из page-supplements.js:
+   тот же тёмный блок с фотографией, что и карточка подписки в профиле.
+   Здесь — палитра текста поверх фото. */
+.page-supplements--locked .paywall-card {
+  border: none;
+  text-align: left;
+}
+
+.page-supplements--locked .paywall-icon {
+  margin-left: 0;
+  background: var(--hero-2);
+  color: var(--accent);
+}
+
+.page-supplements--locked .paywall-title {
+  font-size: var(--fs-h1);
+  line-height: var(--lh-tight);
+  color: var(--hero-text);
+}
+
+.page-supplements--locked .paywall-desc {
+  color: var(--hero-muted);
+}
+
+.page-supplements--locked .paywall-bullets {
+  max-width: none;
+  margin: 0;
+}
+
+.page-supplements--locked .paywall-bullet-mark {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.page-supplements--locked .paywall-bullet-text {
+  color: var(--hero-text);
+}
+
+.page-supplements--locked .paywall-price {
+  text-align: left;
+  color: var(--hero-text);
+}
+
+/* Подпись «Попробовать бесплатно» на 375px не помещалась в строку: убираем
+   разрядку и ужимаем боковые отступы, кегль не трогаем. */
+.page-supplements--locked .paywall-cta {
+  padding: 0 var(--s2);
+  letter-spacing: 0;
 }
 
 /* ============================================================
@@ -785,5 +1646,9 @@
 
   .acc-nrow__extra {
     padding-left: 0;
+  }
+
+  .sub-tariff__price {
+    font-size: var(--fs-h2);
   }
 }

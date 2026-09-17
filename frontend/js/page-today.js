@@ -12,7 +12,7 @@
  *
  * ЧТО ПОКАЗЫВАЕТ (сверху вниз, по убыванию важности):
  *   1. Калории за день — кольцо «съедено из нормы» и три полосы БЖУ.
- *   2. Быстрые действия с едой — «Снять еду» и «Добавить вручную». Камеры
+ *   2. Быстрые действия с едой — «Снять еду» и «Вручную». Камеры
  *      в таббаре больше нет (там теперь сама «Сегодня»), а записать еду
  *      человек чаще всего хочет именно отсюда, глядя на остаток калорий.
  *   3. Тренировка дня — план, отдых, незаконченная сессия или «сделано»,
@@ -43,6 +43,17 @@
 
   function icon(name, opts) {
     return App.icon ? App.icon(name, opts) : "";
+  }
+
+  /**
+   * Значение переменной --hero-img для фото геройского блока.
+   * Путь делаем абсолютным: относительный url() внутри custom property Chrome
+   * разрешает от адреса style.css, где переменная подставляется, а не от
+   * страницы — картинка запрашивалась как css/img/… и уходила в 404.
+   * @param {string} file имя файла в frontend/img
+   */
+  function heroImg(file) {
+    return App.heroImg(file);
   }
 
   // Геометрия кольца калорий. Радиус подобран так, чтобы кольцо вместе с
@@ -118,8 +129,8 @@
     return (
       '<div class="td-macro td-macro--' + mod + '">' +
       '<div class="td-macro__head">' +
-      '<span class="td-macro__label">' + esc(pick(labelRu, labelEn)) + "</span>" +
-      '<span class="td-macro__value">' + esc(value) + " " + esc(pick("г", "g")) + "</span>" +
+      '<span class="td-macro__label eyebrow">' + esc(pick(labelRu, labelEn)) + "</span>" +
+      '<span class="td-macro__value num">' + esc(value) + " " + esc(pick("г", "g")) + "</span>" +
       "</div>" +
       '<div class="td-macro__track">' +
       '<div class="td-macro__fill" style="width:' + pct + '%"></div>' +
@@ -180,14 +191,17 @@
       '<div class="td-ring">' +
       ringHtml(eaten / goal, over) +
       '<div class="td-ring__center">' +
-      '<span class="td-ring__num">' + esc(ringText) + "</span>" +
-      '<span class="td-ring__cap">' +
+      '<span class="td-ring__num num">' + esc(ringText) + "</span>" +
+      '<span class="td-ring__cap eyebrow">' +
       esc(over ? pick("сверх нормы", "over goal") : pick("осталось", "left")) +
       "</span>" +
       "</div>" +
       "</div>" +
       '<div class="td-cal__sum">' +
-      esc(App.fmt(Math.round(eaten)) + " " + pick("из", "of") + " " + App.fmt(goal) + " " + pick("ккал", "kcal")) +
+      '<span class="num">' + esc(App.fmt(Math.round(eaten))) + "</span>" +
+      '<span class="td-cal__sum-of">' + esc(pick("из", "of")) + "</span>" +
+      '<span class="num">' + esc(App.fmt(goal)) + "</span>" +
+      '<span class="td-cal__sum-of">' + esc(pick("ккал", "kcal")) + "</span>" +
       "</div>" +
       burnedRow +
       '<div class="td-macros">' +
@@ -207,15 +221,17 @@
    * ===================================================================== */
 
   function quickHtml() {
+    // Подписи короткие и набраны сжатым капсом: «Добавить вручную» на 375px
+    // ломалась на две строки, а команда из одного слова читается быстрее.
     return (
       '<div class="td-quick">' +
       '<button type="button" class="td-quick__btn" id="tdQuickScan">' +
-      icon("camera", { size: 18 }) +
-      "<span>" + esc(pick("Снять еду", "Snap food")) + "</span>" +
+      '<span class="td-quick__icon">' + icon("camera", { size: 22 }) + "</span>" +
+      '<span class="td-quick__label">' + esc(pick("Снять еду", "Snap food")) + "</span>" +
       "</button>" +
       '<button type="button" class="td-quick__btn" id="tdQuickManual">' +
-      icon("edit", { size: 18 }) +
-      "<span>" + esc(pick("Добавить вручную", "Add manually")) + "</span>" +
+      '<span class="td-quick__icon">' + icon("edit", { size: 22 }) + "</span>" +
+      '<span class="td-quick__label">' + esc(pick("Вручную", "Manual")) + "</span>" +
       "</button>" +
       "</div>"
     );
@@ -230,7 +246,7 @@
     // но честно, без имитации данных.
     if (state.overview === "locked") {
       return (
-        '<section class="card td-card td-card--cta">' +
+        '<section class="hero hero--img td-workout td-workout--locked" style="' + heroImg("hero-premium.jpg") + '">' +
         '<div class="td-empty">' +
         '<span class="td-empty__icon">' + icon("dumbbell", { size: 28 }) + "</span>" +
         '<h2 class="td-empty__title">' + esc(pick("Персональные тренировки", "Personal training")) + "</h2>" +
@@ -302,11 +318,14 @@
       action = null;
     }
 
+    // Тёмный блок с фотографией: единственный такой на экране, поэтому
+    // тренировка находится взглядом мгновенно. Картинка — фон через
+    // переменную, чтобы CSS сам положил поверх неё затемнение.
     return (
-      '<section class="card td-card td-workout' + mod + '" id="tdWorkout">' +
-      '<div class="td-card__head">' + esc(head) + "</div>" +
-      '<h2 class="td-workout__title">' + esc(title) + "</h2>" +
-      (meta ? '<p class="td-workout__meta">' + esc(meta) + "</p>" : "") +
+      '<section class="hero hero--img td-workout' + mod + '" id="tdWorkout" style="' + heroImg("hero-workout.jpg") + '">' +
+      '<span class="eyebrow">' + esc(head) + "</span>" +
+      '<h2 class="hero__title td-workout__title">' + esc(title) + "</h2>" +
+      (meta ? '<p class="hero__meta td-workout__meta">' + esc(meta) + "</p>" : "") +
       (action
         ? '<button type="button" class="btn btn--cta td-workout__btn" id="tdWorkoutGo">' +
           esc(action) + "</button>"
@@ -348,8 +367,9 @@
       }
       tiles +=
         '<button type="button" class="td-tile" id="tdWeight">' +
-        '<span class="td-tile__label">' + icon("scale", { size: 14 }) + esc(pick("Вес", "Weight")) + "</span>" +
-        '<span class="td-tile__value">' + esc(App.fmt(w.latest) + " " + pick("кг", "kg")) + "</span>" +
+        '<span class="td-tile__label eyebrow">' + icon("scale", { size: 14 }) + esc(pick("Вес", "Weight")) + "</span>" +
+        '<span class="td-tile__value num">' + esc(App.fmt(w.latest)) +
+        '<span class="td-tile__unit">' + esc(pick("кг", "kg")) + "</span></span>" +
         (changeText ? '<span class="td-tile__delta' + changeMod + '">' + esc(changeText) + "</span>" : "") +
         "</button>";
     }
@@ -363,9 +383,11 @@
       var goal = Number(s.this_week_goal) || 0;
       tiles +=
         '<button type="button" class="td-tile" id="tdStreak">' +
-        '<span class="td-tile__label">' + icon("flame", { size: 14 }) + esc(pick("Серия", "Streak")) + "</span>" +
-        '<span class="td-tile__value">' +
-        esc(weeks ? weeks + " " + weekWord(weeks) : pick("нет", "none")) +
+        '<span class="td-tile__label eyebrow">' + icon("flame", { size: 14 }) + esc(pick("Серия", "Streak")) + "</span>" +
+        '<span class="td-tile__value num">' +
+        (weeks
+          ? esc(String(weeks)) + '<span class="td-tile__unit">' + esc(weekWord(weeks)) + "</span>"
+          : esc(pick("нет", "none"))) +
         "</span>" +
         (goal
           ? '<span class="td-tile__delta">' + esc(done + pick(" из ", " of ") + goal + pick(" на неделе", " this week")) + "</span>"

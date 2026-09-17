@@ -122,7 +122,7 @@
   /**
    * Возвращает разметку иконки.
    * @param {string} name  имя из PATHS или ALIAS
-   * @param {object} [opts] { size:number=20, rotate:number=0, cls:string, stroke:number }
+   * @param {object} [opts] { size:number=20, rotate:number=0, cls:string, stroke:number=2 }
    * @returns {string} строка <svg …> либо пустая строка, если имя неизвестно
    */
   function icon(name, opts) {
@@ -143,7 +143,9 @@
     return (
       '<svg class="' + cls + '" width="' + size + '" height="' + size + '" ' +
       'viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
-      'stroke-width="' + (opts.stroke || 1.75) + '" ' +
+      // Толщина 2 вместо 1.75: тонкий контур на 20 пикселях выглядит вялым
+      // и «бумажным», а спортивному облику нужен уверенный штрих.
+      'stroke-width="' + (opts.stroke || 2) + '" ' +
       'stroke-linecap="round" stroke-linejoin="round" ' +
       'aria-hidden="true" focusable="false"' + style + ">" +
       body +

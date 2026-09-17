@@ -3,20 +3,20 @@
    (page-trainer-program.js, page-trainer-progress.js,
     page-trainer-exercise.js)
    ------------------------------------------------------------
-   Лента недель с фазами, блоки плана дня, сводка прогресса,
+   Сетка недель с фазами, блоки плана дня, плитки ключевых цифр,
    полосы объёма по мышцам, график (SVG из Trainer.lineChart),
    рекорды, история с раскрывающимися сессиями, недельный разбор
    с чекбоксами правок, карточка упражнения и библиотека с фильтрами.
    Общие классы (tr-page, tr-section-title, tr-plan-day, tr-plan-item,
-   tr-phase-chip, tr-program-head, tr-streak__bar) — в trainer.css.
+   tr-phase-chip, tr-tags, tr-program-head, tr-streak__bar) — в trainer.css.
    Цвета — только через токены палитры.
    ============================================================ */
 
 /* ---------- Общее ---------- */
 .tr-muted {
-  margin: 4px 0;
-  font-size: 13px;
-  line-height: 1.45;
+  margin: var(--s1) 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
   color: var(--muted);
 }
 
@@ -27,7 +27,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin: 8px 0 12px;
+  margin: var(--s2) 0 var(--s3);
 }
 
 /* «Неделя 2 из 8 · 1 из 3 сделано» + тонкая полоса. */
@@ -38,32 +38,38 @@
 .tr-program-progress__row {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--s2);
   margin-bottom: 6px;
-  font-size: 12px;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: .04em;
   color: var(--muted);
 }
 
-/* Советы тренера внутри шапки программы. */
+/* Советы тренера внутри шапки программы — вложенный блок. */
 .tr-program-tips {
-  margin-top: 12px;
-  padding: 10px 12px;
+  margin-top: var(--s3);
+  padding: 10px var(--s3);
   border-radius: var(--radius-sm);
-  background: rgba(47, 111, 78, .12);
+  background: var(--accent-soft);
 }
 
 .tr-program-tips__title {
-  margin-bottom: 4px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--cta);
+  margin-bottom: var(--s1);
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--accent-text);
 }
 
 .tr-program-tips__list {
   margin: 0;
   padding-left: 18px;
-  font-size: 13px;
+  font-size: var(--fs-sm);
   line-height: 1.5;
   color: var(--text);
 }
@@ -72,11 +78,8 @@
   margin-top: 2px;
 }
 
-/* Недели программы. Была горизонтальная лента со скроллом — и половина
-   недель пряталась за краем экрана: выбор, которого не видно, выбором не
-   является, а жест вбок ещё и спорил с вертикальной прокруткой страницы.
-   Теперь сетка с переносом: недель максимум восемь, они помещаются
-   целиком, и видно сразу всю программу. */
+/* Недели программы — сетка с переносом: недель максимум восемь, они
+   помещаются целиком, и видно сразу всю программу. */
 .tr-program-weeks {
   display: block;
 }
@@ -94,8 +97,8 @@
   justify-content: center;
   gap: 6px;
   min-height: var(--tap-min);
-  padding: 10px 8px 8px;
-  border: 1px solid var(--border);
+  padding: 10px var(--s2) var(--s2);
+  border: 1.5px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--text);
@@ -104,14 +107,16 @@
 }
 
 .tr-week-item__num {
-  font-size: 13px;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
 .tr-week-item.is-active {
-  border-color: var(--cta);
-  background: rgba(47, 111, 78, .14);
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 /* Текущая неделя — точка-маркер над номером. */
@@ -127,12 +132,12 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--cta);
+  background: var(--accent);
 }
 
 /* Блоки плана дня: разминка / основная / заминка. */
 .tr-plan-block {
-  margin-bottom: 12px;
+  margin-bottom: var(--s3);
 }
 
 .tr-plan-block:last-child {
@@ -141,23 +146,24 @@
 
 .tr-plan-block__title {
   margin-bottom: 6px;
-  font-size: 12px;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
   text-transform: uppercase;
-  letter-spacing: .04em;
+  letter-spacing: var(--ls-eyebrow);
   color: var(--muted);
 }
 
 .tr-plan-block__empty {
-  margin: 4px 0;
-  font-size: 13px;
+  margin: var(--s1) 0;
+  font-size: var(--fs-sm);
   color: var(--muted);
 }
 
 .tr-plan-item__note {
   display: block;
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--fs-xs);
   line-height: 1.4;
   color: var(--muted);
 }
@@ -165,28 +171,87 @@
 /* ============================================================
    ПРОГРЕСС
    ============================================================ */
-.tr-progress-summary .rep-stats {
-  margin-top: 8px;
+
+/* ---------- Ключевые цифры ----------
+   Четыре плитки: серия, тренировки за месяц, тоннаж и подходы недели.
+   Число — крупно сжатым шрифтом, подпись — надзаголовком; единица
+   измерения отдельно и мельче, чтобы не растягивать число. */
+.tr-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s2);
+  margin-top: var(--s3);
+}
+
+.tr-kpi {
+  min-width: 0;
+  padding: var(--s3) var(--s3) 10px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.tr-kpi__value {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s1);
+  font-size: var(--fs-display);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.tr-kpi__unit {
+  font-size: var(--fs-h3);
+  color: var(--muted);
+}
+
+.tr-kpi__label {
+  display: block;
+  margin-top: var(--s1);
+  font-family: var(--font-display);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-eyebrow);
+  line-height: var(--lh-heading);
+  color: var(--muted);
+}
+
+/* Сравнение с прошлой неделей: рост — цвет успеха, спад — предупреждение. */
+.tr-kpi__delta {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  color: var(--muted);
+}
+
+.tr-kpi--up .tr-kpi__delta {
+  color: var(--success);
+}
+
+.tr-kpi--down .tr-kpi__delta {
+  color: var(--warning);
 }
 
 /* ---------- Полосы объёма по мышцам ---------- */
 .tr-muscle-bars {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
+  gap: var(--s2);
+  margin-top: var(--s2);
 }
 
 .tr-muscle-bar {
   display: grid;
   grid-template-columns: 84px minmax(0, 1fr) 30px;
   align-items: center;
-  gap: 8px;
+  gap: var(--s2);
 }
 
 .tr-muscle-bar__label {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -197,7 +262,7 @@
   display: block;
   height: 12px;
   border-radius: 6px;
-  background: var(--surface-2);
+  background: var(--surface-3);
   overflow: hidden;
 }
 
@@ -206,28 +271,28 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  background: rgba(47, 111, 78, .22);
+  background: var(--accent-soft);
 }
 
-/* Полоса объёма по группе мышц. Три состояния должны РАЗЛИЧАТЬСЯ: раньше
-   и «норма», и «недобор» были окрашены var(--accent) — в новой палитре это
-   один и тот же зелёный, и полоса переставала что-либо сообщать. */
+/* Полоса объёма по группе мышц. Норма — оранжевый (главный цвет данных),
+   недобор — нейтральный серый, перебор — цвет опасности: три состояния
+   должны различаться и по оттенку, и по светлоте. */
 .tr-muscle-bar__fill {
   position: absolute;
   top: 0;
   bottom: 0;
   left: 0;
   border-radius: 6px;
-  background: var(--border-strong);
+  background: var(--data-neutral);
   transition: width .3s ease;
 }
 
 .tr-muscle-bar--ok .tr-muscle-bar__fill {
-  background: var(--success);
+  background: var(--accent);
 }
 
 .tr-muscle-bar--low .tr-muscle-bar__fill {
-  background: var(--warning);
+  background: var(--data-neutral);
 }
 
 .tr-muscle-bar--high .tr-muscle-bar__fill {
@@ -235,16 +300,17 @@
 }
 
 .tr-muscle-bar__val {
-  font-size: 12px;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
 .tr-muscle-bars__hint {
   margin: 10px 0 0;
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
   color: var(--muted);
 }
 
@@ -257,11 +323,13 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 8px;
+  margin-top: var(--s2);
 }
 
 .tr-chart-controls .chip {
-  font-size: 12px;
+  min-height: 36px;
+  padding: 0 var(--s3);
+  font-size: var(--fs-xs);
 }
 
 .tr-chart {
@@ -278,8 +346,8 @@
 
 .tr-chart__caption {
   margin: 6px 0 0;
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
   color: var(--muted);
 }
 
@@ -312,33 +380,38 @@
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
 }
 
 .tr-record-row__type {
-  font-size: 11px;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
   text-transform: uppercase;
-  letter-spacing: .03em;
+  letter-spacing: .04em;
   color: var(--muted);
 }
 
+/* Значение рекорда — сжатым шрифтом крупно: это число, которым гордятся. */
 .tr-record-row__value {
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
   align-items: flex-end;
   gap: 2px;
-  font-size: 15px;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .tr-record-row__meta {
-  font-size: 11px;
-  font-weight: 500;
+  font-family: var(--font-body);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-medium);
   color: var(--muted);
 }
 
@@ -364,7 +437,7 @@
     "title chevron"
     "meta  chevron";
   align-items: center;
-  column-gap: 8px;
+  column-gap: var(--s2);
   width: 100%;
   padding: 10px 0;
   border: none;
@@ -376,8 +449,8 @@
 
 .tr-history-item__title {
   grid-area: title;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -386,7 +459,7 @@
 .tr-history-item__meta {
   grid-area: meta;
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--fs-xs);
   color: var(--muted);
 }
 
@@ -399,14 +472,14 @@
   align-items: center;
   gap: 2px;
   vertical-align: -2px;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
   color: var(--warning);
 }
 
 .tr-history-item__chevron {
   grid-area: chevron;
-  font-size: 14px;
+  display: flex;
   color: var(--muted);
   transition: transform .18s ease;
 }
@@ -416,11 +489,11 @@
 }
 
 .tr-history-item__body {
-  padding: 0 0 12px;
+  padding: 0 0 var(--s3);
 }
 
 .tr-history__more {
-  margin: 8px 0 0;
+  margin: var(--s2) 0 0;
   text-align: center;
 }
 
@@ -433,68 +506,71 @@
 }
 
 .tr-history-set__name {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
 }
 
 .tr-history-set__vals {
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
   font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
 
 .tr-history-feedback {
-  margin: 8px 0 0;
-  padding: 8px 10px;
+  margin: var(--s2) 0 0;
+  padding: var(--s2) 10px;
   border-radius: var(--radius-sm);
   background: var(--surface-2);
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
 }
 
 .tr-history-adapt {
-  margin: 8px 0 0;
-  padding: 8px 10px;
+  margin: var(--s2) 0 0;
+  padding: var(--s2) 10px;
   border-radius: var(--radius-sm);
-  background: rgba(47, 111, 78, .12);
-  font-size: 13px;
-  line-height: 1.45;
+  background: var(--accent-soft);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
 }
 
 .tr-history-adapt__title {
   margin-bottom: 2px;
-  font-weight: 700;
-  color: var(--cta);
+  font-weight: var(--fw-bold);
+  color: var(--accent-text);
 }
 
 /* ---------- Недельный разбор ---------- */
 .tr-review-card__period {
-  margin: -4px 0 8px;
-  font-size: 12px;
+  margin: -4px 0 var(--s2);
+  font-size: var(--fs-xs);
   color: var(--muted);
 }
 
 .tr-review-card__summary {
   margin: 0 0 10px;
-  font-size: 14px;
+  font-size: var(--fs-body);
   line-height: 1.5;
 }
 
 .tr-review-card__section {
-  margin-top: 12px;
+  margin-top: var(--s3);
 }
 
 .tr-review-card__subtitle {
   margin-bottom: 6px;
-  font-size: 13px;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: .02em;
 }
 
 .tr-review-card__list {
   margin: 0;
   padding-left: 18px;
-  font-size: 13px;
+  font-size: var(--fs-sm);
   line-height: 1.5;
 }
 
@@ -507,17 +583,17 @@
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 8px 10px;
+  padding: var(--s2) 10px;
   margin-bottom: 6px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--surface);
   cursor: pointer;
 }
 
 .tr-review-card__change.is-applied {
-  border-color: rgba(47, 111, 78, .45);
-  background: rgba(47, 111, 78, .10);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
   cursor: default;
 }
 
@@ -526,7 +602,7 @@
   width: 20px;
   height: 20px;
   margin: 1px 0 0;
-  accent-color: var(--cta);
+  accent-color: var(--accent);
 }
 
 .tr-review-card__change-body {
@@ -538,26 +614,28 @@
 }
 
 .tr-review-card__change-title {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
   line-height: 1.35;
 }
 
 .tr-review-card__change-why {
-  font-size: 12px;
+  font-size: var(--fs-xs);
   line-height: 1.4;
   color: var(--muted);
 }
 
+/* «применено» — мелкий бейдж: оранжевая подложка, а не заливка (мелкий
+   белый текст на оранжевом не читается). */
 .tr-review-card__badge {
   align-self: flex-start;
   margin-top: 2px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--cta);
-  color: var(--on-accent);
-  font-size: 11px;
-  font-weight: 700;
+  padding: 2px var(--s2);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
 }
 
 .tr-review-card__done {
@@ -565,31 +643,31 @@
 }
 
 .tr-review-card__error {
-  margin: 8px 0 0;
-  font-size: 13px;
+  margin: var(--s2) 0 0;
+  font-size: var(--fs-sm);
   color: var(--danger);
 }
 
 .tr-review-card__focus {
-  margin: 12px 0 0;
-  padding: 8px 10px;
+  margin: var(--s3) 0 0;
+  padding: var(--s2) 10px;
   border-radius: var(--radius-sm);
-  background: rgba(47, 111, 78, .12);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.45;
+  background: var(--accent-soft);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-normal);
 }
 
 .tr-review-card__motivation {
-  margin: 8px 0 0;
-  font-size: 13px;
+  margin: var(--s2) 0 0;
+  font-size: var(--fs-sm);
   font-style: italic;
   line-height: 1.5;
   color: var(--muted);
 }
 
 .tr-review-card .btn {
-  margin-top: 12px;
+  margin-top: var(--s3);
 }
 
 /* ============================================================
@@ -599,8 +677,9 @@
   padding-bottom: 10px;
 }
 
+/* Поиск — обычное поле (.field__input даёт контур --border-strong). */
 .tr-lib-search {
-  margin-bottom: 8px;
+  margin-bottom: var(--s2);
 }
 
 /* Строка-переключатель фильтров: что выбрано сейчас + раскрытие. Именно она
@@ -625,7 +704,7 @@
 
 .tr-lib-filters__ico {
   flex: 0 0 auto;
-  color: var(--muted);
+  color: var(--accent);
 }
 
 .tr-lib-filters__sum {
@@ -647,17 +726,14 @@
   border-top: 1px solid var(--border);
 }
 
-/* Фильтры библиотеки. Был ряд с горизонтальной прокруткой: фильтр, который
-   уехал за край экрана, никто не применяет, да и жест вбок внутри
-   вертикальной страницы неудобен. Теперь чипы переносятся на новую строку
-   и видны все сразу — а чтобы два десятка чипов не выдавили список за
-   пределы экрана, весь блок по умолчанию свёрнут. */
+/* Чипы фильтров переносятся на новую строку и видны все сразу; блок
+   по умолчанию свёрнут, чтобы два десятка чипов не выдавили список. */
 .tr-lib-filters__row {
   display: flex;
   flex-wrap: wrap;
   gap: var(--s2);
   margin: 0;
-  padding: 2px 0 4px;
+  padding: 2px 0 var(--s1);
 }
 
 .tr-lib-filters__row .chip {
@@ -667,15 +743,17 @@
 }
 
 .tr-lib-list {
-  padding-top: 4px;
-  padding-bottom: 4px;
+  padding-top: var(--s1);
+  padding-bottom: var(--s1);
 }
 
+/* Строка списка: название, мета, справа шеврон — это переход в карточку. */
 .tr-lib-item {
   display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
+  min-height: 56px;
   padding: 10px 0;
   border: none;
   border-top: 1px solid var(--border);
@@ -706,33 +784,36 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
 }
 
 .tr-lib-item__meta {
-  font-size: 12px;
+  font-size: var(--fs-xs);
   color: var(--muted);
 }
 
 .tr-lib-item__badge {
   display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(47, 111, 78, .18);
-  color: var(--cta);
-  font-size: 11px;
-  font-weight: 700;
+  padding: 2px var(--s2);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
 }
 
+/* «исключено» — контуром, а не подложкой: красный текст на розовой
+   подложке в 11px не добирает контраста, на карточке — читается. */
 .tr-lib-item__badge--excluded {
-  background: rgba(192, 57, 43, .14);
+  padding: 1px 7px;
+  border: 1px solid var(--danger);
+  background: transparent;
   color: var(--danger);
 }
 
 /* Сложность — три одинаковых кружка (иконка dot): набранные ступени залиты,
-   пустые остаются контуром. Раньше это были текстовые кружки, и шрифт рисовал
-   их разного размера — ряд получался неровным. */
+   пустые остаются контуром. */
 .tr-lib-item__diff {
   flex: 0 0 auto;
   display: inline-flex;
@@ -746,8 +827,14 @@
   fill: currentColor;
 }
 
+.tr-lib-item__chev {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--muted);
+}
+
 .tr-lib-more {
-  margin: 8px 0 0;
+  margin: var(--s2) 0 0;
   text-align: center;
 }
 
@@ -755,23 +842,16 @@
   text-align: center;
 }
 
-/* ---------- Карточка упражнения ---------- */
-.tr-ex-head__name {
-  margin: 0 0 4px;
-  font-size: 20px;
-  font-weight: 700;
-  line-height: 1.25;
-}
-
-.tr-ex-head__meta {
-  margin: 0;
-  font-size: 13px;
-  color: var(--muted);
+/* ---------- Карточка упражнения ----------
+   Название — заголовок экрана (шапка страницы), в карточке — чипы мышц и
+   оборудования, сложность, противопоказания. */
+.tr-ex-head__tags {
+  margin: 0 0 var(--s3);
 }
 
 .tr-ex-head__diff {
-  margin: 6px 0 0;
-  font-size: 13px;
+  margin: 0;
+  font-size: var(--fs-sm);
   color: var(--muted);
 }
 
@@ -783,56 +863,61 @@
   color: var(--text);
 }
 
-.tr-ex-head__secondary {
-  margin: 6px 0 0;
-  font-size: 13px;
-  line-height: 1.45;
-}
-
+/* Противопоказания: текст обычным цветом, тревогу несёт красная кромка —
+   красный мелкий текст на розовой подложке не проходит по контрасту. */
 .tr-ex-head__contra {
-  margin: 6px 0 0;
-  padding: 8px 10px;
+  margin: 10px 0 0;
+  padding: var(--s2) 10px;
   border-radius: var(--radius-sm);
-  background: rgba(192, 57, 43, .10);
-  font-size: 13px;
-  line-height: 1.45;
-  color: var(--danger);
-}
-
-/* Вкладки «Техника» / «История» — сегментированный переключатель. */
-.tr-ex-tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  margin: 0 0 12px;
-  padding: 4px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-}
-
-.tr-ex-tab {
-  min-height: var(--tap-min);
-  padding: 0 8px;
-  border: none;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background .16s ease, color .16s ease;
-}
-
-/* Активная вкладка отличается только заливкой: тень здесь дала бы третий
-   уровень (тень внутри карточки внутри экрана), а выбранное состояние
-   светлой плашки на тёмной дорожке читается и без неё. */
-.tr-ex-tab.is-active {
-  background: var(--surface);
+  background: var(--danger-soft);
+  box-shadow: inset 3px 0 0 var(--danger);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
   color: var(--text);
 }
 
+/* Вкладки «Техника» / «История» — те же спортивные вкладки с оранжевой
+   чертой, что и в шапке раздела. */
+.tr-ex-tabs {
+  display: flex;
+  margin: 0 0 var(--s3);
+  border-bottom: 1px solid var(--border);
+}
+
+.tr-ex-tab {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: var(--tap-min);
+  padding: 0 var(--s2);
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  cursor: pointer;
+  transition: color .16s ease;
+}
+
+.tr-ex-tab.is-active {
+  color: var(--text);
+}
+
+.tr-ex-tab.is-active::after {
+  content: "";
+  position: absolute;
+  left: var(--s2);
+  right: var(--s2);
+  bottom: -1px;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--accent);
+}
+
 .tr-ex-section {
-  margin-bottom: 12px;
+  margin-bottom: var(--s3);
 }
 
 .tr-ex-section:last-child {
@@ -840,7 +925,7 @@
 }
 
 .tr-ex-hint {
-  margin-top: 8px;
+  margin-top: var(--s2);
 }
 
 .tr-ex-history {
@@ -851,22 +936,24 @@
 .tr-ex-actions {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 12px;
+  gap: var(--s2);
+  margin-top: var(--s3);
 }
 
 .tr-ex-exclude {
   color: var(--danger);
 }
 
-/* Техника на странице упражнения (в листе — см. trainer-session.css). */
-.tr-technique__item + .tr-technique__item {
-  margin-top: 3px;
+/* Техника на странице упражнения — карточка: возвращаем ей поля карточки,
+   которые снимает .tr-technique (тот же блок в листе сессии полей не имеет). */
+.card.tr-technique {
+  padding: var(--s4);
 }
 
+/* Абзацы техники на странице упражнения (список — см. trainer-session.css). */
 .tr-technique__text {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-sm);
   line-height: 1.5;
 }
 
@@ -879,10 +966,10 @@
 
   .tr-week-item {
     min-width: 70px;
-    padding: 8px 8px 6px;
+    padding: var(--s2) var(--s2) 6px;
   }
 
-  .tr-ex-head__name {
-    font-size: 18px;
+  .tr-kpi__value {
+    font-size: var(--fs-h1);
   }
 }

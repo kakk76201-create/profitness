@@ -57,8 +57,9 @@
   background: var(--surface-2);
 }
 
-/* Заголовок переносится, а не обрезается: «Сфотографировать еду» рядом
-   с крестиком на 360px занимает почти всю строку. */
+/* Заголовок переносится, а не обрезается: длинное слово («Распознанные»)
+   рядом с крестиком на 360px занимает почти всю строку, а при запасном
+   шрифте без сжатого начертания может и не влезть — тогда рвём слово. */
 .page-scan .scan-head__title {
   flex: 1;
   min-width: 0;
@@ -66,6 +67,7 @@
   font-size: var(--fs-h1);
   font-weight: var(--fw-bold);
   line-height: var(--lh-tight);
+  overflow-wrap: anywhere;
 }
 
 .page-scan .scan-head .page-subtitle {
@@ -87,8 +89,9 @@
   text-align: center;
 }
 
-/* Видоискатель — вложенный блок внутри карточки: заливка --surface-2,
-   без собственной границы и тени (иначе рамка в рамке). */
+/* Видоискатель — плотный тёмный блок в обеих темах (как .hero): камера по
+   природе тёмная, и пока поток не пришёл, серая рамка выглядела как
+   незагрузившаяся картинка. Без собственной границы и тени. */
 .page-scan .scan-cam-window {
   position: relative;
   width: 100%;
@@ -96,8 +99,9 @@
   /* Ограничиваем высоту, чтобы затвор и счётчик влезали без прокрутки. */
   max-height: 46vh;
   border: none;
-  border-radius: var(--radius);
-  background: var(--surface-2);
+  border-radius: var(--radius-lg);
+  background: var(--hero);
+  color: var(--hero-text);
   box-shadow: none;
   overflow: hidden;
 }
@@ -117,7 +121,7 @@
   height: 100%;
   object-fit: cover;
   display: block;
-  background: var(--surface-2);
+  background: var(--hero);
 }
 
 /* Подпись «Включаем камеру…» поверх пустой рамки, пока ждём getUserMedia. */
@@ -127,8 +131,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--fs-sm);
-  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-btn);
+  color: var(--hero-muted);
 }
 
 /* --- Объяснение доступа ВНУТРИ рамки (не отдельным экраном) --- */
@@ -151,7 +159,7 @@
   width: 56px;
   height: 56px;
   border-radius: var(--radius-pill);
-  background: var(--surface);
+  background: var(--hero-2);
   color: var(--accent);
 }
 
@@ -160,7 +168,7 @@
   margin: 0;
   font-size: var(--fs-sm);
   line-height: var(--lh-normal);
-  color: var(--muted);
+  color: var(--hero-muted);
 }
 
 /* Кнопка выдачи доступа: обычная CTA, но по ширине содержимого. */
@@ -214,23 +222,27 @@
   margin-top: 0;
 }
 
+/* Подписи боковых действий — сжатым капсом, как подписи вкладок. */
 .scan-control__label {
+  font-family: var(--font-display);
   font-size: var(--fs-xs);
-  font-weight: var(--fw-semibold);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-btn);
 }
 
 /* СПУСК ЗАТВОРА — главная кнопка экрана. Единственный по-настоящему
-   приподнятый элемент страницы, поэтому только у него есть --shadow-2
+   приподнятый элемент страницы, поэтому только у него есть свечение
    (заливка + тень, без границы: три слоя сразу — визуальный шум). */
 .scan-shutter {
   position: relative;
-  width: 72px;
-  height: 72px;
+  width: 80px;
+  height: 80px;
   padding: 0;
   border: none;
   border-radius: var(--radius-pill);
   background: var(--accent);
-  box-shadow: var(--shadow-2);
+  box-shadow: var(--shadow-accent);
   cursor: pointer;
   transition: transform var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease),
     opacity var(--dur-fast) var(--ease);
@@ -240,7 +252,7 @@
 .scan-shutter__ring {
   position: absolute;
   inset: 6px;
-  border: 2.5px solid var(--on-accent);
+  border: 3px solid var(--on-accent);
   border-radius: var(--radius-pill);
 }
 
@@ -294,7 +306,7 @@
 
 .page-scan .scan-counter--premium {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: var(--fw-semibold);
 }
 
@@ -380,8 +392,54 @@
 }
 
 .page-scan .scan-edit-confidence--high {
-  background: var(--accent-soft);
+  background: var(--success-soft);
   color: var(--success);
+}
+
+/* --- Табло результата: название и четыре числа КБЖУ ---
+   Числа — в цветах нутриентов (те же, что у полос на «Сегодня»), калории —
+   цветом текста: они главное. */
+.page-scan .scan-sum {
+  margin-bottom: var(--s4);
+}
+
+.page-scan .scan-sum__name {
+  margin: 0 0 var(--s3);
+  font-size: var(--fs-h2);
+  overflow-wrap: anywhere;
+}
+
+.page-scan .scan-sum__grid {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1fr 1fr;
+  gap: var(--s2);
+  padding: var(--s3);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.page-scan .scan-sum__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.page-scan .scan-sum__value {
+  font-size: var(--fs-h2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page-scan .scan-sum__stat--kcal .scan-sum__value { font-size: var(--fs-h1); }
+.page-scan .scan-sum__stat--p .scan-sum__label { color: var(--data-protein); }
+.page-scan .scan-sum__stat--f .scan-sum__label { color: var(--data-fat); }
+.page-scan .scan-sum__stat--c .scan-sum__label { color: var(--data-carb); }
+
+/* Надзаголовок над формой правки. */
+.page-scan .scan-edit-eyebrow {
+  margin-bottom: var(--s3);
 }
 
 /* --- Редактируемые поля результата ---
@@ -432,14 +490,29 @@
   color: var(--muted);
 }
 
-/* Чипы приёма пищи: контур волосяной, выбранный — заливка акцентом. */
+/* Подпись «Добавить как» — надзаголовок сжатым шрифтом. */
+.page-scan .meal-picker__label {
+  margin-bottom: var(--s2);
+  font-family: var(--font-display);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-eyebrow);
+  color: var(--muted);
+}
+
+/* Чипы приёма пищи — мини-кнопки: тот же сжатый капс, что у .btn, поэтому
+   белая подпись на оранжевом выбранном чипе проходит по контрасту. */
 .page-scan .meal-chip {
   min-height: var(--tap-min);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--surface);
-  font-size: var(--fs-body);
-  font-weight: var(--fw-semibold);
+  font-family: var(--font-display);
+  font-size: var(--fs-btn);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-btn);
 }
 
 .page-scan .meal-chip.is-active {
@@ -471,6 +544,8 @@
   filter: brightness(.45) saturate(.85);
 }
 
+/* Текст поверх приглушённого кадра — цвета геройского блока: кадр под ним
+   всегда тёмный, независимо от темы. */
 .scan-hold__veil {
   position: absolute;
   inset: 0;
@@ -481,12 +556,12 @@
   gap: var(--s2);
   padding: var(--s4);
   text-align: center;
-  color: var(--on-accent);
-  text-shadow: 0 1px 3px var(--text);
+  color: var(--hero-text);
 }
 
 .scan-hold__icon {
   display: inline-flex;
+  color: var(--accent);
 }
 
 .scan-hold__text {
@@ -557,10 +632,12 @@
   color: var(--danger);
 }
 
+/* Статус несёт иконка и подложка; мелкий текст — цветом текста: красный
+   на красной подложке даёт 4.2:1, для 13px этого мало. */
 .page-scan .paywall-lock-text {
   font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
-  color: var(--danger);
+  color: var(--text);
 }
 
 /* ============================================================
@@ -578,9 +655,10 @@
   border-radius: var(--radius-pill);
 }
 
+/* Ошибка — красный статус: что-то не получилось, нужно действие. */
 .page-scan .error-card__icon {
-  background: var(--warning-soft);
-  color: var(--warning);
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
 .page-scan .scan-voice-unavailable__icon {
@@ -608,18 +686,47 @@
    8. ГОЛОСОВОЙ ВВОД
    ============================================================ */
 
-/* Иконка микрофона в индикаторе записи (внутри пульсирующего круга). */
+/* Индикатор записи — оранжевый круг с белым микрофоном; пульсирующее кольцо
+   вокруг него — оранжевый контур, а не персиковая заливка из style.css. */
+.page-scan .scan-voice-rec__indicator {
+  width: 96px;
+  height: 96px;
+  background: var(--accent);
+  box-shadow: var(--shadow-accent);
+}
+
+.page-scan .scan-voice-rec__pulse {
+  border: 3px solid var(--accent);
+  background: transparent;
+}
+
 .page-scan .scan-voice-rec__mic {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--accent);
+  color: var(--on-accent);
+}
+
+.page-scan .scan-voice-rec__status {
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-btn);
+  color: var(--accent-text);
+}
+
+/* Таймер — главное число экрана записи (.num), самым крупным кеглем. */
+.page-scan .scan-voice-rec__timer {
+  font-size: var(--fs-display);
+  color: var(--text);
 }
 
 .page-scan .scan-voice-transcript {
   font-size: var(--fs-sm);
   line-height: var(--lh-normal);
   color: var(--muted);
+  background: var(--surface-2);
 }
 
 /* Строка распознанного блюда — вложенный блок карточки. */
@@ -650,8 +757,11 @@
 }
 
 .page-scan .scan-voice-num__label {
+  font-family: var(--font-display);
   font-size: var(--fs-2xs);
-  font-weight: var(--fw-semibold);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-eyebrow);
   color: var(--muted);
 }
 
@@ -670,8 +780,12 @@
   }
 
   .scan-shutter {
-    width: 64px;
-    height: 64px;
+    width: 68px;
+    height: 68px;
+  }
+
+  .page-scan .scan-sum__grid {
+    gap: var(--s1);
   }
 
   .scan-controls {

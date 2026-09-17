@@ -319,60 +319,72 @@
   }
 
   /**
-   * Карточка дня — четыре состояния (ТЗ §2.4).
+   * Тёмный блок дня — тот же приём, что тренировка на экране «Сегодня»
+   * приложения: фото через переменную --hero-img (затемнение кладёт CSS),
+   * надзаголовок, крупный заголовок, мета и одно действие. Состояния без
+   * главного действия ведут внутрь ссылкой, а не кнопкой.
+   * @param {object} o {img, mod, eyebrow, eyebrowIcon, title, meta,
+   *        button:{id, label, attrs}, link:{id, label, attrs}}
+   */
+  function heroHtml(o) {
+    var cls = "hero tr-hero" + (o.img ? " hero--img" : "") + (o.mod ? " " + o.mod : "");
+    var style = o.img ? ' style="' + T.heroImg(o.img) + '"' : "";
+    var html =
+      '<section class="' + cls + '"' + style + ">" +
+      '<span class="eyebrow">' +
+      (o.eyebrowIcon ? icon(o.eyebrowIcon, { size: 14 }) : "") +
+      "<span>" + esc(o.eyebrow) + "</span></span>" +
+      '<h2 class="hero__title tr-hero__title">' + esc(o.title) + "</h2>" +
+      (o.meta ? '<p class="hero__meta">' + esc(o.meta) + "</p>" : "");
+    if (o.button) {
+      html +=
+        '<button type="button" class="btn btn--cta tr-hero__btn" id="' + esc(o.button.id) + '"' +
+        (o.button.attrs || "") + ">" + esc(o.button.label) + "</button>";
+    }
+    if (o.link) {
+      html +=
+        '<button type="button" class="tr-hero__link" id="' + esc(o.link.id) + '"' +
+        (o.link.attrs || "") + ">" + esc(o.link.label) + icon("chevron", { size: 16 }) + "</button>";
+    }
+    return html + "</section>";
+  }
+
+  /**
+   * Блок дня — четыре состояния (ТЗ §2.4).
    */
   function todayCardHtml(ov) {
     var today = ov.today || {};
     var day = today.day || null;
     var session = today.active_session || T.cache.activeSession || null;
 
-    // 1) Незавершённая сессия → «Продолжить».
+    // 1) Незавершённая сессия → «Продолжить». Оранжевая полоса слева:
+    //    человек в процессе, это должно бросаться в глаза.
     if (ov.active_session_id) {
       var pr = sessionProgress(session);
       var meta = [];
       // Длительность — только через fmtDuration: брошенная неделю назад
       // сессия иначе показывает «9532 мин».
       if (pr.elapsed) meta.push(T.fmtDuration(pr.elapsed));
-      if (pr.total) meta.push(pr.done + "/" + pr.total);
-      return (
-        '<section class="card tr-today-card tr-today-card--progress">' +
-        '<span class="tr-day-badge tr-day-badge--progress">' + esc(pick("Тренировка в процессе", "Workout in progress")) + "</span>" +
-        '<h2 class="tr-today-card__title">' + esc((session && session.title) || (day && day.title) || pick("Тренировка", "Workout")) + "</h2>" +
-        (meta.length ? '<p class="tr-today-card__meta">' + esc(meta.join(" · ")) + "</p>" : "") +
-        '<div class="tr-today-card__actions">' +
-        '<button type="button" class="btn btn-cta btn-block" id="trContinue">' + esc(pick("Продолжить", "Continue")) + "</button>" +
-        "</div>" +
-        "</section>"
-      );
+      if (pr.total) meta.push(pr.done + "/" + pr.total + " " + exWord(pr.total));
+      return heroHtml({
+        img: "hero-workout.jpg",
+        mod: "tr-hero--active",
+        eyebrow: pick("Тренировка идёт", "Workout in progress"),
+        title: (session && session.title) || (day && day.title) || pick("Тренировка", "Workout"),
+        meta: meta.join(" · "),
+        button: { id: "trContinue", label: pick("Продолжить", "Continue") }
+      });
     }
 
     // 2) Тренировочный день по плану → «Начать».
     if (today.kind === "planned" && day) {
-      var exs = day.exercises || [];
-      var preview = "";
-      for (var i = 0; i < Math.min(3, exs.length); i++) {
-        preview +=
-          '<div class="tr-ex-preview__item">' +
-          '<span class="tr-ex-preview__name">' + esc(T.exName(exs[i])) + "</span>" +
-          '<span class="tr-ex-preview__meta">' + esc(shortTarget(exs[i])) + "</span>" +
-          "</div>";
-      }
-      if (exs.length > 3) {
-        preview += '<div class="tr-ex-preview__more">' + esc(pick("и ещё ", "and ") + (exs.length - 3) + pick("", " more")) + "</div>";
-      }
-      return (
-        '<section class="card tr-today-card">' +
-        '<span class="tr-day-badge tr-day-badge--today">' + esc(pick("Сегодня по плану", "Planned for today")) + "</span>" +
-        '<h2 class="tr-today-card__title">' + esc(day.title || pick("Тренировка", "Workout")) + "</h2>" +
-        '<p class="tr-today-card__meta">' + esc(dayMeta(day)) + "</p>" +
-        (preview ? '<div class="tr-ex-preview">' + preview + "</div>" : "") +
-        '<div class="tr-today-card__actions">' +
-        '<button type="button" class="btn btn-cta btn-block" id="trStart" data-day-id="' + esc(day.id) + '">' +
-        esc(pick("Начать", "Start")) +
-        "</button>" +
-        "</div>" +
-        "</section>"
-      );
+      return heroHtml({
+        img: "hero-workout.jpg",
+        eyebrow: pick("Тренировка дня", "Workout of the day"),
+        title: day.title || pick("Тренировка", "Workout"),
+        meta: dayMeta(day),
+        button: { id: "trStart", label: pick("Начать", "Start"), attrs: ' data-day-id="' + esc(day.id) + '"' }
+      });
     }
 
     // 3) Тренировка на сегодня уже закрыта → итог дня + следующая.
@@ -383,58 +395,72 @@
         nextText = pick("Следующая — ", "Next — ") + T.shortDate(today.next_date) +
           (today.next_title ? ": " + today.next_title : "");
       }
-      return (
-        '<section class="card tr-today-card tr-today-card--done">' +
-        '<span class="tr-day-badge tr-day-badge--today">' +
-        esc(skipped ? pick("Сегодня пропущено", "Skipped today") : pick("Сегодня сделано", "Done today")) +
-        "</span>" +
-        '<h2 class="tr-today-card__title">' +
-        (skipped ? "" : icon("check", { size: 20, cls: "tr-today-card__check" })) +
-        esc(day.title || pick("Тренировка", "Workout")) + "</h2>" +
-        (nextText ? '<p class="tr-today-card__meta">' + esc(nextText) + "</p>" : "") +
-        '<div class="tr-today-card__actions">' +
-        '<button type="button" class="btn btn-ghost btn-block" id="trDoneProgress">' +
-        esc(pick("Итоги и прогресс", "Results and progress")) +
-        "</button>" +
-        "</div>" +
-        "</section>"
-      );
+      return heroHtml({
+        mod: "tr-hero--calm",
+        eyebrow: skipped ? pick("Сегодня пропущено", "Skipped today") : pick("Сегодня сделано", "Done today"),
+        eyebrowIcon: skipped ? "" : "check",
+        title: day.title || pick("Тренировка", "Workout"),
+        meta: nextText,
+        link: { id: "trDoneProgress", label: pick("Итоги и прогресс", "Results and progress") }
+      });
     }
 
     // 4) Неделя закрыта → «Дополнительная тренировка».
     if (today.kind === "week_done") {
-      return (
-        '<section class="card tr-today-card tr-today-card--rest">' +
-        '<span class="tr-day-badge tr-day-badge--today">' + esc(pick("План недели выполнен", "Weekly plan complete")) + "</span>" +
-        '<h2 class="tr-today-card__title">' + esc(pick("Неделя закрыта", "Week complete")) + "</h2>" +
-        '<p class="tr-today-card__meta">' +
-        esc(pick("Все тренировки недели сделаны. Отдых — тоже часть плана.", "All workouts this week are done. Rest is part of the plan too.")) +
-        "</p>" +
-        '<div class="tr-today-card__actions">' +
-        '<button type="button" class="btn btn-ghost btn-block" id="trStart" data-day-id="' + esc(day ? day.id : "") + '">' +
-        esc(pick("Дополнительная тренировка", "Extra workout")) +
-        "</button>" +
-        "</div>" +
-        "</section>"
-      );
+      return heroHtml({
+        mod: "tr-hero--calm",
+        eyebrow: pick("План недели выполнен", "Weekly plan complete"),
+        title: pick("Неделя закрыта", "Week complete"),
+        meta: pick("Все тренировки недели сделаны. Отдых — тоже часть плана.", "All workouts this week are done. Rest is part of the plan too."),
+        link: {
+          id: "trStart",
+          label: pick("Дополнительная тренировка", "Extra workout"),
+          attrs: ' data-day-id="' + esc(day ? day.id : "") + '"'
+        }
+      });
     }
 
     // 5) День отдыха (по умолчанию).
-    var nextLine = "";
+    var nextLine = pick("Отдых — часть плана", "Rest is part of the plan");
     if (day) {
       var when = today.next_date ? T.shortDate(today.next_date) : "";
       nextLine = pick("Следующая", "Next") + (when ? " — " + when : "") + ": " + (day.title || "");
     }
+    return heroHtml({
+      mod: "tr-hero--calm",
+      eyebrow: pick("Отдых", "Rest"),
+      title: pick("День отдыха", "Rest day"),
+      meta: nextLine,
+      link: day
+        ? { id: "trStart", label: pick("Всё равно потренироваться", "Train anyway"), attrs: ' data-day-id="' + esc(day.id) + '"' }
+        : null
+    });
+  }
+
+  /**
+   * Упражнения дня под тёмным блоком: номер, название, цель «3×8–12 · 14 кг».
+   * Только для запланированного дня — в отдых и после тренировки план дня
+   * уже не нужен.
+   */
+  function dayListHtml(ov) {
+    var today = ov.today || {};
+    var day = today.day || null;
+    if (ov.active_session_id || today.kind !== "planned" || !day) return "";
+    var exs = day.exercises || [];
+    if (!exs.length) return "";
+    var rows = "";
+    for (var i = 0; i < exs.length; i++) {
+      rows +=
+        '<div class="tr-day-list__row">' +
+        '<span class="tr-day-list__num">' + (i + 1) + "</span>" +
+        '<span class="tr-day-list__name">' + esc(T.exName(exs[i])) + "</span>" +
+        '<span class="tr-day-list__meta num">' + esc(shortTarget(exs[i])) + "</span>" +
+        "</div>";
+    }
     return (
-      '<section class="card tr-today-card tr-today-card--rest">' +
-      '<span class="tr-day-badge tr-day-badge--rest">' + esc(pick("Отдых", "Rest")) + "</span>" +
-      '<h2 class="tr-today-card__title">' + esc(pick("День отдыха", "Rest day")) + "</h2>" +
-      (nextLine ? '<p class="tr-today-card__meta">' + esc(nextLine) + "</p>" : "") +
-      (day
-        ? '<button type="button" class="tr-today-card__link" id="trStart" data-day-id="' + esc(day.id) + '">' +
-          esc(pick("Всё равно потренироваться", "Train anyway")) +
-          "</button>"
-        : "") +
+      '<section class="card tr-day-list">' +
+      '<span class="eyebrow">' + esc(pick("План на сегодня", "Today’s plan")) + "</span>" +
+      rows +
       "</section>"
     );
   }
@@ -493,6 +519,7 @@
       : "";
     return (
       '<section class="card tr-streak">' +
+      '<span class="eyebrow">' + esc(pick("Серия", "Streak")) + "</span>" +
       '<div class="tr-streak__row">' +
       '<span class="tr-streak__icon" aria-hidden="true">' + icon("flame", { size: 22 }) + "</span>" +
       '<span class="tr-streak__text">' + esc(main) +
@@ -628,23 +655,21 @@
   }
 
   /**
-   * Экран «Программа не создана».
+   * Экран «Программа не создана»: тот же тёмный блок с фото, что и
+   * тренировка дня, — раздел не должен выглядеть пустым ещё до старта.
    */
   function emptyProgramHtml() {
-    return (
-      '<section class="card wk-empty tr-empty">' +
-      '<div class="wk-empty__icon" aria-hidden="true">' + icon("list", { size: 36 }) + "</div>" +
-      '<p class="wk-empty__title">' + esc(pick("Программа не создана", "No program yet")) + "</p>" +
-      '<p class="wk-empty__text">' +
-      esc(pick(
+    return heroHtml({
+      img: "empty-program.jpg",
+      eyebrow: pick("Тренировки", "Training"),
+      title: pick("Программы пока нет", "No program yet"),
+      meta: pick(
         "Анкета заполнена. Соберём программу под вашу цель, уровень и оборудование — это займёт до минуты.",
         "Your profile is ready. Let’s build a program for your goal, level and equipment — it takes under a minute."
-      )) +
-      "</p>" +
-      '<button type="button" class="btn btn-cta btn-block" id="trGenerate">' + esc(pick("Собрать программу", "Build my program")) + "</button>" +
-      '<button type="button" class="btn btn-ghost btn-block" id="trSettings">' + esc(pick("Изменить настройки", "Change settings")) + "</button>" +
-      "</section>"
-    );
+      ),
+      button: { id: "trGenerate", label: pick("Собрать программу", "Build my program") },
+      link: { id: "trSettings", label: pick("Изменить настройки", "Change settings") }
+    });
   }
 
   /* =====================================================================
@@ -671,9 +696,12 @@
     if (!body) return;
     body.innerHTML =
       todayCardHtml(ov) +
+      dayListHtml(ov) +
       reviewBannerHtml(ov) +
-      '<h3 class="tr-section-title">' + esc(pick("Эта неделя", "This week")) + "</h3>" +
-      '<section class="card">' + weekStripHtml(ov) + "</section>" +
+      '<section class="card">' +
+      '<span class="eyebrow">' + esc(pick("Эта неделя", "This week")) + "</span>" +
+      weekStripHtml(ov) +
+      "</section>" +
       streakHtml(ov) +
       recoveryCardHtml() +
       nutritionCardHtml();

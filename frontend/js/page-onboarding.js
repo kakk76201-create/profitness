@@ -22,8 +22,9 @@
  * заново при каждом запуске, сколько бы раз человек ни нажал «Пропустить».
  *
  * Локализация: весь видимый текст через App.pick(ru, en) НА МОМЕНТ рендера.
- * Классы: onb-* (onb-wizard, onb-step, onb-title, onb-field, onb-actions,
- * onb-next, onb-skip, onb-dots ...). Реиспользуем базовые field/btn классы.
+ * Классы: onb-* (onb-wizard, onb-step, onb-title, onb-field, onb-goal,
+ * onb-actions, onb-next, onb-skip, onb-progress ...). Реиспользуем базовые
+ * field/btn классы.
  */
 (function () {
   "use strict";
@@ -46,10 +47,27 @@
   ];
 
   // Варианты цели питания (diet_goal). value — то, что уходит на сервер.
+  // img — файл фотографии карточки в frontend/img (имена фиксированы),
+  // hint — одна строка о том, что цель значит для рациона.
   var DIET_GOAL_OPTIONS = [
-    { value: "loss", ru: "Похудение", en: "Weight loss" },
-    { value: "maintain", ru: "Поддержание", en: "Maintenance" },
-    { value: "gain", ru: "Набор массы", en: "Muscle gain" }
+    {
+      value: "loss",
+      ru: "Похудеть", en: "Lose weight",
+      hintRu: "Дефицит калорий", hintEn: "Calorie deficit",
+      img: "goal-lose.jpg"
+    },
+    {
+      value: "maintain",
+      ru: "Поддерживать", en: "Maintain",
+      hintRu: "Норма без изменений", hintEn: "Stay at your goal",
+      img: "goal-keep.jpg"
+    },
+    {
+      value: "gain",
+      ru: "Набрать", en: "Gain muscle",
+      hintRu: "Профицит и белок", hintEn: "Surplus and protein",
+      img: "goal-gain.jpg"
+    }
   ];
 
   // Время вечерней сводки по умолчанию.
@@ -63,6 +81,17 @@
   /** Иконка из общего набора (js/icons.js). */
   function icon(name, opts) {
     return App.icon ? App.icon(name, opts) : "";
+  }
+
+  /**
+   * Значение переменной --hero-img для карточки с фотографией.
+   * Путь делаем абсолютным: относительный url() внутри custom property Chrome
+   * разрешает от адреса таблицы стилей, где переменная подставляется, а не от
+   * страницы — картинка запрашивалась как css/img/… и уходила в 404.
+   * @param {string} file имя файла в frontend/img
+   */
+  function heroImg(file) {
+    return App.heroImg(file);
   }
 
   // Черновик введённых пользователем данных (переживает перерисовку шагов).
@@ -89,17 +118,26 @@
    *  РЕНДЕР
    * ===================================================================== */
 
-  /** Рисует индикатор шагов (точки). */
+  /**
+   * Индикатор шагов: полоса из сегментов и подпись «Шаг 1 из 3». Пройденные
+   * и текущий сегменты оранжевые — видно и прогресс, и сколько осталось.
+   */
   function dotsHtml(step) {
     var out = "";
     for (var i = 1; i <= STEP_COUNT; i++) {
       out +=
-        '<span class="onb-dot' +
-        (i === step ? " onb-dot--active" : "") +
-        (i < step ? " onb-dot--done" : "") +
+        '<span class="onb-progress__seg' +
+        (i <= step ? " onb-progress__seg--on" : "") +
         '"></span>';
     }
-    return '<div class="onb-dots" aria-hidden="true">' + out + "</div>";
+    return (
+      '<div class="onb-progress">' +
+      '<span class="eyebrow onb-progress__label">' +
+      App.escapeHtml(L("Шаг " + step + " из " + STEP_COUNT, "Step " + step + " of " + STEP_COUNT)) +
+      "</span>" +
+      '<div class="onb-progress__bar" aria-hidden="true">' + out + "</div>" +
+      "</div>"
+    );
   }
 
   /** HTML шага 1: пол (обязательно), вес, рост, возраст. */
@@ -182,16 +220,22 @@
       );
     }).join("");
 
-    var goalOpts = DIET_GOAL_OPTIONS.map(function (o) {
-      var sel = draft.diet_goal === o.value ? " selected" : "";
+    // Цель — три карточки с фотографией, а не выпадающий список: это главный
+    // выбор мастера, и он должен выглядеть как выбор, а не как поле анкеты.
+    // Картинка — фон через переменную, затемнение кладёт CSS.
+    var goalCards = DIET_GOAL_OPTIONS.map(function (o) {
+      var on = draft.diet_goal === o.value;
       return (
-        '<option value="' +
-        o.value +
-        '"' +
-        sel +
-        ">" +
-        App.escapeHtml(L(o.ru, o.en)) +
-        "</option>"
+        '<button type="button" class="onb-goal' +
+        (on ? " onb-goal--on" : "") +
+        '" data-goal="' + o.value + '" role="radio" aria-checked="' + (on ? "true" : "false") +
+        '" style="' + heroImg(o.img) + '">' +
+        '<span class="onb-goal__mark" aria-hidden="true">' + icon("check", { size: 16 }) + "</span>" +
+        '<span class="onb-goal__text">' +
+        '<span class="onb-goal__title">' + App.escapeHtml(L(o.ru, o.en)) + "</span>" +
+        '<span class="onb-goal__hint">' + App.escapeHtml(L(o.hintRu, o.hintEn)) + "</span>" +
+        "</span>" +
+        "</button>"
       );
     }).join("");
 
@@ -216,14 +260,16 @@
       actOpts +
       "</select>" +
       "</label>" +
-      '<label class="field onb-field">' +
+      '<div class="onb-field">' +
       '<span class="field__label">' +
       App.escapeHtml(L("Цель питания", "Nutrition goal")) +
       "</span>" +
-      '<select class="field__input" id="onbDietGoal">' +
-      goalOpts +
-      "</select>" +
-      "</label>" +
+      '<div class="onb-goals" id="onbDietGoal" role="radiogroup" aria-label="' +
+      App.escapeHtml(L("Цель питания", "Nutrition goal")) +
+      '">' +
+      goalCards +
+      "</div>" +
+      "</div>" +
       "</div>"
     );
   }
@@ -286,9 +332,11 @@
       ? L("Готово", "Finish")
       : L("Далее", "Next");
 
+    // «Назад» — контурная кнопка под основной: тот же ряд действий, что и
+    // на остальных экранах, без отдельной текстовой ссылки.
     var backHtml =
       draft.step > 1
-        ? '<button type="button" class="onb-back" id="onbBack">' +
+        ? '<button type="button" class="btn btn--ghost btn-block onb-back" id="onbBack">' +
           App.escapeHtml(L("Назад", "Back")) +
           "</button>"
         : "";
@@ -298,10 +346,10 @@
       dotsHtml(draft.step) +
       stepHtml +
       '<div class="onb-actions">' +
-      backHtml +
       '<button type="button" class="btn btn-cta btn-block onb-next" id="onbNext">' +
       App.escapeHtml(nextLabel) +
       "</button>" +
+      backHtml +
       '<button type="button" class="onb-skip" id="onbSkip">' +
       App.escapeHtml(L("Пропустить", "Skip")) +
       "</button>" +
@@ -327,9 +375,8 @@
       if (a) draft.age = a.value.trim();
     } else if (draft.step === 2) {
       var act = rootEl.querySelector("#onbActivity");
-      var dg = rootEl.querySelector("#onbDietGoal");
       if (act) draft.activity_level = Number(act.value) || 1.375;
-      if (dg) draft.diet_goal = dg.value;
+      // Цель питания пишется в черновик сразу при нажатии на карточку.
     }
     // Шаг 3 (сводка) переключается сразу в обработчике клика.
   }
@@ -351,6 +398,23 @@
             "onb-choice--on",
             all[i] === btn
           );
+        }
+      });
+    }
+
+    // Выбор цели питания (шаг 2) — карточки-переключатели.
+    var goalBox = rootEl.querySelector("#onbDietGoal");
+    if (goalBox) {
+      goalBox.addEventListener("click", function (ev) {
+        var btn = ev.target.closest(".onb-goal");
+        if (!btn) return;
+        draft.diet_goal = btn.getAttribute("data-goal");
+        App.haptic("selection");
+        var cards = goalBox.querySelectorAll(".onb-goal");
+        for (var i = 0; i < cards.length; i++) {
+          var on = cards[i] === btn;
+          cards[i].classList.toggle("onb-goal--on", on);
+          cards[i].setAttribute("aria-checked", on ? "true" : "false");
         }
       });
     }

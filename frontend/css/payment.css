@@ -9,9 +9,10 @@
    .card .btn .btn--cta .btn--ghost .btn-block .skeleton .skeleton--block;
    их правки под иконки лежат в css/profile.css (он подключается раньше).
 
-   Все прежние эмодзи заменены иконками из js/icons.js: это inline-SVG,
-   которые наследуют цвет через currentColor, поэтому у контейнеров вместо
-   кегля эмодзи задан font-size: 0 и осмысленный color.
+   Иконки — inline-SVG из js/icons.js, наследуют цвет через currentColor,
+   поэтому у контейнеров вместо кегля эмодзи задан font-size: 0 и
+   осмысленный color. Заголовки секций и «Итого» — надзаголовки .eyebrow и
+   сжатый шрифт, цена и сумма — крупные числа .num.
 
    ВСЁ ОФОРМЛЕНИЕ — ЧЕРЕЗ ТОКЕНЫ css/tokens.css: цвет только var(--...),
    кегль только из шкалы --fs-*, начертание --fw-*, межстрочный --lh-*,
@@ -46,21 +47,22 @@
   display: block;
 }
 
-/* Заголовок секции («Что входит», «Способ оплаты»). */
+/* Заголовок секции («Что входит», «Способ оплаты») — надзаголовок
+   .eyebrow из style.css; здесь только отступ под ним. */
 .pay-section-title {
-  font-size: var(--fs-h3);
-  font-weight: var(--fw-bold);
-  color: var(--text);
   margin-bottom: var(--s3);
 }
 
-/* ---------- Карточка выбранного плана ---------- */
+/* ---------- Карточка выбранного плана (итог заказа) ---------- */
 .pay-plan {
   background: var(--surface);
-  border-left: 4px solid var(--accent);
 }
 
-/* Верхняя строка: иконка + название и срок. */
+.pay-plan__eyebrow {
+  margin-bottom: var(--s2);
+}
+
+/* Верхняя строка: название и срок. */
 .pay-plan__head {
   display: flex;
   align-items: center;
@@ -68,27 +70,17 @@
   min-width: 0;
 }
 
-/* Иконка тарифа (календарь / кубок / бесконечность) в кружке. */
-.pay-plan__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-pill);
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 0;
-}
-
 .pay-plan__info {
   min-width: 0;
 }
 
+/* Название тарифа — сжатым капсом, как заголовок секции. */
 .pay-plan__title {
-  font-size: var(--fs-h3);
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
   font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: .01em;
   color: var(--text);
   line-height: var(--lh-tight);
 }
@@ -101,13 +93,11 @@
   line-height: var(--lh-normal);
 }
 
-/* Цена крупно — главный элемент карточки. */
+/* Цена крупно (.num) — главный элемент карточки. */
 .pay-plan__price {
   font-size: var(--fs-display);
-  font-weight: var(--fw-bold);
   color: var(--text);
-  line-height: var(--lh-tight);
-  margin-top: var(--s4);
+  margin-top: var(--s3);
   /* Длинные суммы переносим, а не растягиваем карточку. */
   overflow-wrap: anywhere;
 }
@@ -116,7 +106,7 @@
 .pay-plan__econ {
   font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
-  color: var(--accent);
+  color: var(--accent-text);
   margin-top: var(--s1);
   line-height: var(--lh-normal);
 }
@@ -191,8 +181,8 @@
   align-items: flex-start;
   gap: var(--s3);
   padding: var(--s3);
-  border: 1.5px solid var(--accent);
-  border-radius: var(--radius-sm);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
   background: transparent;
 }
 
@@ -209,7 +199,7 @@
   height: 18px;
   margin-top: var(--s1);
   border-radius: var(--radius-pill);
-  border: 2px solid var(--accent);
+  border: 2px solid var(--border-strong);
   background: transparent;
 }
 
@@ -224,7 +214,7 @@
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 0;
 }
 
@@ -252,7 +242,7 @@
 /* «Безопасная оплата через …» — подпись провайдера. */
 .pay-method__provider {
   font-size: var(--fs-xs);
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: var(--fw-semibold);
   line-height: var(--lh-normal);
 }
@@ -285,15 +275,18 @@
   margin-bottom: var(--s4);
 }
 
+/* «Итого» — надзаголовком, сумма — крупным числом (.num). */
 .pay-total__label {
-  font-size: var(--fs-body);
-  font-weight: var(--fw-semibold);
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: .02em;
   color: var(--muted);
 }
 
 .pay-total__sum {
   font-size: var(--fs-h1);
-  font-weight: var(--fw-bold);
   color: var(--text);
   text-align: right;
   overflow-wrap: anywhere;
@@ -359,10 +352,10 @@
 /* Ссылки подвала (оферта, политика, телеграм-контакт, e-mail). */
 .pay-legal__link,
 .pay-legal__mail {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: var(--fw-semibold);
   text-decoration: none;
-  border-bottom: 1px solid var(--accent);
+  border-bottom: 1px solid var(--accent-line);
   overflow-wrap: anywhere;
 }
 
@@ -393,10 +386,10 @@
 /* ---------- Экран успеха ---------- */
 .pay-success {
   background: var(--surface);
-  border-left: 4px solid var(--accent);
   text-align: center;
 }
 
+/* Галочка успеха — белым на оранжевом круге: это результат, а не намёк. */
 .pay-success__icon {
   display: inline-flex;
   align-items: center;
@@ -405,21 +398,21 @@
   height: 56px;
   margin: 0 auto var(--s3);
   border-radius: var(--radius-pill);
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
   font-size: 0;
 }
 
 .pay-success__title {
+  margin: 0;
   font-size: var(--fs-h2);
-  font-weight: var(--fw-bold);
   color: var(--text);
 }
 
 .pay-success__until {
   font-size: var(--fs-body);
   font-weight: var(--fw-semibold);
-  color: var(--accent);
+  color: var(--accent-text);
   margin-top: var(--s1);
   margin-bottom: var(--s4);
   line-height: var(--lh-normal);
@@ -456,11 +449,6 @@
      сбрасываем их на ступень ниже по той же шкале. */
   .pay-plan__price {
     font-size: var(--fs-h1);
-  }
-
-  .pay-plan__icon {
-    width: 40px;
-    height: 40px;
   }
 
   .pay-total__sum {

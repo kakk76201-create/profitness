@@ -306,7 +306,7 @@
       esc(s.title || pick("Тренировка", "Workout")) +
       "</div>" +
       '<div class="tr-session-head__meta">' +
-      '<span class="tr-session-timer" id="trsTimer">0:00</span>' +
+      '<span class="tr-session-timer num" id="trsTimer">0:00</span>' +
       '<span class="tr-session-progress" id="trsProgress"></span>' +
       "</div>" +
       "</div>" +
@@ -498,12 +498,26 @@
     );
   }
 
+  /**
+   * Текущее упражнение — первое незакрытое в основном блоке: его название
+   * рисуется крупнее, чтобы рабочая карточка находилась взглядом сразу.
+   */
+  function isCurrent(sex) {
+    var list = exercisesOf("main");
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].status === "done" || list[i].status === "skipped") continue;
+      return list[i] === sex;
+    }
+    return false;
+  }
+
   /** Карточка упражнения основного блока. */
   function exCardHtml(sex) {
     var ex = sex.exercise || {};
     var cls = "card tr-ex-card";
     if (sex.status === "done") cls += " tr-ex-card--done";
     if (sex.status === "skipped") cls += " tr-ex-card--skipped";
+    if (isCurrent(sex)) cls += " tr-ex-card--current";
     var badges = "";
     if (ex.muscle_group) {
       badges += '<span class="tr-ex-card__badge">' + esc(T.label("muscle", ex.muscle_group)) + "</span>";
@@ -594,7 +608,7 @@
       "</svg>" +
       "</span>" +
       '<span class="tr-rest-bar__body">' +
-      '<span class="tr-rest-bar__time" id="trsRestTime">0:00</span>' +
+      '<span class="tr-rest-bar__time num" id="trsRestTime">0:00</span>' +
       '<span class="tr-rest-bar__info" id="trsRestInfo"></span>' +
       "</span>" +
       '<span class="tr-rest-bar__btns">' +
@@ -856,6 +870,13 @@
     if (!card) return;
     card.classList.toggle("tr-ex-card--done", sex.status === "done");
     card.classList.toggle("tr-ex-card--skipped", sex.status === "skipped");
+    // Закрытое упражнение передаёт «текущий» следующему — без полной
+    // перерисовки списка, чтобы не терять фокус и черновики полей.
+    var cards = state.rootEl.querySelectorAll(".tr-ex-card");
+    for (var i = 0; i < cards.length; i++) {
+      var other = findSex(cards[i].getAttribute("data-sex"));
+      cards[i].classList.toggle("tr-ex-card--current", !!other && isCurrent(other));
+    }
   }
 
   /** Прогресс «2/6 упражнений» и доступность кнопки «Завершить». */

@@ -20,9 +20,12 @@
   gap: var(--s1);
   padding: var(--s1) var(--s3);
   background: var(--accent-soft);
-  color: var(--accent);
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
+  /* Мелкий оранжевый текст на светлой подложке — только --accent-text:
+     яркий --accent даёт здесь около 3:1, для 13px этого мало. */
+  color: var(--accent-text);
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-bold);
   box-shadow: none;
 }
 
@@ -46,8 +49,111 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border-radius: var(--radius);
   background: var(--surface-2);
   color: var(--text);
+}
+
+/* Дата — сжатым шрифтом в верхнем регистре, как заголовок табло; ISO-строка
+   под ней остаётся мелкой служебной подписью. */
+.diary-datebar__date {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+  text-transform: uppercase;
+  letter-spacing: .01em;
+}
+
+.diary-datebar__iso {
+  font-family: var(--font-display);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-btn);
+  color: var(--muted);
+}
+
+/* ---------- Мини-календарь (общий .cal-pop из app.js) ----------
+   Правила уточнены до контейнера дневника, чтобы не трогать календарь
+   тренировок. Выбранный день — оранжевая заливка, сегодня — оранжевая
+   точка под числом вместо тонкой обводки. */
+.diary-datebar__cal .cal-pop {
+  padding: var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+}
+
+.diary-datebar__cal .cal-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: .02em;
+}
+
+.diary-datebar__cal .cal-nav {
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.diary-datebar__cal .cal-nav:active {
+  background: var(--accent-soft);
+}
+
+.diary-datebar__cal .cal-dow {
+  font-family: var(--font-display);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-eyebrow);
+}
+
+.diary-datebar__cal .cal-cell {
+  position: relative;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.diary-datebar__cal button.cal-cell:active {
+  background: var(--surface-2);
+}
+
+.diary-datebar__cal .cal-cell--today {
+  box-shadow: none;
+  color: var(--accent-text);
+  font-weight: var(--fw-bold);
+}
+
+.diary-datebar__cal .cal-cell--today::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  width: 5px;
+  height: 5px;
+  margin-left: -2.5px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+}
+
+.diary-datebar__cal .cal-cell--selected {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: var(--fw-bold);
+}
+
+.diary-datebar__cal .cal-cell--selected::after {
+  background: var(--on-accent);
+}
+
+.diary-datebar__cal button.cal-cell--selected:active {
+  background: var(--accent-press);
 }
 
 .diary-datebar__nav:active {
@@ -73,10 +179,19 @@
    ПРИЁМЫ ПИЩИ
    ============================================================ */
 
+.diary-meal__head {
+  align-items: center;
+  gap: var(--s3);
+  margin-bottom: var(--s2);
+}
+
+/* Название приёма — надзаголовок (.eyebrow) на шаг крупнее базового:
+   рядом стоит иконка 24px, и 11px подпись при ней терялась. */
 .diary-meal__title {
+  display: inline-flex;
+  align-items: center;
   gap: var(--s2);
-  font-size: var(--fs-h3);
-  font-weight: var(--fw-semibold);
+  font-size: var(--fs-xs);
 }
 
 /* Иконка приёма пищи — подложка цвета действия вместо разноцветного эмодзи. */
@@ -84,11 +199,45 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: var(--radius-sm);
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+/* Сумма приёма — крупное число сжатым шрифтом, единица мельче и тише. */
+.diary-meal__kcal {
+  font-size: var(--fs-h2);
+  color: var(--text);
+}
+
+.diary-meal__kcal-unit {
+  margin-left: var(--s1);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-btn);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Название записи переносится на вторую строку, а не режется: с бейджем
+   количества даже «Кофе с молоком 250 мл» не влезал в одну и терял хвост. */
+.diary-entry__name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+  overflow: hidden;
+  line-height: var(--lh-heading);
+}
+
+/* Калории записи — тем же сжатым шрифтом, что и сумма приёма. */
+.diary-entry__kcal {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Приём пищи БЕЗ записей: одна строка вместо карточки с пустым состоянием.
@@ -123,10 +272,17 @@
   color: var(--data-neutral);
 }
 
+/* Название пустого приёма набрано так же, как заголовки-надзаголовки в
+   заполненных карточках, только крупнее: строка читается как «слот» дня. */
 .diary-meal-row__title {
   flex: 1;
   min-width: 0;
-  font-weight: var(--fw-medium);
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-btn);
+  color: var(--text);
 }
 
 /* «Плюс» в строке пустого приёма — подсказка, что строка добавляет. */
@@ -150,9 +306,12 @@
   border: none;
   border-radius: var(--radius);
   background: var(--surface-2);
-  color: var(--accent);
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
+  color: var(--accent-text);
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-btn);
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease);
 }
@@ -183,9 +342,66 @@
 
 /* ============================================================
    ПУСТОЕ СОСТОЯНИЕ ДНЯ (одно на экран)
+   Тёмный блок с фотографией (.hero из style.css) — тот же приём, что у
+   тренировки дня на «Сегодня». Старые правила .diary-empty* в style.css
+   красили его как серую подпись по центру — перекрываем.
    ============================================================ */
 
-.diary-empty__icon {
+.diary-empty {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 250px;
+  margin-bottom: var(--s3);
+  padding: var(--s5);
+  text-align: left;
+  color: var(--hero-text);
+}
+
+.diary-empty__title {
+  margin: var(--s2) 0 0;
+  font-size: var(--fs-h1);
+  color: var(--hero-text);
+}
+
+.diary-empty__text {
+  margin: var(--s2) 0 0;
+  font-size: var(--fs-body);
+  line-height: var(--lh-normal);
+  color: var(--hero-muted);
+}
+
+.diary-empty__cta {
+  margin-top: var(--s4);
+}
+
+/* Второй вход (лист со всеми способами) — ссылка, а не вторая кнопка:
+   на афише должно быть одно главное действие. */
+.diary-empty__more {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  gap: var(--s1);
+  min-height: var(--tap-min);
+  margin-top: var(--s1);
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--hero-text);
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-btn);
+  cursor: pointer;
+}
+
+.diary-empty__more svg {
+  color: var(--accent);
+}
+
+/* Ошибка загрузки дня: заголовок — как заголовок секции, иконка — статус. */
+.diary-error__icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -193,25 +409,134 @@
   height: 56px;
   margin: 0 auto var(--s3);
   border-radius: var(--radius-pill);
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 0; /* гасим прежний эмодзи-кегль 44px */
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
-.diary-empty__title {
-  font-size: var(--fs-h3);
-  font-weight: var(--fw-semibold);
-}
-
-.diary-empty__cta {
-  display: flex;
-  max-width: 240px;
-  margin: var(--s4) auto 0;
+.diary-error__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+  text-transform: uppercase;
 }
 
 /* ============================================================
    ИТОГ ДНЯ
+   Карточка-табло: главное число крупно, БЖУ — три числа в ряд в цветах
+   нутриентов, прогресс — толстая дорожка с оранжевой заливкой.
    ============================================================ */
+
+.diary-total {
+  padding: var(--s5) var(--s4) var(--s4);
+}
+
+/* Надзаголовок над числом, а не рядом: «Итого за день (нетто)» вместе с
+   44px числом в одну строку не помещается на 375px. */
+.diary-total__row {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s1);
+  margin-bottom: var(--s3);
+}
+
+/* .eyebrow задан в style.css раньше старого .diary-total__caption (15px),
+   поэтому кегль и плотность приходится повторить здесь. */
+.diary-total__caption {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+}
+
+.diary-total__value {
+  font-size: var(--fs-display);
+  font-weight: var(--fw-bold);
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.diary-total__unit {
+  margin-left: var(--s1);
+  font-size: var(--fs-h3);
+  color: var(--muted);
+}
+
+.diary-total__macros {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--s2);
+  margin-bottom: var(--s4);
+  padding: var(--s3) var(--s3);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.diary-total__macro {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.diary-total__macro-value {
+  font-size: var(--fs-h2);
+  color: var(--text);
+}
+
+.diary-total__macro-unit {
+  margin-left: 2px;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+.diary-total__macro--p .diary-total__macro-label { color: var(--data-protein); }
+.diary-total__macro--f .diary-total__macro-label { color: var(--data-fat); }
+.diary-total__macro--c .diary-total__macro-label { color: var(--data-carb); }
+
+.diary-progress__track {
+  height: 10px;
+  background: var(--surface-3);
+}
+
+.diary-progress__fill {
+  background: var(--accent);
+}
+
+/* Подписи под дорожкой: длинная левая («с учётом тренировок») не делит
+   строку с остатком пополам, а уводит остаток на свою строку целиком. */
+.diary-progress__labels {
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s3);
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.diary-progress__hint {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* Баланс «съедено − сожжено = итого»: числа сжатым шрифтом; сожжённое —
+   предупреждающий цвет, итог — оранжевый текст (читаемый на светлом). */
+.diary-balance {
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.diary-balance__burned {
+  color: var(--warning);
+}
+
+.diary-balance__net {
+  color: var(--accent-text);
+}
 
 /* Подсказка «цель не задана» над кнопкой настройки цели. */
 .diary-total__nogoal-hint {
@@ -226,6 +551,16 @@
   align-items: center;
   gap: var(--s2);
   min-height: var(--tap-min);
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent-text);
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-btn);
+  cursor: pointer;
 }
 
 /* ============================================================
@@ -240,30 +575,35 @@
   margin-bottom: var(--s2);
 }
 
+/* Заголовок и сумма секции — как у приёма пищи: надзаголовок + число. */
 .diary-act__title {
   display: inline-flex;
   align-items: center;
   gap: var(--s2);
-  font-size: var(--fs-h3);
-  font-weight: var(--fw-semibold);
+  font-size: var(--fs-xs);
 }
 
 .diary-act__icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: var(--radius-sm);
   background: var(--warning-soft);
   color: var(--warning);
 }
 
 .diary-act__total {
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  color: var(--muted);
+  font-size: var(--fs-h2);
+  color: var(--text);
   white-space: nowrap;
+}
+
+.diary-act-item__kcal {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
   font-variant-numeric: tabular-nums;
 }
 
@@ -401,9 +741,31 @@
 
 .act-chip.is-active {
   border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-weight: var(--fw-semibold);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* Чипы (тип активности и приём пищи) — мини-кнопки: тот же сжатый капс,
+   что у .btn, поэтому белая подпись на оранжевом проходит по контрасту. */
+.act-chip,
+.page-diary .meal-chip,
+.diary-sheet .meal-chip {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: var(--fs-btn);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-btn);
+}
+
+.page-diary .meal-chip.is-active,
+.diary-sheet .meal-chip.is-active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 /* ============================================================
@@ -422,8 +784,8 @@
 .diary-sheet__handle {
   width: 36px;
   height: 4px;
+  border-radius: var(--radius-pill);
   background: var(--border-strong);
-  opacity: .5;
   margin: var(--s1) auto var(--s4);
 }
 
@@ -441,9 +803,12 @@
   color: var(--muted);
 }
 
+/* Заголовок группы листа — надзаголовок сжатым шрифтом с разрядкой. */
 .diary-sheet__group-title {
+  font-family: var(--font-display);
   font-size: var(--fs-2xs);
-  letter-spacing: .06em;
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-eyebrow);
   color: var(--muted);
   margin: 0 var(--s1) var(--s2);
 }
@@ -522,7 +887,7 @@
 }
 
 .diary-sheet__item--primary .diary-sheet__item-label {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .diary-sheet__item--primary:active {
@@ -551,18 +916,18 @@
    ПЛАВАЮЩАЯ КНОПКА «+»
    ============================================================ */
 
-/* Приподнятая плавающая кнопка, поэтому ей разрешены белое кольцо-обводка
-   и --shadow-2. Без кольца владелец видел «просто зелёный круг»: пятно
-   сливалось с зелёными элементами под ним и не читалось как отдельная
-   кнопка. Размер 64px вместе с кольцом — сам зелёный круг остаётся 56px. */
+/* Приподнятая плавающая кнопка: оранжевый круг, кольцо цвета фона страницы
+   и оранжевое свечение. Кольцо отделяет круг от контента под ним в обеих
+   темах (на чёрном белая обводка выглядела бы заплаткой), свечение делает
+   кнопку главным действием экрана даже на тёмном фоне, где мягкой тени нет. */
 .diary-fab {
-  width: 64px;
-  height: 64px;
-  border: 4px solid var(--surface);
+  width: 60px;
+  height: 60px;
+  border: none;
   background: var(--accent);
   color: var(--on-accent);
   font-size: 0; /* внутри теперь SVG, а не символ «+» */
-  box-shadow: var(--shadow-2);
+  box-shadow: 0 0 0 4px var(--bg), var(--shadow-accent);
 }
 
 .diary-fab:active {
@@ -588,6 +953,11 @@
 
 .yday__item {
   background: var(--surface-2);
+}
+
+.yday__title {
+  font-family: var(--font-display);
+  letter-spacing: var(--ls-eyebrow);
 }
 
 /* Скелетон строки быстрого повтора. Без своей высоты он брал 160px от

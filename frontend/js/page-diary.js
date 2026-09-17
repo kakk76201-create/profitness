@@ -91,6 +91,17 @@
     return "";
   }
 
+  /**
+   * Значение переменной --hero-img для фото геройского блока.
+   * Путь делаем абсолютным: относительный url() внутри custom property Chrome
+   * разрешает от адреса style.css, где переменная подставляется, а не от
+   * страницы — картинка запрашивалась как css/img/… и уходила в 404.
+   * @param {string} file имя файла в frontend/img
+   */
+  function heroImg(file) {
+    return App.heroImg(file);
+  }
+
   // Порядок приёмов пищи (подписи берём из App.mealLabel — он уже локализован).
   var MEAL_ORDER = ["breakfast", "lunch", "dinner", "snack"];
 
@@ -445,11 +456,14 @@
     return (
       '<section class="card diary-meal">' +
       '<header class="diary-meal__head">' +
-      '<span class="diary-meal__title">' +
+      // Название приёма — надзаголовок (.eyebrow), сумма справа — число
+      // сжатым шрифтом: карточка читается как строка табло, а не как список.
+      '<span class="diary-meal__title eyebrow">' +
       '<span class="diary-meal__icon">' + mealIcon + "</span>" +
       App.escapeHtml(label) +
       "</span>" +
-      '<span class="diary-meal__kcal">' + App.fmt(mealKcal) + " " + pick("ккал", "kcal") + "</span>" +
+      '<span class="diary-meal__kcal num">' + App.fmt(mealKcal) +
+      '<span class="diary-meal__kcal-unit">' + pick("ккал", "kcal") + "</span></span>" +
       "</header>" +
       '<ul class="diary-meal__list">' + rows + "</ul>" +
       // Добавить ещё блюдо в этот же приём, не открывая общий лист выбора.
@@ -555,17 +569,37 @@
     return (
       '<section class="card diary-total">' +
       '<div class="diary-total__row">' +
-      '<span class="diary-total__caption">' + App.escapeHtml(headCaption) + "</span>" +
-      '<span class="diary-total__value">' + App.fmt(headValue) + " " + kcal + "</span>" +
+      '<span class="diary-total__caption eyebrow">' + App.escapeHtml(headCaption) + "</span>" +
+      '<span class="diary-total__value num">' + App.fmt(headValue) +
+      '<span class="diary-total__unit">' + kcal + "</span></span>" +
       "</div>" +
       balanceBlock +
+      // БЖУ — три числа в ряд, каждое в цвете своего нутриента: так итог дня
+      // сопоставляется с полосами на «Сегодня» без чтения подписей.
       '<div class="diary-total__macros">' +
-      App.escapeHtml(pick("Белки", "Protein")) + " " + App.fmt(day.total_proteins || 0) + " " + pick("г", "g") + " · " +
-      App.escapeHtml(pick("Жиры", "Fat")) + " " + App.fmt(day.total_fats || 0) + " " + pick("г", "g") + " · " +
-      App.escapeHtml(pick("Углеводы", "Carbs")) + " " + App.fmt(day.total_carbs || 0) + " " + pick("г", "g") +
+      totalMacroHtml("p", pick("Белки", "Protein"), day.total_proteins) +
+      totalMacroHtml("f", pick("Жиры", "Fat"), day.total_fats) +
+      totalMacroHtml("c", pick("Углеводы", "Carbs"), day.total_carbs) +
       "</div>" +
       progressBlock +
       "</section>"
+    );
+  }
+
+  /**
+   * Одна колонка итога БЖУ: подпись-надзаголовок и число сжатым шрифтом.
+   * @param {string} mod "p" | "f" | "c" — модификатор цвета нутриента
+   * @param {string} label локализованная подпись
+   * @param {number} grams граммы за день
+   * @returns {string}
+   */
+  function totalMacroHtml(mod, label, grams) {
+    return (
+      '<div class="diary-total__macro diary-total__macro--' + mod + '">' +
+      '<span class="diary-total__macro-label eyebrow">' + App.escapeHtml(label) + "</span>" +
+      '<span class="diary-total__macro-value num">' + App.fmt(grams || 0) +
+      '<span class="diary-total__macro-unit">' + pick("г", "g") + "</span></span>" +
+      "</div>"
     );
   }
 
@@ -644,23 +678,31 @@
 
     var body;
     if (totalEntries === 0) {
-      // Пустой день — РОВНО одно пустое состояние с одним действием.
+      // Пустой день — РОВНО одно пустое состояние с одним главным действием.
       // Компактные строки приёмов пищи здесь не нужны: они повторяли бы то же
       // самое сообщение ещё четыре раза.
+      // Тёмный блок с фотографией (тот же приём, что у тренировки дня): пустой
+      // дневник — не «ошибка», а приглашение, и выглядеть он должен как афиша.
+      // Главная кнопка сразу открывает камеру — самый быстрый способ записать
+      // еду; остальные способы остаются за ссылкой на общий лист.
       body =
-        '<div class="diary-empty">' +
-        '<div class="diary-empty__icon">' + icon("plate", { size: 32 }) + "</div>" +
-        '<p class="diary-empty__title">' +
-        App.escapeHtml(pick("За этот день записей нет", "No entries for this day")) + "</p>" +
-        '<p class="diary-empty__text">' +
+        '<section class="hero hero--img diary-empty" style="' + heroImg("empty-diary.jpg") + '">' +
+        '<span class="eyebrow">' + App.escapeHtml(pick("Дневник питания", "Food diary")) + "</span>" +
+        '<h2 class="hero__title diary-empty__title">' +
+        App.escapeHtml(pick("Записей нет", "Nothing yet")) + "</h2>" +
+        '<p class="hero__meta diary-empty__text">' +
         App.escapeHtml(pick(
-          "Добавьте блюдо: фото, голос или вручную.",
-          "Add a dish: photo, voice or manually."
+          "Сфотографируйте блюдо — ИИ посчитает калории.",
+          "Snap your dish and AI will count the calories."
         )) + "</p>" +
-        '<button type="button" class="btn btn--cta diary-empty__cta" data-open-add>' +
-        icon("plus", { size: 18 }) +
-        App.escapeHtml(pick("Добавить", "Add")) + "</button>" +
-        "</div>";
+        '<button type="button" class="btn btn--cta diary-empty__cta" data-open-scan>' +
+        icon("camera", { size: 20 }) +
+        App.escapeHtml(pick("Снять еду", "Snap food")) + "</button>" +
+        '<button type="button" class="diary-empty__more" data-open-add>' +
+        App.escapeHtml(pick("Голосом или вручную", "By voice or manually")) +
+        icon("chevron", { size: 16 }) +
+        "</button>" +
+        "</section>";
     } else {
       var sections = "";
       for (var i = 0; i < MEAL_ORDER.length; i++) {
@@ -705,7 +747,17 @@
       });
     }
 
-    // Кнопка пустого состояния — общий лист выбора способа добавления.
+    // Главная кнопка пустого состояния — камера (тот же путь, что и пункт
+    // «Сфотографировать» в листе: снимок ляжет в выбранный день).
+    var emptyScan = content.querySelector("[data-open-scan]");
+    if (emptyScan) {
+      emptyScan.addEventListener("click", function () {
+        App.haptic && App.haptic("light");
+        openScan("photo");
+      });
+    }
+
+    // Ссылка «Голосом или вручную» — общий лист выбора способа добавления.
     var emptyCta = content.querySelector("[data-open-add]");
     if (emptyCta) {
       emptyCta.addEventListener("click", function () {
@@ -2542,11 +2594,12 @@
     box.innerHTML =
       '<section class="card diary-act">' +
       '<header class="diary-act__head">' +
-      '<span class="diary-act__title">' +
+      '<span class="diary-act__title eyebrow">' +
       '<span class="diary-act__icon">' + icon("flame", { size: 18 }) + "</span>" +
       App.escapeHtml(pick("Сожжено за день", "Burned today")) +
       "</span>" +
-      '<span class="diary-act__total">' + App.fmt(totalBurned || 0) + " " + kcal + "</span>" +
+      '<span class="diary-act__total num">' + App.fmt(totalBurned || 0) +
+      '<span class="diary-meal__kcal-unit">' + kcal + "</span></span>" +
       "</header>" +
       '<ul class="diary-act__list">' + rows + "</ul>" +
       '<button type="button" class="diary-meal__add" data-add-activity>' +
