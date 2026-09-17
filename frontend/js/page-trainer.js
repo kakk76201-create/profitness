@@ -308,7 +308,9 @@
       '<section class="page tr-page tr-shell">' +
       T.headHtml({
         back: false,
-        title: pick("Тренировка", "Workout"),
+        // Заголовок совпадает с подписью вкладки: человек нажал «Тренер» и
+        // должен увидеть «Тренер», а не другое слово.
+        title: pick("Тренер", "Trainer"),
         subtitle: subtitle || "",
         actions: settings
       }) +
