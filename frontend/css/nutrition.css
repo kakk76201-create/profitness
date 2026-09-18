@@ -1075,3 +1075,63 @@
   justify-content: center;
   gap: var(--s2);
 }
+
+/* «Что съесть?» внизу итога дня: строка-действие во всю ширину карточки,
+   отделённая волосяной линией, — продолжение вопроса «сколько осталось». */
+.diary-suggest {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  width: 100%;
+  min-height: var(--tap-min);
+  margin-top: var(--s4);
+  padding: var(--s3) 0 0;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.diary-suggest__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.diary-suggest__text {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.diary-suggest__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  line-height: var(--lh-heading);
+}
+
+.diary-suggest__sub {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+.diary-suggest__end {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.diary-suggest:active {
+  opacity: .7;
+}

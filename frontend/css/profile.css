@@ -480,9 +480,9 @@
   width: 16px;
   height: 16px;
   border-radius: var(--radius-pill);
-  background: var(--surface);
+  background: var(--muted);
   box-shadow: var(--shadow-1);
-  transition: transform var(--dur) var(--ease);
+  transition: transform var(--dur) var(--ease), background var(--dur) var(--ease);
 }
 
 .acc-switch--on .acc-switch__track {
@@ -492,6 +492,7 @@
 
 .acc-switch--on .acc-switch__knob {
   transform: translateX(20px);
+  background: var(--on-accent);
 }
 
 /* ---------- Времена приёмов пищи ---------- */
@@ -1418,9 +1419,9 @@
   width: 16px;
   height: 16px;
   border-radius: var(--radius-pill);
-  background: var(--surface);
+  background: var(--muted);
   box-shadow: var(--shadow-1);
-  transition: transform var(--dur) var(--ease);
+  transition: transform var(--dur) var(--ease), background var(--dur) var(--ease);
 }
 
 .sup-form__checkbox:checked {
@@ -1430,6 +1431,7 @@
 
 .sup-form__checkbox:checked::after {
   transform: translateX(20px);
+  background: var(--on-accent);
 }
 
 .sup-form__checkbox:focus-visible {

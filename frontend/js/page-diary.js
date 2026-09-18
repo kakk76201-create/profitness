@@ -582,6 +582,20 @@
       totalMacroHtml("c", pick("Углеводы", "Carbs"), day.total_carbs) +
       "</div>" +
       progressBlock +
+      // Подбор блюда — прямо под остатком нормы: вопрос «что съесть» возникает
+      // именно здесь. Без подписки — замок, по тапу пейволл функции.
+      '<button type="button" class="diary-suggest" data-diary-suggest>' +
+      '<span class="diary-suggest__icon" aria-hidden="true">' + icon("sparkle", { size: 18 }) + "</span>" +
+      '<span class="diary-suggest__text">' +
+      '<span class="diary-suggest__title">' + App.escapeHtml(pick("Что съесть?", "What to eat?")) + "</span>" +
+      '<span class="diary-suggest__sub">' +
+      App.escapeHtml(pick("ИИ подберёт блюдо под остаток нормы", "AI picks a dish for what's left of your goal")) +
+      "</span>" +
+      "</span>" +
+      '<span class="diary-suggest__end" aria-hidden="true">' +
+      icon(isPremium() ? "chevron" : "lock", { size: 16 }) +
+      "</span>" +
+      "</button>" +
       "</section>"
     );
   }
@@ -744,6 +758,15 @@
         var meal = ev.currentTarget.getAttribute("data-add-meal");
         App.haptic && App.haptic("light");
         openFoodSheet(null, meal);
+      });
+    }
+
+    // «Что съесть?» в итоге дня — тот же путь, что и пункт листа «+».
+    var suggestBtn = content.querySelector("[data-diary-suggest]");
+    if (suggestBtn) {
+      suggestBtn.addEventListener("click", function () {
+        App.haptic && App.haptic("light");
+        onSheetAction("recommend");
       });
     }
 

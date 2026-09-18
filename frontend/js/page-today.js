@@ -233,6 +233,13 @@
       '<span class="td-quick__icon">' + icon("edit", { size: 22 }) + "</span>" +
       '<span class="td-quick__label">' + esc(pick("Вручную", "Manual")) + "</span>" +
       "</button>" +
+      // «Что съесть?» — вопрос именно этого экрана: здесь видно, сколько
+      // осталось до нормы. Раньше пункт жил только в листе «+» в Питании,
+      // и его никто не находил.
+      '<button type="button" class="td-quick__btn" id="tdQuickSuggest">' +
+      '<span class="td-quick__icon">' + icon("sparkle", { size: 22 }) + "</span>" +
+      '<span class="td-quick__label">' + esc(pick("Что съесть?", "What to eat?")) + "</span>" +
+      "</button>" +
       "</div>"
     );
   }
@@ -469,6 +476,17 @@
       quickManual.addEventListener("click", function () {
         App.haptic("light");
         if (App.state) App.state.diaryOpenSheet = "manual";
+        App.navigate("diary");
+      });
+    }
+
+    // Питание откроет подбор блюд сразу (флаг одноразовый, его же ставит
+    // тренер); без подписки там покажется пейволл этой функции.
+    var quickSuggest = document.getElementById("tdQuickSuggest");
+    if (quickSuggest) {
+      quickSuggest.addEventListener("click", function () {
+        App.haptic("light");
+        if (App.state) App.state.diaryOpenSuggest = true;
         App.navigate("diary");
       });
     }

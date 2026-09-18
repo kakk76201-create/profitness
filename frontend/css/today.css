@@ -183,7 +183,7 @@
    переносится, а кнопка получает высоту, за которую удобно взяться. */
 .td-quick {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: var(--s3);
   margin-bottom: var(--s3);
 }
@@ -420,5 +420,25 @@
 
   .td-quick {
     gap: var(--s2);
+  }
+
+  /* Три действия в ряд: на 360px «ЧТО СЪЕСТЬ?» не хватало трёх пикселей и
+     она обрезалась многоточием. Отдаём подписи поля кнопки и снимаем
+     разрядку — кегль не трогаем, он и так на нижней ступени для кнопок. */
+  .td-quick__btn {
+    padding-left: var(--s1);
+    padding-right: var(--s1);
+  }
+
+  .td-quick__label {
+    letter-spacing: 0;
+  }
+}
+
+/* Совсем узкие экраны (320px): подпись на ступень мельче, иначе третья
+   кнопка всё равно не помещается. */
+@media (max-width: 340px) {
+  .td-quick__label {
+    font-size: var(--fs-sm);
   }
 }

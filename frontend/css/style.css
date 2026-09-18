@@ -1090,6 +1090,41 @@ body.is-task-screen #view {
   transition: border-color .18s ease, box-shadow .18s ease;
 }
 
+/* Поля времени и даты. iOS рисует их «родным» контролом со своей
+   минимальной шириной: при width: 100% поле вылезало за край карточки, а
+   пустое значение выглядело пустой полосой без подсказки. Снимаем родное
+   оформление, держим ширину контейнера и рисуем значок часов справа — так
+   пустое поле читается как выбор времени. Серый значка средней светлоты
+   виден и на белом, и на тёмном. */
+input[type="time"].field__input,
+input[type="date"].field__input {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  padding-right: 44px;
+  line-height: 49px;
+  text-align: left;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238A8A93' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='9'/><path d='M12 7v5l3 2'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 20px 20px;
+}
+
+input[type="time"].field__input::-webkit-date-and-time-value,
+input[type="date"].field__input::-webkit-date-and-time-value {
+  text-align: left;
+}
+
+/* Родной значок Chrome/Android прозрачен, но кликабелен — лежит поверх
+   нашего, и тап по часам по-прежнему открывает выбор времени. */
+input[type="time"].field__input::-webkit-calendar-picker-indicator,
+input[type="date"].field__input::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  cursor: pointer;
+}
+
 .field__input:focus {
   border-color: var(--cta);
   box-shadow: 0 0 0 3px var(--accent-soft);
