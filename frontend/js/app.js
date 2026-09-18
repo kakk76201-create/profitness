@@ -1175,8 +1175,12 @@
    * @param {string} file имя файла в frontend/img, например "hero-workout.jpg"
    * @returns {string} "--hero-img:url(https://…/img/hero-workout.jpg)"
    */
+  // Версия картинок: поднимать при замене любого файла в frontend/img —
+  // иначе Telegram показывает закешированную старую картинку по тому же имени.
+  var IMG_VERSION = "i2";
+
   App.heroImg = function (file) {
-    return "--hero-img:url(" + new URL("img/" + file, document.baseURI).href + ")";
+    return "--hero-img:url(" + new URL("img/" + file + "?v=" + IMG_VERSION, document.baseURI).href + ")";
   };
 
   App.paywall = function (viewEl, opts) {
