@@ -223,6 +223,7 @@ from backend.schemas import (
     YesterdayOut,
     YookassaCreateIn,
     YookassaCreateOut,
+    YookassaStatusOut,
 )
 
 # Допустимые типы приёмов пищи (порядок важен для группировки/вывода).
@@ -2054,6 +2055,8 @@ def _subscription_status_out(user: User) -> SubscriptionStatusOut:
         card_prices=card_prices,
         card_provider=config.card_provider(),
         legal=config.legal_info(),
+        receipt_email_required=bool(config.YOOKASSA_RECEIPT and config.yookassa_enabled()),
+        email=getattr(user, "email", None),
     )
 
 
@@ -2418,10 +2421,17 @@ async def payment_cloudpayments_webhook(
 #  Почему нельзя верить телу уведомления и зачем сверять сумму — подробно
 #  расписано в шапке backend/yookassa.py.
 # --------------------------------------------------------------------------- #
+# Простая проверка e-mail для чека: что-то@что-то.домен. Строже не нужно —
+# ЮKassa сама вернёт ошибку на явный мусор, а мы не хотим отвергать редкие,
+# но валидные адреса.
+_EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]{2,}")
+
+
 @app.post("/payment/yookassa/create", response_model=YookassaCreateOut)
 def yookassa_create(
     data: YookassaCreateIn,
     user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> YookassaCreateOut:
     """Создать платёж ЮKassa для выбранного тарифа и вернуть ссылку на оплату.
 
@@ -2450,9 +2460,22 @@ def yookassa_create(
                     "message": "Этот тариф картой не оплачивается"},
         )
 
+    # E-mail для чека: из запроса или из профиля; новый — запоминаем.
+    email = None
+    if config.YOOKASSA_RECEIPT:
+        email = (data.email or user.email or "").strip().lower()
+        if not _EMAIL_RE.fullmatch(email):
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "email_required",
+                        "message": "Укажите e-mail — на него придёт чек"},
+            )
+        if email != (user.email or ""):
+            user.email = email
+            db.commit()
     try:
         created = yookassa.create_payment(
-            data.tariff, user.telegram_id, getattr(user, "language", "ru") or "ru"
+            data.tariff, user.telegram_id, getattr(user, "language", "ru") or "ru", email=email
         )
     except RuntimeError as exc:
         logger.warning("payment/yookassa/create: %s", exc)
@@ -2551,70 +2574,89 @@ async def payment_yookassa_webhook(
         logger.error("yookassa/webhook: не проверили платёж %s: %s", payment_id, exc)
         raise HTTPException(status_code=500, detail="payment check failed, retry")
 
+    outcome = _yookassa_settle(db, payment, payment_id, source="webhook")
+    if outcome == "activation_failed":
+        # Оплата прошла, доступ не выдан — пусть ЮKassa повторит уведомление.
+        raise HTTPException(status_code=500, detail="activation failed, retry")
+    if outcome == "activated":
+        # Сообщение плательщику в бот — best-effort: сбой Telegram не повод
+        # просить ЮKassa о повторе (доступ уже выдан).
+        telegram_id, _tariff = yookassa.payment_metadata(payment)
+        try:
+            text = telegram_bot._payment_success_text(
+                telegram_bot._user_language(db, telegram_id)
+            )
+            await run_in_threadpool(
+                telegram_bot._bot_api, "sendMessage",
+                {"chat_id": telegram_id, "text": text},
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("yookassa/webhook: не удалось уведомить плательщика: %s", exc)
+
+    return {"ok": True}
+
+
+def _yookassa_settle(db: Session, payment: dict, payment_id: str, source: str) -> str:
+    """Решить по ПРОВЕРЕННОМУ платежу (ответ API), выдавать ли доступ.
+
+    Общая точка для вебхука и для запроса статуса клиентом: оба пути
+    проходят одни и те же проверки (оплачен, не тестовый в проде, metadata,
+    тариф, сумма, канонический id) и одну и ту же идемпотентную активацию.
+    Возвращает исход: activated | already | not_paid | test_rejected |
+    bad_metadata | unknown_tariff | amount_mismatch | id_mismatch |
+    activation_failed. Логи и алерты владельцу — здесь же.
+    """
+    tag = f"yookassa/{source}"
     if not yookassa.is_success(payment):
         logger.info(
-            "yookassa/webhook: платёж %s не оплачен (status=%s paid=%s) — доступ не выдан",
-            payment_id, payment.get("status"), payment.get("paid"),
+            "%s: платёж %s не оплачен (status=%s paid=%s) — доступ не выдан",
+            tag, payment_id, payment.get("status"), payment.get("paid"),
         )
-        return {"ok": True}
-
-    # 3) Тестовые платежи в проде доступ не открывают.
-    if yookassa.is_test(payment) and not DEV_MODE:
-        logger.warning("yookassa/webhook: тестовый платёж %s в проде — доступ не выдан", payment_id)
-        return {"ok": True}
-
-    # 4) Кому и что активировать — ТОЛЬКО из metadata проверенного платежа.
+        return "not_paid"
+    # Тестовые платежи доступ не открывают — кроме dev-режима и явного
+    # разрешения на время прогона тестовой картой.
+    if yookassa.is_test(payment) and not (DEV_MODE or config.YOOKASSA_ALLOW_TEST):
+        logger.warning("%s: тестовый платёж %s в проде — доступ не выдан", tag, payment_id)
+        return "test_rejected"
+    # Кому и что активировать — ТОЛЬКО из metadata проверенного платежа.
     telegram_id, tariff = yookassa.payment_metadata(payment)
     if not telegram_id or not tariff:
         logger.error(
-            "yookassa/webhook: платёж %s без корректной metadata (tid=%s tariff=%s)",
-            payment_id, telegram_id, tariff,
+            "%s: платёж %s без корректной metadata (tid=%s tariff=%s)",
+            tag, payment_id, telegram_id, tariff,
         )
         telegram_bot._alert_owner_payment(
             f"ЮKassa: оплата {payment_id} без данных получателя — нужен ручной разбор"
         )
-        return {"ok": True}
-
+        return "bad_metadata"
     if tariff not in config.TARIFFS:
-        logger.error(
-            "yookassa/webhook: платёж %s с неизвестным тарифом %r — доступ не выдан",
-            payment_id, tariff,
-        )
-        return {"ok": True}
-
-    # 5) СВЕРКА СУММЫ на сервере: metadata задаём мы, но платёж мог быть создан
-    #    на другую сумму — без этой проверки 1 ₽ закрывал бы любой тариф.
-    #    Ожидаемая цена — та, что зафиксирована в metadata при создании
-    #    (смена прайса между созданием и оплатой не должна «съесть» платёж).
+        logger.error("%s: платёж %s с неизвестным тарифом %r — доступ не выдан", tag, payment_id, tariff)
+        return "unknown_tariff"
+    # СВЕРКА СУММЫ на сервере: metadata задаём мы, но платёж мог быть создан
+    # на другую сумму — без этой проверки 1 ₽ закрывал бы любой тариф.
     amount_obj = payment.get("amount") if isinstance(payment.get("amount"), dict) else {}
     if not yookassa.amount_matches_tariff(tariff, amount_obj, yookassa.metadata_price(payment)):
         logger.error(
-            "yookassa/webhook: сумма %s %s не соответствует тарифу %s (платёж %s) — доступ НЕ выдан",
-            amount_obj.get("value"), amount_obj.get("currency"), tariff, payment_id,
+            "%s: сумма %s %s не соответствует тарифу %s (платёж %s) — доступ НЕ выдан",
+            tag, amount_obj.get("value"), amount_obj.get("currency"), tariff, payment_id,
         )
         telegram_bot._alert_owner_payment(
             f"ЮKassa: платёж {payment_id} на {amount_obj.get('value')} "
             f"{amount_obj.get('currency')} не совпал с тарифом {tariff}"
         )
-        return {"ok": True}
-
-    # 6) Идемпотентность: ЮKassa повторяет уведомление до получения 200.
-    #    Ключ — из id, который вернул API (канонический), а не из тела
-    #    уведомления: разные написания одного id не должны давать разные ключи.
+        return "amount_mismatch"
+    # Идемпотентность: ключ — из id, который вернул API (канонический).
     real_id = yookassa.canonical_id(payment)
     if not real_id or real_id != payment_id:
         logger.error(
-            "yookassa/webhook: id платежа в ответе API (%r) не совпал с уведомлением (%r) — доступ не выдан",
-            real_id, payment_id,
+            "%s: id платежа в ответе API (%r) не совпал с запрошенным (%r) — доступ не выдан",
+            tag, real_id, payment_id,
         )
-        return {"ok": True}
+        return "id_mismatch"
     charge_id = yookassa.build_charge_id(real_id)
-    already = db.query(Payment).filter(Payment.charge_id == charge_id).first()
-    if already is not None:
-        logger.info("yookassa/webhook: платёж %s уже обработан", payment_id)
-        return {"ok": True}
-
-    # 7) Активация доступа. Сбой -> 500: оплата прошла, терять её нельзя.
+    if db.query(Payment).filter(Payment.charge_id == charge_id).first() is not None:
+        logger.info("%s: платёж %s уже обработан", tag, payment_id)
+        return "already"
     try:
         paid_amount = float(amount_obj.get("value"))
     except (TypeError, ValueError):
@@ -2626,34 +2668,55 @@ async def payment_yookassa_webhook(
         )
     except Exception as exc:  # noqa: BLE001
         logger.error(
-            "yookassa/webhook: сбой активации (платёж=%s tid=%s тариф=%s): %s",
-            payment_id, telegram_id, tariff, exc,
+            "%s: сбой активации (платёж=%s tid=%s тариф=%s): %s",
+            tag, payment_id, telegram_id, tariff, exc,
         )
         telegram_bot._alert_owner_payment(
             f"ЮKassa: НЕ активирован премиум после оплаты {payment_id} "
             f"(tid={telegram_id}, тариф={tariff}): {exc}"
         )
-        raise HTTPException(status_code=500, detail="activation failed, retry")
+        return "activation_failed"
+    logger.info("%s: премиум активирован tid=%s тариф=%s платёж=%s", tag, telegram_id, tariff, payment_id)
+    return "activated"
 
-    logger.info(
-        "yookassa/webhook: премиум активирован tid=%s тариф=%s платёж=%s",
-        telegram_id, tariff, payment_id,
-    )
 
-    # 8) Сообщение плательщику в бот — best-effort: сбой Telegram не повод
-    #    просить ЮKassa о повторе (доступ уже выдан).
+@app.get("/payment/yookassa/status/{payment_id}", response_model=YookassaStatusOut)
+async def yookassa_status(
+    payment_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> YookassaStatusOut:
+    """Проверить СВОЙ платёж после возврата из браузера и, если он оплачен,
+    получить доступ сразу — не дожидаясь вебхука (он может задержаться или
+    не дойти). Источник истины тот же: платёж, запрошенный по API; чужой
+    платёж (metadata.telegram_id другого человека) — 404 без подробностей.
+    """
+    if not yookassa.is_enabled():
+        raise HTTPException(status_code=503, detail="Оплата картой пока не подключена")
+    if not yookassa.is_valid_payment_id(payment_id):
+        raise HTTPException(status_code=404, detail="Платёж не найден")
+    # Проверка статуса — сетевой вызов к ЮKassa; частоту ограничиваем.
+    ok, _why = ratelimit.check(f"ykstatus:{user.telegram_id}", 30, 600)
+    if not ok:
+        raise HTTPException(status_code=429, detail="Слишком часто. Подождите немного.")
     try:
-        text = telegram_bot._payment_success_text(
-            telegram_bot._user_language(db, telegram_id)
-        )
-        await run_in_threadpool(
-            telegram_bot._bot_api, "sendMessage",
-            {"chat_id": telegram_id, "text": text},
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("yookassa/webhook: не удалось уведомить плательщика: %s", exc)
-
-    return {"ok": True}
+        payment = await run_in_threadpool(yookassa.fetch_payment, payment_id)
+    except RuntimeError:
+        raise HTTPException(status_code=502, detail="Не удалось проверить платёж. Попробуйте позже.")
+    owner_id, _tariff = yookassa.payment_metadata(payment)
+    if owner_id != user.telegram_id:
+        raise HTTPException(status_code=404, detail="Платёж не найден")
+    outcome = _yookassa_settle(db, payment, payment_id, source="status")
+    if outcome == "activation_failed":
+        raise HTTPException(status_code=500, detail="Оплата прошла, но доступ не выдан. Мы уже разбираемся.")
+    db.refresh(user)
+    return YookassaStatusOut(
+        payment_id=payment_id,
+        status=str(payment.get("status") or "pending"),
+        paid=bool(payment.get("paid")),
+        activated=outcome in ("activated", "already"),
+        is_premium=subscription.is_premium(user),
+    )
 
 
 # --------------------------------------------------------------------------- #

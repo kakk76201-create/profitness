@@ -630,6 +630,9 @@ class SubscriptionStatusOut(BaseModel):
     # Кто обрабатывает оплату картой: "cloudpayments" | "yookassa" | "none".
     # "none" — витрина показывается, но приём карт ещё не подключён.
     card_provider: str = "none"
+    # Нужен ли e-mail плательщика для чека (YOOKASSA_RECEIPT) и что уже сохранено.
+    receipt_email_required: bool = False
+    email: Optional[str] = None
     is_expired: bool = False                     # подписка была, но истекла (не free)
     # Реквизиты продавца для страницы оплаты (см. config.legal_info):
     # seller / inn / contact / offer_url / privacy_url; незаданные — None.
@@ -652,6 +655,17 @@ class YookassaCreateIn(BaseModel):
     """Запрос на создание платежа ЮKassa для выбранного тарифа."""
 
     tariff: str                                  # "monthly" | "quarterly" | "yearly" | "lifetime"
+    email: Optional[str] = None                  # e-mail для чека (когда включён YOOKASSA_RECEIPT)
+
+
+class YookassaStatusOut(BaseModel):
+    """Состояние платежа ЮKassa для клиента после возврата из браузера."""
+
+    payment_id: str
+    status: str                                  # pending | waiting_for_capture | succeeded | canceled
+    paid: bool = False
+    activated: bool = False                      # доступ выдан (сейчас или раньше по этому платежу)
+    is_premium: bool = False
 
 
 class YookassaCreateOut(BaseModel):

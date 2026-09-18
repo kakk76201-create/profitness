@@ -68,6 +68,10 @@ class User(Base):
     first_name = Column(String, nullable=True)
     photo_url = Column(String, nullable=True)
 
+    # E-mail для чеков ЮKassa (54-ФЗ). Telegram его не отдаёт — человек
+    # вводит сам на странице оплаты, и второй раз мы не спрашиваем.
+    email = Column(String, nullable=True)
+
     # Язык интерфейса/сообщений пользователя: "ru" | "en".
     # Стартовое значение задаётся при первом входе по Telegram language_code:
     # "ru" если код начинается с "ru", иначе "en". Пользователь может сменить

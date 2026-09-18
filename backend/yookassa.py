@@ -146,7 +146,29 @@ def build_description(tariff: str, telegram_id: int) -> str:
     return text[:128]
 
 
-def create_payment(tariff: str, telegram_id: int, lang: str = "ru") -> dict:
+def build_receipt(tariff: str, amount, email: str) -> dict:
+    """Чек по 54-ФЗ для платежа: одна позиция-услуга на всю сумму.
+
+    ЮKassa требует контакт плательщика (e-mail или телефон) — на него уходит
+    чек. Telegram e-mail не отдаёт, поэтому его спрашивает страница оплаты.
+    """
+    receipt = {
+        "customer": {"email": email},
+        "items": [{
+            "description": config.payment_description(tariff)[:128],
+            "quantity": "1.00",
+            "amount": {"value": _format_amount(amount), "currency": "RUB"},
+            "vat_code": config.YOOKASSA_VAT_CODE,
+            "payment_subject": "service",
+            "payment_mode": "full_payment",
+        }],
+    }
+    if config.YOOKASSA_TAX_SYSTEM_CODE:
+        receipt["tax_system_code"] = config.YOOKASSA_TAX_SYSTEM_CODE
+    return receipt
+
+
+def create_payment(tariff: str, telegram_id: int, lang: str = "ru", email: str | None = None) -> dict:
     """Создать платёж в ЮKassa и вернуть {"id", "confirmation_url"}.
 
     Сумма берётся из прайса на СЕРВЕРЕ (config.rub_price_for) — клиент её не
@@ -188,6 +210,10 @@ def create_payment(tariff: str, telegram_id: int, lang: str = "ru") -> dict:
             "price": _format_amount(amount),
         },
     }
+    if config.YOOKASSA_RECEIPT:
+        if not email:
+            raise RuntimeError("Для чека нужен e-mail плательщика")
+        payload["receipt"] = build_receipt(tariff, amount, email)
 
     headers = {
         # Ключ идемпотентности: повторные нажатия в пятиминутном окне отдают

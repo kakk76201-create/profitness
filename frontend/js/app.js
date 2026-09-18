@@ -641,11 +641,14 @@
     // Тело: {tariff:"monthly"|"quarterly"|"yearly"|"lifetime"}.
     // Ответ: {payment_id, confirmation_url} — страницу подтверждения открываем
     // во внешнем браузере; доступ активирует вебхук, а не фронт.
-    createYookassaPayment: function (tariff) {
-      return request("/payment/yookassa/create", {
-        method: "POST",
-        body: { tariff: tariff }
-      });
+    createYookassaPayment: function (tariff, email) {
+      var body = { tariff: tariff };
+      if (email) body.email = email;
+      return request("/payment/yookassa/create", { method: "POST", body: body });
+    },
+    // Состояние своего платежа ЮKassa; при оплате сервер сразу выдаёт доступ.
+    yookassaStatus: function (paymentId) {
+      return request("/payment/yookassa/status/" + encodeURIComponent(paymentId));
     },
 
     /* -------------------------------------------------------------------
@@ -1442,9 +1445,30 @@
    * @param {string} tariff "monthly" | "quarterly" | "yearly" | "lifetime"
    * @returns {Promise}
    */
-  function payCardYookassa(tariff) {
+  // Ключ localStorage с id незавершённого платежа ЮKassa. Пока он есть,
+  // приложение при каждом запуске/возврате проверяет платёж и забирает доступ.
+  var PENDING_PAYMENT_KEY = "fu-pay-pending";
+
+  function pendingPayment() {
+    try {
+      return localStorage.getItem(PENDING_PAYMENT_KEY) || "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function setPendingPayment(id) {
+    try {
+      if (id) localStorage.setItem(PENDING_PAYMENT_KEY, id);
+      else localStorage.removeItem(PENDING_PAYMENT_KEY);
+    } catch (e) {
+      /* приватный режим — просто без памяти о платеже */
+    }
+  }
+
+  function payCardYookassa(tariff, email) {
     return App.api
-      .createYookassaPayment(tariff)
+      .createYookassaPayment(tariff, email)
       .then(function (res) {
         var url = res && res.confirmation_url;
         if (!url) {
@@ -1452,6 +1476,7 @@
             App.pick("Не удалось создать платёж", "Failed to create payment")
           );
         }
+        setPendingPayment(res.payment_id || "");
         if (App.tg && typeof App.tg.openLink === "function") {
           App.tg.openLink(url);
         } else if (typeof window.open === "function") {
@@ -1467,8 +1492,13 @@
             "Finish the payment in your browser — access will appear automatically"
           )
         );
-        // Оплата идёт во внешнем браузере: ждём дольше, чем при виджете.
-        App._pollPremium(20, 3000);
+        // Оплата идёт во внешнем браузере. Спрашиваем сервер о самом платеже:
+        // при успехе он выдаёт доступ сразу, не дожидаясь вебхука.
+        if (res.payment_id) {
+          App._pollPayment(res.payment_id, 20, 3000);
+        } else {
+          App._pollPremium(20, 3000);
+        }
       })
       .catch(function (err) {
         App.toast(
@@ -1485,7 +1515,7 @@
    * @param {string} tariff "monthly" | "quarterly" | "yearly" | "lifetime"
    * @returns {Promise}
    */
-  App.payCard = function (tariff) {
+  App.payCard = function (tariff, email) {
     var provider =
       (App.subscription && App.subscription.card_provider) || "none";
 
@@ -1493,7 +1523,7 @@
       return payCardCloudPayments(tariff);
     }
     if (provider === "yookassa") {
-      return payCardYookassa(tariff);
+      return payCardYookassa(tariff, email);
     }
 
     // Приём карт ещё не подключён: цену и кнопку показываем (витрина с ценой
@@ -1512,6 +1542,63 @@
    * @param {number} attempts сколько попыток осталось
    * @param {number} delay задержка между попытками, мс
    */
+  /**
+   * Опрашивает СВОЙ платёж ЮKassa: сервер перепроверяет его по API и при
+   * оплате сразу выдаёт доступ. Отмена — снимаем ожидание; не дождались —
+   * оставляем id в localStorage, следующий запуск проверит снова.
+   * @param {string} paymentId
+   * @param {number} attempts
+   * @param {number} delay мс
+   */
+  App._pollPayment = function (paymentId, attempts, delay) {
+    App.api.yookassaStatus(paymentId).then(function (st) {
+      if (st && (st.activated || st.is_premium)) {
+        setPendingPayment("");
+        return App.refreshSubscription().then(function () {
+          App.toast(App.pick("Оплата прошла — подписка активна!", "Payment received — subscription is active!"));
+          if (App._current) App.navigate(App._current);
+        });
+      }
+      if (st && st.status === "canceled") {
+        setPendingPayment("");
+        App.toast(App.pick("Оплата не завершена", "Payment was not completed"));
+        if (App._current) App.navigate(App._current);
+        return;
+      }
+      if (attempts > 1) {
+        setTimeout(function () {
+          App._pollPayment(paymentId, attempts - 1, delay);
+        }, delay);
+      } else {
+        App.toast(App.pick(
+          "Как только оплата пройдёт, доступ появится автоматически.",
+          "Access will appear automatically once the payment goes through."
+        ));
+      }
+    }).catch(function () {
+      // Сеть/сервер: не спамим, попробуем ещё раз позже.
+      if (attempts > 1) {
+        setTimeout(function () {
+          App._pollPayment(paymentId, attempts - 1, delay);
+        }, delay);
+      }
+    });
+  };
+
+  /**
+   * Возврат к незавершённому платежу: после оплаты в браузере человек
+   * попадает обратно в Telegram (return_url = t.me/<бот>?startapp=paid), и
+   * приложение запускается заново — проверяем платёж при старте и при
+   * каждом возвращении на экран.
+   * @returns {boolean} есть ли что проверять
+   */
+  App._resumePendingPayment = function () {
+    var id = pendingPayment();
+    if (!id) return false;
+    App._pollPayment(id, 6, 2500);
+    return true;
+  };
+
   App._pollPremium = function (attempts, delay) {
     App.refreshSubscription().then(function () {
       if (App.isPremium()) {
@@ -1909,15 +1996,38 @@
         // в нужный раздел. Первый запуск без цели по калориям — мастер
         // онбординга. Камеру на старте не открываем: иначе Telegram сразу
         // спрашивает разрешение, ещё до того как человек понял, что это.
+        // Вернулись из браузера после оплаты (start_param=paid) или остался
+        // незавершённый платёж — проверяем его и открываем экран подписки,
+        // чтобы человек увидел результат, а не искал его по разделам.
+        var startParam = "";
+        try {
+          startParam = String((App.tg && App.tg.initDataUnsafe && App.tg.initDataUnsafe.start_param) || "");
+        } catch (e) {
+          startParam = "";
+        }
+        var resumed = App._resumePendingPayment();
         if (
           !App.state.profile ||
           App.state.profile.daily_goal_kcal == null
         ) {
           App.navigate("onboarding");
+        } else if (resumed || startParam === "paid") {
+          App.navigate("subscription");
         } else {
           App.navigate("today");
         }
       });
+
+    // Приложение свернули на время оплаты и вернулись — проверяем платёж.
+    try {
+      document.addEventListener("visibilitychange", function () {
+        if (document.visibilityState === "visible" && App.subscription && !App.isPremium()) {
+          App._resumePendingPayment();
+        }
+      });
+    } catch (e) {
+      /* не критично */
+    }
   };
 
   /* =====================================================================

@@ -169,6 +169,9 @@
       card_currency: s.card_currency || "RUB",
       card_prices: s.card_prices || {},
       card_provider: s.card_provider || "none",
+      // Чек по 54-ФЗ: нужен ли e-mail и что уже сохранено в профиле.
+      receipt_email_required: !!s.receipt_email_required,
+      email: s.email || "",
       legal: {
         seller: legal.seller || null,
         inn: legal.inn || null,
@@ -616,6 +619,21 @@
         "</p>"
       : "";
 
+    // Чек по 54-ФЗ уходит на e-mail: Telegram его не отдаёт, спрашиваем сами
+    // (один раз — сервер запоминает в профиле).
+    var emailHtml = "";
+    if (s.receipt_email_required) {
+      emailHtml =
+        '<label class="field pay-email">' +
+        '<span class="field__label">' +
+        esc(pick("E-mail для чека", "E-mail for the receipt")) +
+        "</span>" +
+        '<input class="field__input" id="payEmail" type="email" inputmode="email" autocomplete="email" ' +
+        'placeholder="name@example.com" value="' +
+        esc(state.email || s.email || "") +
+        '">' +
+        "</label>";
+    }
     return (
       '<section class="card pay-total">' +
       '<div class="pay-total__row">' +
@@ -626,6 +644,7 @@
       esc(shown) +
       "</span>" +
       "</div>" +
+      emailHtml +
       offerHtml +
       '<button type="button" class="btn btn--cta btn-block pay-submit" id="paySubmit">' +
       esc(pick("Оплатить ", "Pay ")) +
@@ -919,6 +938,19 @@
       return;
     }
     if (state.submitting) return;
+    // E-mail для чека — обязателен, когда сервер его требует.
+    var email = "";
+    var emailEl = state.viewEl && state.viewEl.querySelector("#payEmail");
+    if (emailEl) {
+      email = String(emailEl.value || "").trim();
+      state.email = email;
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email)) {
+        haptic("error");
+        toast(pick("Укажите e-mail — на него придёт чек", "Enter an e-mail — the receipt will be sent there"));
+        emailEl.focus();
+        return;
+      }
+    }
 
     // Запоминаем статус ДО оплаты — с ним renderBody сравнивает текущий, чтобы
     // отличить «стал премиумом» и «продлил подписку» от «ничего не изменилось»
@@ -937,7 +969,7 @@
     if (btn) btn.disabled = true;
     App.showLoading();
 
-    Promise.resolve(App.payCard(key))
+    Promise.resolve(App.payCard(key, email))
       .then(function () {
         renderBody();
       })

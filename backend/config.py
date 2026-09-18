@@ -183,12 +183,27 @@ YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY", "").strip()
 YOOKASSA_WEBHOOK_SECRET = os.getenv("YOOKASSA_WEBHOOK_SECRET", "").strip()
 
 # Куда ЮKassa вернёт пользователя из браузера после оплаты. По умолчанию —
-# адрес мини-приложения, иначе чат бота (лишь бы человек вернулся в Telegram).
+# ссылка t.me/<бот>?startapp=paid: она возвращает человека В TELEGRAM, а по
+# start_param=paid приложение само проверяет платёж. Голый веб-адрес
+# мини-приложения сюда не годится: вне Telegram у него нет подписи initData.
 YOOKASSA_RETURN_URL = (
     os.getenv("YOOKASSA_RETURN_URL", "").strip()
+    or (f"https://t.me/{BOT_USERNAME}?startapp=paid" if BOT_USERNAME else "")
     or MINI_APP_URL
-    or (f"https://t.me/{BOT_USERNAME}" if BOT_USERNAME else "https://t.me")
+    or "https://t.me"
 )
+# Засчитывать ТЕСТОВЫЕ платежи (test=true). Нужно только на время прогона
+# сценария тестовой картой на сервере; с боевыми ключами — убрать.
+YOOKASSA_ALLOW_TEST = os.getenv("YOOKASSA_ALLOW_TEST", "").strip() == "1"
+# Чек по 54-ФЗ: если в кабинете ЮKassa включена отправка чеков (онлайн-касса,
+# «Чеки от ЮKassa», самозанятость), платёж без объекта receipt отклоняется.
+# YOOKASSA_RECEIPT=1 добавляет чек с e-mail плательщика и одной позицией-услугой.
+YOOKASSA_RECEIPT = os.getenv("YOOKASSA_RECEIPT", "").strip() == "1"
+# Ставка НДС в чеке: 1 — без НДС (самозанятые, УСН), 2 — 0 %, 3 — 10 %,
+# 4 — 20 %; коды ЮKassa. Система налогообложения (tax_system_code) нужна
+# только если в кассе их несколько; пусто — не передаём.
+YOOKASSA_VAT_CODE = int(os.getenv("YOOKASSA_VAT_CODE", "1") or 1)
+YOOKASSA_TAX_SYSTEM_CODE = int(os.getenv("YOOKASSA_TAX_SYSTEM_CODE", "0") or 0) or None
 
 
 # --- Реквизиты продавца (нужны для модерации в платёжном сервисе) ---------- #

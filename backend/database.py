@@ -330,6 +330,7 @@ def run_migrations():
         ("calculated_maintenance", "INTEGER", None),  # фактическое поддержание (ккал/день)
         ("adaptive_last_calc", "TEXT", None),      # дата последнего пересчёта (ISO)
         ("used_trial", "INTEGER", "0"),            # использован ли пробный период (0/1)
+        ("email", "TEXT", None),                   # e-mail для чеков ЮKassa
     ]
     _migrate_table("users", user_columns)
 
