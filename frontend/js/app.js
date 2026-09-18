@@ -1177,7 +1177,7 @@
    */
   // Версия картинок: поднимать при замене любого файла в frontend/img —
   // иначе Telegram показывает закешированную старую картинку по тому же имени.
-  var IMG_VERSION = "i2";
+  var IMG_VERSION = "i3";
 
   App.heroImg = function (file) {
     return "--hero-img:url(" + new URL("img/" + file + "?v=" + IMG_VERSION, document.baseURI).href + ")";
