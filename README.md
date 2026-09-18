@@ -284,6 +284,8 @@ uvicorn backend.main:app --reload
 | `ALLOW_INSECURE_AUTH` | `1` — тестовый пользователь без Telegram (ТОЛЬКО для разработки); `0` — выкл |
 | `DEBUG_AI`             | `1` — показывать «сырой» ответ GPT в приложении и в тексте ошибки (отладка распознавания); `0` — выкл |
 | `OPENAI_MODEL`         | Необязательно. Модель распознавания (по умолчанию `gpt-4o`)                |
+| `OPENAI_VISION_MODEL` / `OPENAI_TEXT_MODEL` | Модель для фото (по умолчанию = `OPENAI_MODEL`) и для текстовых функций (`gpt-4o-mini`). GPT-5 и o-серия поддерживаются |
+| `OPENAI_VISION_BASE_URL` / `OPENAI_VISION_API_KEY` | Отдать распознавание фото другому OpenAI-совместимому провайдеру (например, Gemini), не трогая Whisper и текст |
 | `APP_TZ`               | Часовой пояс для времени push-уведомлений (по умолчанию `Europe/Moscow`)   |
 | `ENABLE_SCHEDULER`     | `0` — выключить планировщик уведомлений (по умолчанию включён при заданном `BOT_TOKEN`) |
 | `OWNER_ID`             | Числовой Telegram ID владельца (вечный премиум + команды `/givepro`/`/revokepro`) |

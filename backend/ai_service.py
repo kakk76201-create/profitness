@@ -87,6 +87,44 @@ def _get_client():
     return _shared_client
 
 
+# Куда ходить за распознаванием ФОТО. Пусто — тот же OpenAI, что и всё
+# остальное. Задав OPENAI_VISION_BASE_URL (например, OpenAI-совместимый
+# адрес Gemini) и OPENAI_VISION_API_KEY, фото можно отдать другому провайдеру,
+# не трогая Whisper и текстовые функции.
+VISION_BASE_URL = os.getenv("OPENAI_VISION_BASE_URL", "").strip()
+VISION_API_KEY = os.getenv("OPENAI_VISION_API_KEY", "").strip()
+_vision_client = None
+
+
+def _get_vision_client():
+    """Клиент для vision-запросов: отдельный провайдер, если задан в env."""
+    global _vision_client
+    if not VISION_BASE_URL and not VISION_API_KEY:
+        return _get_client()
+    if _vision_client is None:
+        kwargs = {"timeout": OPENAI_TIMEOUT, "max_retries": 0}
+        if VISION_BASE_URL:
+            kwargs["base_url"] = VISION_BASE_URL
+        if VISION_API_KEY:
+            kwargs["api_key"] = VISION_API_KEY
+        _vision_client = OpenAI(**kwargs)
+    return _vision_client
+
+
+def _completion_params(model: str, max_tokens: int, temperature: float) -> dict:
+    """Параметры chat.completions под семейство модели.
+
+    GPT-5 и o-серия не принимают temperature (кроме значения по умолчанию) и
+    ограничивают ответ параметром max_completion_tokens; у остальных (gpt-4o,
+    Gemini через совместимый API, Qwen) — классические max_tokens/temperature.
+    """
+    name = (model or "").lower()
+    reasoning = name.startswith(("gpt-5", "o1", "o3", "o4"))
+    if reasoning:
+        return {"max_completion_tokens": max_tokens}
+    return {"max_tokens": max_tokens, "temperature": temperature}
+
+
 def _get_transcribe_client():
     """Отдельный клиент для распознавания речи (больший таймаут — аудио дольше)."""
     global _transcribe_client
@@ -401,8 +439,7 @@ def _call_model(client: "OpenAI", data_url: str, lang: str = "ru"):
     response = client.chat.completions.create(
         model=VISION_MODEL,
         response_format={"type": "json_object"},
-        max_tokens=MAX_TOKENS,
-        temperature=0.3,
+        **_completion_params(VISION_MODEL, MAX_TOKENS, 0.3),
         messages=[
             {"role": "system", "content": system_prompt},
             {
@@ -460,8 +497,8 @@ def analyze_food_image(
     b64 = base64.b64encode(processed_bytes).decode("ascii")
     data_url = f"data:{processed_mime};base64,{b64}"
 
-    # 2. Единый клиент OpenAI (с таймаутом; ключ из OPENAI_API_KEY).
-    client = _get_client()
+    # 2. Клиент для фото: OpenAI по умолчанию или отдельный провайдер из env.
+    client = _get_vision_client()
 
     last_error = "неизвестная ошибка"
     raw = ""
@@ -753,8 +790,7 @@ def _call_text_model(client: "OpenAI", system_prompt: str, user_prompt: str, max
     response = client.chat.completions.create(
         model=TEXT_MODEL,
         response_format={"type": "json_object"},
-        max_tokens=max_tokens or MAX_TOKENS,
-        temperature=0.5,
+        **_completion_params(TEXT_MODEL, max_tokens or MAX_TOKENS, 0.5),
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
