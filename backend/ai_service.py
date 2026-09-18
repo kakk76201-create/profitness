@@ -111,17 +111,35 @@ def _get_vision_client():
     return _vision_client
 
 
+# Глубина «размышлений» моделей-рассуждателей (GPT-5, o-серия). Пусто —
+# минимально возможная для модели. Размышления оплачиваются как ВЫХОДНЫЕ
+# токены и расходуются из того же лимита ответа, что и сам JSON.
+REASONING_EFFORT = os.getenv("OPENAI_REASONING_EFFORT", "").strip().lower()
+# Запас лимита под размышления, когда глубина выше минимальной.
+REASONING_HEADROOM = 1500
+# Первое поколение GPT-5 (gpt-5, -mini, -nano и их снапшоты) знает уровень
+# "minimal"; более новые и o-серия — начиная с "low".
+_MINIMAL_EFFORT_RE = re.compile(r"gpt-5(-mini|-nano)?($|-\d)")
+
+
 def _completion_params(model: str, max_tokens: int, temperature: float) -> dict:
     """Параметры chat.completions под семейство модели.
 
     GPT-5 и o-серия не принимают temperature (кроме значения по умолчанию) и
     ограничивают ответ параметром max_completion_tokens; у остальных (gpt-4o,
     Gemini через совместимый API, Qwen) — классические max_tokens/temperature.
+
+    Рассуждателям явно задаём минимальную глубину: по умолчанию (medium)
+    модель тратит на размышления сотни токенов — это и деньги (тариф выхода),
+    и риск пустого ответа, когда размышления съели весь лимит в 700 токенов.
+    Распознать еду и вернуть JSON — задача без многошаговой логики.
     """
     name = (model or "").lower()
     reasoning = name.startswith(("gpt-5", "o1", "o3", "o4"))
     if reasoning:
-        return {"max_completion_tokens": max_tokens}
+        effort = REASONING_EFFORT or ("minimal" if _MINIMAL_EFFORT_RE.match(name) else "low")
+        budget = max_tokens if effort == "minimal" else max_tokens + REASONING_HEADROOM
+        return {"max_completion_tokens": budget, "reasoning_effort": effort}
     return {"max_tokens": max_tokens, "temperature": temperature}
 
 

@@ -13,9 +13,17 @@ def chk(n, cond, x=""):
     if not cond: fails.append(n + ("  " + str(x) if x else ""))
 
 chk("gpt-4o: классические параметры", A._completion_params("gpt-4o", 700, 0.3) == {"max_tokens": 700, "temperature": 0.3})
-chk("gpt-5-mini: без temperature, max_completion_tokens", A._completion_params("gpt-5-mini", 700, 0.3) == {"max_completion_tokens": 700})
-chk("gpt-5.6-luna: то же", A._completion_params("gpt-5.6-luna", 500, 0.5) == {"max_completion_tokens": 500})
-chk("o4-mini: то же", "temperature" not in A._completion_params("o4-mini", 100, 0.1))
+chk("gpt-5-mini: minimal, без temperature, лимит как есть",
+    A._completion_params("gpt-5-mini", 700, 0.3) == {"max_completion_tokens": 700, "reasoning_effort": "minimal"},
+    A._completion_params("gpt-5-mini", 700, 0.3))
+chk("снапшот gpt-5-mini-2025-08-07: minimal", A._completion_params("gpt-5-mini-2025-08-07", 700, 0.3)["reasoning_effort"] == "minimal")
+chk("gpt-5.6-luna: low + запас под размышления",
+    A._completion_params("gpt-5.6-luna", 500, 0.5) == {"max_completion_tokens": 2000, "reasoning_effort": "low"},
+    A._completion_params("gpt-5.6-luna", 500, 0.5))
+chk("o4-mini: low, без temperature", A._completion_params("o4-mini", 100, 0.1) == {"max_completion_tokens": 1600, "reasoning_effort": "low"})
+A.REASONING_EFFORT = "medium"
+chk("OPENAI_REASONING_EFFORT переопределяет", A._completion_params("gpt-5-mini", 700, 0.3) == {"max_completion_tokens": 2200, "reasoning_effort": "medium"})
+A.REASONING_EFFORT = ""
 chk("gemini через совместимый API: классические", A._completion_params("gemini-3.1-flash-lite", 700, 0.3) == {"max_tokens": 700, "temperature": 0.3})
 chk("VISION_MODEL из env", A.VISION_MODEL == "gpt-5-mini")
 vc = A._get_vision_client()
