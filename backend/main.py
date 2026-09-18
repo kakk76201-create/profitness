@@ -10,10 +10,14 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import hmac
+import io
 import json
 import logging
 import os
+import re
 import uuid
 from contextlib import asynccontextmanager
 from datetime import date as date_cls, datetime, timedelta
@@ -26,8 +30,26 @@ load_dotenv()
 
 # Базовая настройка логирования, чтобы INFO-логи (включая сырой ответ модели
 # из ai_service) были видны в консоли uvicorn и в логах Railway.
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO))
 logger = logging.getLogger("main")
+
+# Мониторинг ошибок: включается одной переменной SENTRY_DSN. Без неё — только
+# логи Railway, которые никто не читает, пока не стало поздно.
+_SENTRY_DSN = os.getenv("SENTRY_DSN", "").strip()
+if _SENTRY_DSN:
+    try:
+        import sentry_sdk
+
+        sentry_sdk.init(
+            dsn=_SENTRY_DSN,
+            environment=os.getenv("RAILWAY_ENVIRONMENT", "local"),
+            # Персональные данные (telegram_id, тексты) в Sentry не уходят.
+            send_default_pii=False,
+            traces_sample_rate=0.0,
+        )
+        logger.info("Sentry подключён")
+    except Exception as exc:  # noqa: BLE001 — мониторинг не должен ронять старт
+        logger.warning("Sentry не подключён: %s", exc)
 
 # Dev-режим (ТОЛЬКО для локальной разработки): небезопасная авторизация.
 # В проде эта переменная НЕ должна быть выставлена.
@@ -38,10 +60,23 @@ DEV_MODE = os.getenv("ALLOW_INSECURE_AUTH") == "1"
 # ТОЛЬКО явной переменной DEBUG_AI=1. Никогда не включать в проде.
 DEBUG_AI = os.getenv("DEBUG_AI") == "1"
 
+# Признаки прода: Railway кладёт эти переменные в окружение контейнера.
+IS_PRODUCTION = bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_PROJECT_ID"))
+if DEV_MODE and IS_PRODUCTION:
+    # Не предупреждение, а отказ старта: с этой переменной ЛЮБОЙ запрос без
+    # подписи Telegram получает доступ к данным dev-пользователя, а платные
+    # функции — без подписки. Пусть деплой упадёт, чем тихо откроет дверь.
+    raise RuntimeError(
+        "ALLOW_INSECURE_AUTH=1 в проде запрещён: уберите переменную в Railway."
+    )
+if DEBUG_AI and IS_PRODUCTION:
+    logger.error("DEBUG_AI=1 в проде: сырые ответы модели уходят клиенту — выключите.")
+
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from PIL import Image, ImageOps
 from sqlalchemy.orm import Session
 
 from backend import (
@@ -300,19 +335,111 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Calorie Mini App", lifespan=lifespan)
 
-# CORS. Фронтенд раздаётся тем же бэкендом (запросы same-origin), поэтому CORS
-# по сути не используется. Источники можно ограничить через env CORS_ORIGINS
-# (список через запятую); по умолчанию оставляем "*", чтобы ничего не сломать,
-# но в проде рекомендуется задать конкретные домены.
-_cors_env = os.getenv("CORS_ORIGINS", "*").strip()
-_cors_origins = ["*"] if _cors_env in ("", "*") else [o.strip() for o in _cors_env.split(",") if o.strip()]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_origins,
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS. Фронтенд раздаётся тем же бэкендом (запросы same-origin), поэтому
+# CORS не нужен вовсе: без заголовков браузер просто не пустит чужой сайт к
+# API. Включается ТОЛЬКО явным списком в CORS_ORIGINS (через запятую) — для
+# случая, когда фронт хостится отдельно.
+_cors_env = os.getenv("CORS_ORIGINS", "").strip()
+_cors_origins = [o.strip() for o in _cors_env.split(",") if o.strip() and o.strip() != "*"]
+if _cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+elif _cors_env == "*":
+    logger.warning("CORS_ORIGINS=* игнорируется: перечислите домены явно или оставьте пусто")
+
+
+# --------------------------------------------------------------------------- #
+#  Заголовки безопасности
+# --------------------------------------------------------------------------- #
+# CSP отключается переменной SECURITY_CSP=0 — запасной выход, если новый
+# платёжный виджет или клиент Telegram окажется под запретом политики.
+SECURITY_CSP_ENABLED = os.getenv("SECURITY_CSP", "1") != "0"
+_CSP_CACHE: dict = {}
+
+
+def _inline_script_hashes() -> list[str]:
+    """sha256-хеши инлайн-скриптов index.html для CSP.
+
+    index.html статичен, поэтому хеши считаем один раз при первом запросе.
+    Хеш вместо 'unsafe-inline' означает: даже если через XSS в страницу
+    попадёт <script>, браузер его не выполнит.
+    """
+    try:
+        html = (frontend_dir / "index.html").read_text(encoding="utf-8")
+    except OSError:
+        return []
+    hashes = []
+    for m in re.finditer(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", html, flags=re.S | re.I):
+        body = m.group(1)
+        if body.strip():
+            digest = hashlib.sha256(body.encode("utf-8")).digest()
+            hashes.append("'sha256-" + base64.b64encode(digest).decode("ascii") + "'")
+    return hashes
+
+
+def build_csp() -> str:
+    """Собрать Content-Security-Policy под текущую конфигурацию.
+
+    frame-ancestors — самое важное: мини-приложение можно встраивать только
+    клиентам Telegram (web.telegram.org и поддомены), чужой сайт не сможет
+    показать его в iframe и накладывать поверх свои элементы. Хосты
+    платёжного виджета добавляются только когда провайдер включён.
+    """
+    if "value" in _CSP_CACHE:
+        return _CSP_CACHE["value"]
+    extra = [h for h in os.getenv("CSP_EXTRA_HOSTS", "").split() if h]
+    hashes = _inline_script_hashes()
+    script = ["'self'", "https://telegram.org"] + (hashes or ["'unsafe-inline'"])
+    connect = ["'self'"]
+    frame = ["'self'"]
+    provider = getattr(config, "card_provider", lambda: "")()
+    if provider == "cloudpayments":
+        script.append("https://widget.cloudpayments.ru")
+        connect.append("https://*.cloudpayments.ru")
+        frame.append("https://*.cloudpayments.ru")
+    parts = [
+        "default-src 'self'",
+        "base-uri 'self'",
+        "object-src 'none'",
+        "form-action 'self'",
+        "frame-ancestors 'self' https://web.telegram.org https://*.telegram.org",
+        "script-src " + " ".join(script + extra),
+        # style-атрибуты (фон геройских блоков) требуют 'unsafe-inline';
+        # стили не исполняют код, риск минимальный.
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' data: https://fonts.gstatic.com",
+        # Аватары Telegram живут на разных CDN-хостах с редиректами.
+        "img-src 'self' data: blob: https:",
+        "media-src 'self' blob:",
+        "connect-src " + " ".join(connect + extra),
+        "frame-src " + " ".join(frame + extra),
+    ]
+    value = "; ".join(parts)
+    _CSP_CACHE["value"] = value
+    return value
+
+
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    """Стандартный набор защитных заголовков на каждый ответ, включая статику."""
+    response = await call_next(request)
+    h = response.headers
+    h.setdefault("X-Content-Type-Options", "nosniff")
+    h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    h.setdefault(
+        "Permissions-Policy",
+        "camera=(self), microphone=(self), geolocation=(), payment=(self)",
+    )
+    if IS_PRODUCTION:
+        h.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    if SECURITY_CSP_ENABLED:
+        h.setdefault("Content-Security-Policy", build_csp())
+    return response
 
 
 # --------------------------------------------------------------------------- #
@@ -3429,6 +3556,42 @@ _PROGRESS_MIME_EXT = {
 }
 
 
+# Большая сторона снимка после пережатия. Хватает для просмотра на телефоне
+# и для сравнения «до/после»; исходник в 12 МБ хранить незачем.
+PROGRESS_IMAGE_MAX_SIDE = 1600
+
+
+def _prepare_progress_image(data: bytes, mime: str) -> tuple[bytes, str]:
+    """Пережать фото для хранения в БД: ≤1600px, JPEG 85, без метаданных.
+
+    Пересохранение через Pillow заодно стирает EXIF — там бывают GPS-координаты
+    и модель телефона, хранить это про пользователя незачем. HEIC/HEIF Pillow
+    без плагина не читает — такие файлы храним как есть.
+    """
+    try:
+        img = Image.open(io.BytesIO(data))
+        img = ImageOps.exif_transpose(img)
+        img.thumbnail((PROGRESS_IMAGE_MAX_SIDE, PROGRESS_IMAGE_MAX_SIDE))
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+        out = io.BytesIO()
+        img.save(out, "JPEG", quality=85, optimize=True)
+        return out.getvalue(), "image/jpeg"
+    except Exception:
+        if mime in ("image/heic", "image/heif"):
+            return data, mime
+        raise
+
+
+def _mime_for_path(path: Path) -> str:
+    """MIME по расширению старого файла на диске (для переноса в БД)."""
+    ext = path.suffix.lower()
+    for m, e in _PROGRESS_MIME_EXT.items():
+        if e == ext:
+            return m
+    return "image/jpeg"
+
+
 def _progress_dir() -> Path:
     """Абсолютный путь к каталогу приватных фото (создаёт его при необходимости)."""
     d = Path(config.PROGRESS_PHOTOS_DIR)
@@ -3484,19 +3647,22 @@ async def progress_upload(
     if snap_date is None:
         snap_date = date_cls.today()
 
-    # Имя файла: {telegram_id}_{uuid}.{ext} — непубличное, без перечислимости.
-    filename = f"{user.telegram_id}_{uuid.uuid4().hex}{ext}"
-    dest = _progress_dir() / filename
+    # Фото уходит в БД, а не на диск: диск контейнера Railway эфемерный и
+    # очищается при каждом деплое — люди теряли снимки. Пережатие — в
+    # threadpool, чтобы большой файл не морозил остальные запросы.
     try:
-        with open(dest, "wb") as fh:
-            fh.write(data)
-    except OSError as exc:
-        logger.warning("progress/upload: не удалось сохранить файл: %s", exc)
-        raise HTTPException(status_code=500, detail="Не удалось сохранить фото. Попробуйте позже.")
+        stored, stored_mime = await run_in_threadpool(_prepare_progress_image, data, mime)
+    except Exception as exc:  # noqa: BLE001 — битый файл = ошибка клиента
+        logger.warning("progress/upload: не удалось обработать изображение: %s", exc)
+        raise HTTPException(
+            status_code=400, detail="Не удалось прочитать изображение. Попробуйте другой файл."
+        )
 
     photo = ProgressPhoto(
         telegram_id=user.telegram_id,
-        photo_path=filename,
+        photo_path=None,
+        image_data=stored,
+        image_mime=stored_mime,
         date=snap_date.isoformat(),
         weight=weight,
     )
@@ -3533,7 +3699,7 @@ def progress_image(
     Файлы лежат вне статики; сюда попадают лишь авторизованные запросы. Если фото
     принадлежит другому пользователю или отсутствует — 404 (без утечки факта).
     """
-    from fastapi.responses import FileResponse
+    from fastapi.responses import FileResponse, Response
 
     photo = (
         db.query(ProgressPhoto)
@@ -3546,8 +3712,27 @@ def progress_image(
     if photo is None:
         raise HTTPException(status_code=404, detail="Фото не найдено")
 
-    path = _progress_dir() / photo.photo_path
-    if not path.exists():
+    # Новые снимки лежат в БД.
+    if photo.image_data:
+        return Response(
+            content=bytes(photo.image_data),
+            media_type=photo.image_mime or "image/jpeg",
+            headers={"Cache-Control": "private, no-store"},
+        )
+
+    # Старые снимки — на диске. Пока файл ещё жив, переносим его в БД:
+    # следующий деплой сотрёт диск, а запись в БД останется.
+    path = _progress_dir() / (photo.photo_path or "")
+    if photo.photo_path and path.exists():
+        try:
+            photo.image_data = path.read_bytes()
+            photo.image_mime = _mime_for_path(path)
+            db.commit()
+        except Exception as exc:  # noqa: BLE001 — перенос best-effort
+            db.rollback()
+            logger.warning("progress/image: не удалось перенести %s в БД: %s", photo.photo_path, exc)
+
+    if not photo.photo_path or not path.exists():
         # Файл пропал (например, эфемерный диск после передеплоя без тома) —
         # чистим осиротевшую запись, чтобы список не показывал «битые» фото.
         try:
@@ -3582,10 +3767,10 @@ def progress_delete(
     if photo is None:
         raise HTTPException(status_code=404, detail="Фото не найдено")
 
-    # Сначала пытаемся удалить файл (ошибку не считаем фатальной — запись всё равно чистим).
+    # Старые снимки лежали на диске — подчищаем файл (ошибка не фатальна).
     try:
-        fpath = _progress_dir() / photo.photo_path
-        if fpath.exists():
+        fpath = _progress_dir() / photo.photo_path if photo.photo_path else None
+        if fpath is not None and fpath.exists():
             fpath.unlink()
     except OSError as exc:
         logger.warning("progress/delete: не удалось удалить файл %s: %s", photo.photo_path, exc)
@@ -3620,6 +3805,8 @@ def account_delete_data(
     photos = db.query(ProgressPhoto).filter(ProgressPhoto.telegram_id == tid).all()
     pdir = _progress_dir()
     for ph in photos:
+        if not ph.photo_path:
+            continue  # снимок в БД — уйдёт вместе с записью
         try:
             fp = pdir / ph.photo_path
             if fp.exists():

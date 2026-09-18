@@ -198,7 +198,7 @@ def ddl_type_and_default(table_name, name, sql_type, default, is_sqlite):
       * булевы колонки (_BOOLEAN_COLUMNS) -> BOOLEAN, а DEFAULT '0'/'1' ->
         FALSE/TRUE, иначе PostgreSQL отвергает вставку настоящих bool из ORM.
     """
-    col_type = sql_type if is_sqlite else {"DATETIME": "TIMESTAMP"}.get(
+    col_type = sql_type if is_sqlite else {"DATETIME": "TIMESTAMP", "BLOB": "BYTEA"}.get(
         sql_type.upper(), sql_type
     )
 
@@ -351,6 +351,12 @@ def run_migrations():
         ("meal_times_json", "TEXT", None),  # JSON-массив времён "HH:MM"
     ]
     _migrate_table("notification_settings", notification_settings_columns)
+
+    # --- Таблица progress_photos: снимки переезжают с диска в БД. ---
+    _migrate_table("progress_photos", [
+        ("image_data", "BLOB", None),   # пережатый JPEG без EXIF
+        ("image_mime", "TEXT", None),   # image/jpeg | image/heic | ...
+    ])
 
     # --- Таблица payments: идентификатор списания для идемпотентности оплат. ---
     _migrate_table("payments", [("charge_id", "TEXT", None)])

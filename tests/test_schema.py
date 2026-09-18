@@ -40,6 +40,7 @@ COMPATIBLE = {
     "TEXT": {"TEXT", "VARCHAR"},
     "TIMESTAMP WITHOUT TIME ZONE": {"TIMESTAMP"},
     "DATETIME": {"TIMESTAMP"},
+    "BYTEA": {"BYTEA", "BLOB"},
 }
 
 

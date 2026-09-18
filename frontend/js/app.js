@@ -231,8 +231,24 @@
                 detail = data.message;
               }
             }
+            // 401 — подпись Telegram устарела (initData живёт сутки): человеку
+            // нужна не «ошибка 401», а понятное действие.
+            if (res.status === 401) {
+              detail = App.pick(
+                "Сессия Telegram устарела. Закройте приложение и откройте его заново.",
+                "Your Telegram session has expired. Close the app and open it again."
+              );
+            }
+            // Тело не JSON (страница ошибки прокси, пустой ответ) — в тост его
+            // нести нельзя: там HTML на несколько экранов. Даём общий текст.
             if (!detail) {
-              detail = raw || App.pick("Ошибка ", "Error ") + res.status;
+              detail = res.status >= 500
+                ? App.pick("Сервер временно недоступен", "Server is temporarily unavailable") +
+                  " (" + res.status + ")"
+                : App.pick("Ошибка ", "Error ") + res.status;
+            }
+            if (detail.length > 300) {
+              detail = detail.slice(0, 300) + "…";
             }
             var err = new Error(detail);
             // Прокидываем HTTP-статус и машиночитаемый код ошибки наверх,

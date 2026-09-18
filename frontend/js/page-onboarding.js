@@ -181,7 +181,7 @@
       '<span class="field__label">' +
       App.escapeHtml(L("Вес, кг", "Weight, kg")) +
       "</span>" +
-      '<input class="field__input" id="onbWeight" type="number" inputmode="decimal" min="0" step="0.1" placeholder="70" value="' +
+      '<input class="field__input" id="onbWeight" type="number" inputmode="decimal" min="0" step="0.1" placeholder="' + App.escapeHtml(L("например, 70", "e.g. 70")) + '" value="' +
       App.escapeHtml(draft.weight) +
       '">' +
       "</label>" +
@@ -189,7 +189,7 @@
       '<span class="field__label">' +
       App.escapeHtml(L("Рост, см", "Height, cm")) +
       "</span>" +
-      '<input class="field__input" id="onbHeight" type="number" inputmode="decimal" min="0" step="0.1" placeholder="175" value="' +
+      '<input class="field__input" id="onbHeight" type="number" inputmode="decimal" min="0" step="0.1" placeholder="' + App.escapeHtml(L("например, 175", "e.g. 175")) + '" value="' +
       App.escapeHtml(draft.height) +
       '">' +
       "</label>" +
@@ -197,7 +197,7 @@
       '<span class="field__label">' +
       App.escapeHtml(L("Возраст, лет", "Age, years")) +
       "</span>" +
-      '<input class="field__input" id="onbAge" type="number" inputmode="numeric" min="0" step="1" placeholder="30" value="' +
+      '<input class="field__input" id="onbAge" type="number" inputmode="numeric" min="0" step="1" placeholder="' + App.escapeHtml(L("например, 30", "e.g. 30")) + '" value="' +
       App.escapeHtml(draft.age) +
       '">' +
       "</label>" +

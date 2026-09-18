@@ -276,8 +276,8 @@ def run_adaptive_recalc(db, user, lang=None, window_days=21):
         logger.warning("run_adaptive_recalc: ошибка пересчёта: %s", exc)
         try:
             db.rollback()
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Подавлено исключение: %r", exc)
         if is_en:
             explanation = "Could not recalculate adaptive calories right now."
         else:

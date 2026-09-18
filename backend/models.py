@@ -47,6 +47,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     Text,
 )
@@ -659,8 +660,13 @@ class ProgressPhoto(Base):
         BigInteger, ForeignKey("users.telegram_id"), index=True
     )
 
-    # Имя файла на диске внутри приватного каталога (НЕ публичный URL).
-    photo_path = Column(String)
+    # Имя файла на диске — ТОЛЬКО у старых снимков; новые лежат в БД
+    # (image_data), потому что диск контейнера Railway стирается при деплое.
+    photo_path = Column(String, nullable=True)
+
+    # Само изображение (пережатый JPEG без EXIF) и его MIME-тип.
+    image_data = Column(LargeBinary, nullable=True)
+    image_mime = Column(String, nullable=True)
 
     # Дата снимка в формате ISO "YYYY-MM-DD" (с индексом для сортировки по времени).
     date = Column(String, index=True)

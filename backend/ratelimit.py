@@ -14,10 +14,13 @@ Railway этого достаточно (после передеплоя счё�
 Потокобезопасно (Lock), т.к. эндпоинты выполняются в threadpool.
 """
 
+import logging
 import os
 import threading
 import time
 from collections import defaultdict
+
+logger = logging.getLogger(__name__)
 
 _lock = threading.Lock()
 _minute_hits: dict[str, list] = defaultdict(list)   # ключ -> список timestamp'ов
@@ -43,6 +46,15 @@ PAYMENT_PER_DAY = int(os.getenv("RATE_LIMIT_PAYMENT_PER_DAY", "40"))
 # ВСЕГО сервера, поэтому один пользователь не должен его выедать.
 SEARCH_PER_MIN = int(os.getenv("RATE_LIMIT_SEARCH_PER_MIN", "15"))
 SEARCH_PER_DAY = int(os.getenv("RATE_LIMIT_SEARCH_PER_DAY", "300"))
+# Общий потолок на ВСЕ AI-вызовы сервиса за сутки. Лимиты «на пользователя»
+# не спасают от сотни дешёвых Telegram-аккаунтов: каждый в своём лимите, а
+# счёт OpenAI общий. Владелец получает предупреждение на 80 % и при упоре.
+AI_GLOBAL_PER_MIN = int(os.getenv("RATE_LIMIT_AI_GLOBAL_PER_MIN", "300"))
+AI_GLOBAL_PER_DAY = int(os.getenv("RATE_LIMIT_AI_GLOBAL_PER_DAY", "3000"))
+_GLOBAL_KEY = "global:ai"
+_ALERT_SHARE = 0.8
+# Состояние алертов: день (UTC) и что уже отправляли, чтобы не спамить.
+_alert_state = {"day": -1, "warned": False, "capped": False}
 
 
 def check(key: str, per_min: int, per_day: int) -> tuple[bool, str | None]:
@@ -76,11 +88,61 @@ def check(key: str, per_min: int, per_day: int) -> tuple[bool, str | None]:
         return True, None
 
 
+def global_hits_today() -> int:
+    """Сколько AI-вызовов уже сделано сервисом за текущие сутки (UTC)."""
+    with _lock:
+        d = _day_hits[_GLOBAL_KEY]
+        return d[1] if d[0] == int(time.time() // 86400) else 0
+
+
+def _alert_owner_async(text: str) -> None:
+    """Сообщение владельцу в отдельном потоке: запрос пользователя не ждёт Telegram."""
+    def _send():
+        try:
+            from backend import telegram_bot
+
+            telegram_bot.alert_owner(text, prefix="ИИ-лимит")
+        except Exception as exc:  # noqa: BLE001 — алерт best-effort
+            logger.debug("Подавлено исключение: %r", exc)
+
+    threading.Thread(target=_send, daemon=True).start()
+
+
+def _maybe_alert(used: int, capped: bool) -> None:
+    """Раз в сутки предупредить на 80 % потолка и раз — при упоре в него."""
+    today = int(time.time() // 86400)
+    send = None
+    with _lock:
+        if _alert_state["day"] != today:
+            _alert_state.update(day=today, warned=False, capped=False)
+        if capped and not _alert_state["capped"]:
+            _alert_state["capped"] = True
+            send = (f"Дневной потолок ИИ исчерпан: {used}/{AI_GLOBAL_PER_DAY}. "
+                    "Новые запросы получают 429 до конца суток (UTC). "
+                    "Поднять: RATE_LIMIT_AI_GLOBAL_PER_DAY.")
+        elif not capped and used >= AI_GLOBAL_PER_DAY * _ALERT_SHARE and not _alert_state["warned"]:
+            _alert_state["warned"] = True
+            send = f"ИИ-вызовы за сутки: {used}/{AI_GLOBAL_PER_DAY} (80 %). Проверьте, нет ли злоупотребления."
+    if send:
+        _alert_owner_async(send)
+
+
+def enforce_global() -> None:
+    """Общий потолок сервиса. Проверяется ПОСЛЕ лимитов пользователя, чтобы
+    одиночный злоупотребитель получал свой 429, не расходуя общий счётчик."""
+    ok, why = check(_GLOBAL_KEY, AI_GLOBAL_PER_MIN, AI_GLOBAL_PER_DAY)
+    used = global_hits_today()
+    _maybe_alert(used, capped=(not ok and why == "day"))
+    if not ok:
+        _raise_429(busy=True)
+
+
 def enforce_ai(telegram_id: int) -> None:
     """Общий лимит на любые AI-вызовы пользователя. Бросает HTTPException 429."""
     ok, _why = check(f"ai:{telegram_id}", AI_PER_MIN, AI_PER_DAY)
     if not ok:
         _raise_429()
+    enforce_global()
 
 
 def enforce_calc(telegram_id: int, is_premium: bool) -> None:
@@ -92,6 +154,7 @@ def enforce_calc(telegram_id: int, is_premium: bool) -> None:
     ok, _why = check(f"calc:{telegram_id}", CALC_PER_MIN, CALC_PER_DAY_FREE)
     if not ok:
         _raise_429()
+    enforce_global()
 
 
 def enforce_heavy(telegram_id: int) -> None:
@@ -99,6 +162,7 @@ def enforce_heavy(telegram_id: int) -> None:
     ok, _why = check(f"heavy:{telegram_id}", HEAVY_PER_MIN, HEAVY_PER_DAY)
     if not ok:
         _raise_429()
+    enforce_global()
 
 
 def enforce_payment(telegram_id: int) -> None:
@@ -119,9 +183,17 @@ def enforce_search(telegram_id: int) -> None:
         _raise_429()
 
 
-def _raise_429() -> None:
+def _raise_429(busy: bool = False) -> None:
     from fastapi import HTTPException
 
+    if busy:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "service_busy",
+                "message": "Сервис перегружен. Попробуйте через несколько минут.",
+            },
+        )
     raise HTTPException(
         status_code=429,
         detail={

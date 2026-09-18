@@ -128,8 +128,8 @@ def _safe_rollback(db) -> None:
     """
     try:
         db.rollback()
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Подавлено исключение: %r", exc)
 
 
 def _norm_lang(lang) -> str:
@@ -142,8 +142,8 @@ def _norm_lang(lang) -> str:
     try:
         if str(lang or "").strip().lower().startswith("en"):
             return "en"
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Подавлено исключение: %r", exc)
     return "ru"
 
 
@@ -411,8 +411,8 @@ def _mark_sent(db, tid: int, kind: str, date: str) -> None:
         logger.warning("_mark_sent: не удалось записать лог (%s) tid=%s kind=%s", exc, tid, kind)
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Подавлено исключение: %r", exc)
 
 
 # --------------------------------------------------------------------------- #
@@ -1056,16 +1056,16 @@ def check_notifications() -> None:
                     )
                     try:
                         db.rollback()
-                    except Exception:
-                        pass
+                    except Exception as exc:  # noqa: BLE001
+                        logger.debug("Подавлено исключение: %r", exc)
 
             except Exception as exc:
                 # Сбой по одному пользователю не должен прерывать рассылку.
                 logger.warning("check_notifications: сбой по пользователю tid=%s: %s", tid, exc)
                 try:
                     db.rollback()
-                except Exception:
-                    pass
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("Подавлено исключение: %r", exc)
 
         # --- 2) Напоминания о тренировках (TrainingReminder) ------------------ #
         try:
@@ -1089,8 +1089,8 @@ def check_notifications() -> None:
                 )
                 try:
                     db.rollback()
-                except Exception:
-                    pass
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("Подавлено исключение: %r", exc)
 
         # --- 3) Напоминания о спортпите (SupplementReminder) ------------------ #
         try:
@@ -1114,8 +1114,8 @@ def check_notifications() -> None:
                 )
                 try:
                     db.rollback()
-                except Exception:
-                    pass
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("Подавлено исключение: %r", exc)
 
         # --- 4.5) Жизненный цикл подписки: напоминания об окончании / win-back -- #
         try:
@@ -1124,8 +1124,8 @@ def check_notifications() -> None:
             logger.warning("check_notifications: сбой жизненного цикла подписки: %s", exc)
             try:
                 db.rollback()
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Подавлено исключение: %r", exc)
 
         # --- 5) Авто-пересчёт адаптивных калорий раз в неделю (Этап 3) -------- #
         # Изолированно: для пользователей с adaptive_enabled, у кого пересчёт не
@@ -1155,8 +1155,8 @@ def check_notifications() -> None:
                 )
                 try:
                     db.rollback()
-                except Exception:
-                    pass
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("Подавлено исключение: %r", exc)
 
     except Exception as exc:
         # Любой неожиданный сбой — логируем, приложение не роняем.
@@ -1164,8 +1164,8 @@ def check_notifications() -> None:
     finally:
         try:
             db.close()
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Подавлено исключение: %r", exc)
 
 
 def _process_subscription_lifecycle(db, now: datetime, today: str) -> None:
@@ -1248,13 +1248,52 @@ def _process_subscription_lifecycle(db, now: datetime, today: str) -> None:
             )
             try:
                 db.rollback()
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Подавлено исключение: %r", exc)
 
 
 # --------------------------------------------------------------------------- #
 #  Запуск / остановка планировщика
 # --------------------------------------------------------------------------- #
+# Ключ advisory-lock планировщика: произвольная константа, одна на приложение.
+_SCHEDULER_LOCK_KEY = 811_407_231
+_scheduler_lock_conn = None
+
+
+def _acquire_scheduler_lock() -> bool:
+    """Занять замок планировщика в PostgreSQL.
+
+    Если приложение запущено в двух экземплярах (масштабирование Railway),
+    без замка каждый прислал бы свои уведомления — люди получали бы всё
+    дважды. Advisory-lock живёт, пока живо соединение: держим его на всём
+    сроке процесса, при падении процесса база освобождает замок сама.
+    На SQLite экземпляр один — замок не нужен.
+    """
+    global _scheduler_lock_conn
+    try:
+        from backend.database import engine
+
+        if engine.dialect.name != "postgresql":
+            return True
+        conn = engine.raw_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT pg_try_advisory_lock(%s)", (_SCHEDULER_LOCK_KEY,))
+        got = bool(cur.fetchone()[0])
+        cur.close()
+        # Транзакцию закрываем: замок сессионный и commit переживает,
+        # а «idle in transaction» мешал бы обслуживанию базы.
+        conn.commit()
+        if got:
+            _scheduler_lock_conn = conn
+            return True
+        conn.close()
+        logger.info("Планировщик уведомлений уже работает в другом экземпляре — здесь не запускаем")
+        return False
+    except Exception as exc:  # noqa: BLE001 — сбой проверки не должен глушить уведомления
+        logger.warning("Замок планировщика не проверен (%s) — запускаем без него", exc)
+        return True
+
+
 def start_scheduler():
     """Запустить фоновый планировщик проверки уведомлений.
 
@@ -1275,6 +1314,8 @@ def start_scheduler():
             return None
         if BackgroundScheduler is None:
             logger.warning("Планировщик уведомлений не запущен: APScheduler не установлен")
+            return None
+        if not _acquire_scheduler_lock():
             return None
 
         # Планировщик в часовом поясе приложения (если доступен).

@@ -78,8 +78,8 @@ def _norm_lang(lang) -> str:
     try:
         if str(lang or "").strip().lower().startswith("en"):
             return "en"
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Подавлено исключение: %r", exc)
     return "ru"
 
 
@@ -148,14 +148,22 @@ def _payment_pending_text(lang: str) -> str:
     )
 
 
-def _alert_owner_payment(text: str) -> None:
-    """Отправить владельцу (OWNER_ID) алерт по проблемному платежу (best-effort)."""
+def alert_owner(text: str, prefix: str = "Сервис") -> None:
+    """Отправить владельцу (OWNER_ID) служебный алерт (best-effort).
+
+    Общая точка для платежей, лимитов ИИ и прочих тревог: один чат, один формат.
+    """
     if not OWNER_ID:
         return
     try:
-        _bot_api("sendMessage", {"chat_id": OWNER_ID, "text": "⚠️ Платёж: " + text})
+        _bot_api("sendMessage", {"chat_id": OWNER_ID, "text": "⚠️ " + prefix + ": " + text})
     except Exception as exc:  # noqa: BLE001
-        logger.warning("_alert_owner_payment: не удалось уведомить владельца: %s", exc)
+        logger.warning("alert_owner: не удалось уведомить владельца: %s", exc)
+
+
+def _alert_owner_payment(text: str) -> None:
+    """Алерт по проблемному платежу."""
+    alert_owner(text, prefix="Платёж")
 
 
 def _validate_pre_checkout(pcq: dict) -> tuple[bool, str | None]:
@@ -464,14 +472,14 @@ def _touch_user(db, from_user: dict) -> None:
                     "chat_id": tid,
                     "text": "🎉 Вам открыт премиум-доступ. Откройте приложение — всё уже доступно.",
                 })
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Подавлено исключение: %r", exc)
     except Exception as exc:  # noqa: BLE001 — регистрация не должна ронять апдейт
         logger.error("_touch_user: НЕ СОХРАНЁН пользователь %s (@%s): %s", tid, uname, exc)
         try:
             db.rollback()
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Подавлено исключение: %r", exc)
         # Немой сбой регистрации — худший вариант: человек «пользуется ботом»,
         # а в базе его нет, и владелец не может выдать ему доступ. Поэтому
         # сообщаем владельцу СРАЗУ, с текстом ошибки и id (по нему можно выдать).
@@ -487,8 +495,8 @@ def _touch_user(db, from_user: dict) -> None:
                         f"Выдать доступ можно напрямую: /givepro {tid}"
                     ),
                 })
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Подавлено исключение: %r", exc)
 
 
 # --------------------------------------------------------------------------- #
@@ -536,8 +544,8 @@ def _handle_users_command(db, message: dict) -> None:
     except Exception as exc:  # noqa: BLE001
         try:
             db.rollback()
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Подавлено исключение: %r", exc)
         _bot_api("sendMessage", {"chat_id": chat_id, "text": f"Ошибка чтения базы: {exc}"})
         return
 
@@ -589,8 +597,8 @@ def _queue_pending_grant(db, uname: str, days, created_by) -> str:
     except Exception as exc:  # noqa: BLE001
         try:
             db.rollback()
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Подавлено исключение: %r", exc)
         return f"Не удалось поставить в очередь: {exc}"
 
 
@@ -619,8 +627,8 @@ def _handle_pending_command(db, message: dict) -> None:
     except Exception as exc:  # noqa: BLE001
         try:
             db.rollback()
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Подавлено исключение: %r", exc)
         _bot_api("sendMessage", {"chat_id": chat_id, "text": f"Ошибка чтения базы: {exc}"})
         return
 
@@ -663,8 +671,8 @@ def _handle_whois_command(db, message: dict, text: str) -> None:
     except Exception as exc:  # noqa: BLE001
         try:
             db.rollback()
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Подавлено исключение: %r", exc)
         _bot_api("sendMessage", {"chat_id": chat_id, "text": f"Ошибка чтения базы: {exc}"})
         return
 
@@ -773,8 +781,8 @@ def _handle_owner_command(db, message: dict, text: str) -> None:
             except Exception:  # noqa: BLE001
                 try:
                     db.rollback()
-                except Exception:  # noqa: BLE001
-                    pass
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("Подавлено исключение: %r", exc)
         else:
             # По username — регистронезависимо (логины Telegram нечувствительны
             # к регистру). Ошибку БД НЕ маскируем под «не найден».
@@ -791,8 +799,8 @@ def _handle_owner_command(db, message: dict, text: str) -> None:
                 db_error = exc
                 try:
                     db.rollback()
-                except Exception:  # noqa: BLE001
-                    pass
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("Подавлено исключение: %r", exc)
 
             if db_error is not None:
                 if chat_id is not None:
@@ -840,8 +848,8 @@ def _handle_owner_command(db, message: dict, text: str) -> None:
         logger.warning("_handle_owner_command: сбой %s для %s: %s", action, uname_display, exc)
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Подавлено исключение: %r", exc)
         if chat_id is not None:
             # Показываем ПРИЧИНУ, а не безликое «не удалось» — иначе диагностика слепая.
             _bot_api("sendMessage", {
@@ -862,8 +870,8 @@ def _handle_owner_command(db, message: dict, text: str) -> None:
         logger.warning("_handle_owner_command: не удалось записать ProGrant (%s)", exc)
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Подавлено исключение: %r", exc)
 
     # Сообщаем владельцу результат.
     if chat_id is not None:
@@ -919,8 +927,8 @@ def _handle_voice_message(db, message: dict) -> None:
         logger.warning("_handle_voice_message: ошибка поиска пользователя tid=%s: %s", from_id, exc)
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Подавлено исключение: %r", exc)
         user = None
 
     if user is not None:
@@ -1009,8 +1017,8 @@ def _handle_voice_message(db, message: dict) -> None:
             # Ничего не удалось добавить — откатываем и сообщаем об ошибке.
             try:
                 db.rollback()
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Подавлено исключение: %r", exc)
             _bot_api("sendMessage", {"chat_id": chat_id, "text": _voice_error_text(lang)})
             return
 
@@ -1025,16 +1033,16 @@ def _handle_voice_message(db, message: dict) -> None:
         logger.warning("_handle_voice_message: AIError (tid=%s): %s", from_id, exc)
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Подавлено исключение: %r", exc)
         _bot_api("sendMessage", {"chat_id": chat_id, "text": _voice_error_text(lang)})
     except Exception as exc:
         # Любой иной сбой — логируем, вежливо отвечаем, не падаем.
         logger.warning("_handle_voice_message: общий сбой (tid=%s): %s", from_id, exc)
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Подавлено исключение: %r", exc)
         _bot_api("sendMessage", {"chat_id": chat_id, "text": _voice_error_text(lang)})
 
 
@@ -1142,8 +1150,8 @@ def handle_update(db, update: dict) -> None:
                 logger.error("successful_payment: сбой активации (tid=%s charge=%s): %s", tid, charge_id, exc)
                 try:
                     db.rollback()
-                except Exception:
-                    pass
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("Подавлено исключение: %r", exc)
                 # (1) сообщаем плательщику, что доступ появится; (2) алертим владельца;
                 if chat_id is not None:
                     _bot_api("sendMessage", {
@@ -1226,5 +1234,5 @@ def handle_update(db, update: dict) -> None:
         logger.warning("handle_update: общий сбой обработки апдейта: %s", exc)
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Подавлено исключение: %r", exc)

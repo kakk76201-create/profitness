@@ -139,8 +139,8 @@ def activate_premium(
         # Откатываем незавершённую транзакцию, чтобы сессия осталась рабочей.
         try:
             db.rollback()
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Подавлено исключение: %r", exc)
         # Пробрасываем наверх — вызывающий слой решает, как ответить провайдеру.
         raise
 
@@ -200,8 +200,8 @@ def grant_days(
         logger.error("Ошибка grant_days (telegram_id=%s days=%s): %s", telegram_id, days, exc)
         try:
             db.rollback()
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Подавлено исключение: %r", exc)
         raise
 
 
@@ -254,14 +254,14 @@ def apply_pending_grants(db: Session, telegram_id: int, username: str | None) ->
                 logger.error("apply_pending_grants: сбой применения id=%s: %s", row.id, exc)
                 try:
                     db.rollback()
-                except Exception:  # noqa: BLE001
-                    pass
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("Подавлено исключение: %r", exc)
     except Exception as exc:  # noqa: BLE001
         logger.error("apply_pending_grants: сбой выборки для @%s: %s", username, exc)
         try:
             db.rollback()
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Подавлено исключение: %r", exc)
     return applied
 
 
@@ -299,6 +299,6 @@ def revoke_premium(db: Session, telegram_id: int) -> User | None:
         )
         try:
             db.rollback()
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Подавлено исключение: %r", exc)
         return None

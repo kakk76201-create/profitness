@@ -225,6 +225,10 @@
       } else {
         deltaText = pick("Как на прошлой неделе", "Same as last week");
       }
+    } else if (curVol > 0) {
+      // Прошлой недели нет — сравнивать не с чем; «+∞ %» или «−100 %»
+      // читались бы как ошибка.
+      deltaText = pick("Первая неделя с данными", "First week with data");
     }
 
     return (

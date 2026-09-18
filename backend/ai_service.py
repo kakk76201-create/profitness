@@ -108,8 +108,8 @@ def _log_usage(tag: str, response) -> None:
                 getattr(u, "total_tokens", None),
                 getattr(response, "model", None),
             )
-    except Exception:  # noqa: BLE001 — телеметрия не должна ронять запрос
-        pass
+    except Exception as exc:  # noqa: BLE001 — телеметрия не должна ронять запрос
+        logger.debug("Подавлено исключение: %r", exc)
 # Максимальный размер большей стороны изображения после уменьшения (в пикселях).
 MAX_DIMENSION = 1024
 # Качество JPEG при пересжатии.

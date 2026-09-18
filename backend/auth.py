@@ -12,6 +12,7 @@ mini-приложению (initData), а также FastAPI-зависимост
 """
 
 import hashlib
+import logging
 import hmac
 import json
 import os
@@ -24,6 +25,8 @@ from sqlalchemy.orm import Session
 from backend import config
 from backend.database import get_db
 from backend.models import User
+
+logger = logging.getLogger(__name__)
 
 # Имя HTTP-заголовка, в котором фронтенд присылает Telegram initData.
 # Должно совпадать с тем, что отправляет клиент (см. App.api в js/app.js).
@@ -142,11 +145,13 @@ def _upsert_user(
             photo_url=photo_url,
         )
         db.add(candidate)
+        changed = True
         try:
             db.flush()
             user = candidate
         except Exception:  # noqa: BLE001
             db.rollback()
+            changed = False
             user = db.query(User).filter(User.telegram_id == telegram_id).first()
             if user is None:
                 raise  # это не гонка, а настоящая ошибка вставки
@@ -156,12 +161,16 @@ def _upsert_user(
         # что Telegram реально прислал. Безусловное присваивание затирало
         # сохранённый username в NULL (эти поля опциональны в initData), и после
         # этого владелец не мог найти человека командой /givepro @username.
-        if username:
+        changed = False
+        if username and user.username != username:
             user.username = username
-        if first_name:
+            changed = True
+        if first_name and user.first_name != first_name:
             user.first_name = first_name
-        if photo_url:
+            changed = True
+        if photo_url and user.photo_url != photo_url:
             user.photo_url = photo_url
+            changed = True
 
     # Инициализация языка при создании или если он ещё пуст. Заданный ранее
     # язык не трогаем, чтобы не сбросить ручной выбор пользователя.
@@ -169,9 +178,14 @@ def _upsert_user(
         user.language = (
             "ru" if str(language_code or "").lower().startswith("ru") else "en"
         )
+        changed = True
 
-    db.commit()
-    db.refresh(user)
+    # Пишем в БД только когда что-то изменилось: авторизация идёт на КАЖДЫЙ
+    # запрос, и безусловный commit превращал каждое открытие экрана в запись
+    # в PostgreSQL.
+    if changed:
+        db.commit()
+        db.refresh(user)
 
     # Инициализация владельца приложения. Владелец определяется СТРОГО по
     # telegram_id == config.OWNER_ID (никогда по username). Один раз помечаем
@@ -192,8 +206,8 @@ def _upsert_user(
 
         if payment_providers.apply_pending_grants(db, telegram_id, user.username):
             db.refresh(user)
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Подавлено исключение: %r", exc)
 
     return user
 

@@ -12,3 +12,7 @@ builder = "nixpacks"
 startCommand = "uvicorn backend.main:app --host 0.0.0.0 --port $PORT"
 # Перезапускать контейнер только при сбое (а не постоянно).
 restartPolicyType = "on_failure"
+# Railway считает деплой живым только после ответа 200 отсюда: сломанная
+# миграция или упавшая БД не заменят работающую версию.
+healthcheckPath = "/api/health"
+healthcheckTimeout = 120

@@ -903,9 +903,12 @@
     var sec = started ? Math.floor((Date.now() - started.getTime()) / 1000) : 0;
     // Сессию можно бросить и вернуться к ней через неделю. Секундомер тогда
     // показал бы «168:04:11» — это не длительность тренировки, а мусор,
-    // который к тому же ломает ширину шапки. За сутками отдаём разговор
-    // Trainer.fmtDuration: он скажет «давно».
-    el.textContent = sec >= 86400 ? T.fmtDuration(Math.floor(sec / 60)) : fmtElapsed(sec);
+    // который к тому же ломает ширину шапки. За сутками показываем дату
+    // начала: человек сразу понимает, что это старая сессия, и решает —
+    // продолжить или завершить.
+    el.textContent = sec >= 86400
+      ? pick("начата ", "started ") + T.shortDate(String(state.session.started_at).slice(0, 10), false)
+      : fmtElapsed(sec);
   }
 
   function startClock() {
