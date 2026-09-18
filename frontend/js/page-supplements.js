@@ -338,15 +338,18 @@
     // терялось.
     var meta = s.dosage ? '<span class="sup-item__meta">' + esc(s.dosage) + "</span>" : "";
     var chips = "";
-    if (s.intake_time) {
-      chips +=
-        '<span class="sup-item__chip">' +
-        icon("clock", { size: 14 }) +
-        "<span>" + esc(timeValue(s.intake_time)) + "</span>" +
-        "</span>";
-    }
+    // Время — кнопка: по тапу превращается в поле выбора времени. Так время
+    // можно поменять или задать (у старых записей его нет), не пересоздавая
+    // добавку, — а без времени и напоминание не включить.
+    chips +=
+      '<button type="button" class="sup-item__chip sup-item__time' + (s.intake_time ? "" : " is-empty") + '" ' +
+      'data-time-id="' + esc(s.id) + '" data-time="' + esc(s.intake_time ? timeValue(s.intake_time) : "") + '" ' +
+      'aria-label="' + esc(pick("Изменить время приёма", "Change intake time")) + '">' +
+      icon("clock", { size: 14 }) +
+      "<span>" + esc(s.intake_time ? timeValue(s.intake_time) : pick("Время", "Time")) + "</span>" +
+      "</button>";
     // Переключатель «напоминать»: без времени приёма напоминать некогда,
-    // поэтому он неактивен и подписан — время задаётся при добавлении.
+    // поэтому он неактивен — время задаётся тапом по кнопке «Время».
     var hasTime = !!s.intake_time;
     var remind =
       '<label class="sup-item__remind' + (hasTime ? "" : " is-disabled") + '" ' +
@@ -412,6 +415,11 @@
     var toggles = box.querySelectorAll("[data-remind-id]");
     for (var t = 0; t < toggles.length; t++) {
       toggles[t].addEventListener("change", onRemindToggle);
+    }
+
+    var times = box.querySelectorAll("[data-time-id]");
+    for (var m = 0; m < times.length; m++) {
+      times[m].addEventListener("click", onTimeEdit);
     }
   }
 
@@ -716,6 +724,49 @@
       .finally(function () {
         App.hideLoading();
       });
+  }
+
+  /**
+   * Тап по времени в строке добавки: на месте кнопки — поле времени. Новое
+   * значение сохраняется сразу; напоминание (если включено) переезжает на
+   * новое время на сервере. Пустое или то же значение — просто закрываем.
+   */
+  function onTimeEdit(ev) {
+    var btn = ev.currentTarget;
+    var id = parseInt(btn.getAttribute("data-time-id"), 10);
+    if (isNaN(id) || !btn.parentNode) return;
+    var before = btn.getAttribute("data-time") || "";
+    var input = document.createElement("input");
+    input.type = "time";
+    input.className = "field__input sup-item__time-input";
+    input.value = before;
+    btn.parentNode.replaceChild(input, btn);
+    input.focus();
+    var done = false;
+    function save() {
+      if (done) return;
+      done = true;
+      var v = (input.value || "").trim();
+      if (!v || v === before) {
+        loadSupplements();
+        return;
+      }
+      App.api
+        .updateSupplement(id, { intake_time: v })
+        .then(function (s) {
+          haptic("success");
+          toast(s && s.reminder_enabled
+            ? pick("Время изменено — напомню в " + v, "Time changed — I'll remind you at " + v)
+            : pick("Время приёма: " + v, "Intake time: " + v));
+        })
+        .catch(function (err) {
+          haptic("error");
+          toast((err && err.message) || pick("Не удалось изменить время", "Couldn’t change the time"));
+        })
+        .finally(loadSupplements);
+    }
+    input.addEventListener("change", save);
+    input.addEventListener("blur", save);
   }
 
   /**

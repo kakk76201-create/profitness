@@ -732,6 +732,8 @@ def _process_supplement_reminder(db, reminder: "SupplementReminder",
         # приложении больше нет, и выключить такое «пустое» сообщение человеку
         # было бы негде. Не шлём.
         logger.debug("_process_supplement_reminder: пустое напоминание rid=%s — пропуск", rid)
+        # Отмечаем день: иначе строка перепроверялась бы запросами каждую минуту.
+        _mark_sent(db, tid, kind, today)
         return
 
     if send_telegram(tid, text):

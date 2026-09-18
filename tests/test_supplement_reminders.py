@@ -99,6 +99,22 @@ chk("время подставлено из напоминания", items[legac
 r = c.patch(f"/supplement/{legacy_id}", json={"reminder_enabled": False})
 chk("старое можно выключить", r.status_code == 200 and "23:00" not in reminders(), reminders())
 
+# Две добавки в одно время: выключить первую — сообщение остаётся со второй,
+# выключить вторую — напоминание исчезает.
+a = add("Витамин D", "10:00", True).json()
+b = add("Цинк", "10:00", True).json()
+chk("две добавки в 10:00", reminders().get("10:00") == sorted([a["id"], b["id"]]), reminders())
+c.patch(f"/supplement/{a['id']}", json={"reminder_enabled": False})
+chk("после первой — осталась вторая", reminders().get("10:00") == [b["id"]], reminders())
+c.patch(f"/supplement/{b['id']}", json={"reminder_enabled": False})
+chk("после второй — напоминания нет", "10:00" not in reminders(), reminders())
+# Время у добавки без времени задаётся из списка, потом напоминание включается.
+nt = add("Глицин", None, False).json()
+r = c.patch(f"/supplement/{nt['id']}", json={"intake_time": "21:30"})
+chk("время задано из списка", r.status_code == 200 and r.json()["intake_time"] == "21:30", r.text[:200])
+r = c.patch(f"/supplement/{nt['id']}", json={"reminder_enabled": True})
+chk("и напоминание включилось", reminders().get("21:30") == [nt["id"]], reminders())
+
 # ---------- 6. Удаление не оставляет пустых напоминаний ----------
 chk("удаление 200", c.delete(f"/supplement/{mg['id']}").status_code == 200)
 chk("22:00 исчезло вместе с последней добавкой", "22:00" not in reminders(), reminders())

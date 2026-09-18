@@ -1709,3 +1709,21 @@
   line-height: var(--lh-normal);
   color: var(--text);
 }
+
+/* Время приёма в строке добавки — кнопка: тап открывает выбор времени. */
+.sup-item__time {
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.sup-item__time.is-empty {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+
+.sup-item__time-input {
+  width: 128px;
+  min-height: 36px;
+  line-height: 34px;
+}
