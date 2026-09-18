@@ -633,6 +633,8 @@ class SubscriptionStatusOut(BaseModel):
     # Нужен ли e-mail плательщика для чека (YOOKASSA_RECEIPT) и что уже сохранено.
     receipt_email_required: bool = False
     email: Optional[str] = None
+    # Сумма тестового платежа — ТОЛЬКО для владельца (остальным None).
+    test_payment_price: Optional[float] = None
     is_expired: bool = False                     # подписка была, но истекла (не free)
     # Реквизиты продавца для страницы оплаты (см. config.legal_info):
     # seller / inn / contact / offer_url / privacy_url; незаданные — None.
@@ -666,6 +668,7 @@ class YookassaStatusOut(BaseModel):
     paid: bool = False
     activated: bool = False                      # доступ выдан (сейчас или раньше по этому платежу)
     is_premium: bool = False
+    tariff: Optional[str] = None                 # тариф платежа ("test" — проверка владельца)
 
 
 class YookassaCreateOut(BaseModel):

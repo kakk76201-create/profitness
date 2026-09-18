@@ -78,12 +78,29 @@ TARIFFS: dict = {
 }
 
 
+# Тестовый платёж владельца: проверка приёма оплаты на боевых ключах за
+# символическую сумму. НЕ входит в TARIFFS — на витрину не попадает, доступ
+# не меняет, оплатить может только OWNER_ID (проверяет сервер). 0 — выключен.
+TEST_TARIFF = "test"
+TEST_PAYMENT_RUB: float = float(os.getenv("TEST_PAYMENT_RUB", "3") or 0)
+
+
+def test_payment_enabled() -> bool:
+    """Доступен ли тестовый платёж (нужны и сумма, и известный владелец)."""
+    return bool(TEST_PAYMENT_RUB > 0 and OWNER_ID)
+
+
 def tariff_for(name):
     """
     Вернуть описание тарифа по его имени
     ("monthly" | "quarterly" | "yearly" | "lifetime")
     или None, если тариф с таким именем не задан.
+
+    Тестовый тариф владельца отдаётся отдельно: срока у него нет, флаг test
+    говорит активации «только записать платёж».
     """
+    if name == TEST_TARIFF:
+        return {"days": 0, "test": True} if test_payment_enabled() else None
     return TARIFFS.get(name)
 
 
@@ -101,6 +118,7 @@ TARIFF_TITLES_RU: dict = {
     "quarterly": "подписка на 3 месяца",
     "yearly": "подписка на год",
     "lifetime": "пожизненная подписка",
+    "test": "тестовый платёж",
 }
 
 
@@ -245,6 +263,8 @@ def card_provider() -> str:
 
 def rub_price_for(tariff: str):
     """Цена тарифа в рублях или None, если рублёвая цена не задана."""
+    if tariff == TEST_TARIFF:
+        return TEST_PAYMENT_RUB if test_payment_enabled() else None
     price = RUB_PRICES.get(tariff)
     return price if price and price > 0 else None
 

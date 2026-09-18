@@ -1652,3 +1652,17 @@
     font-size: var(--fs-h2);
   }
 }
+
+/* Проверка оплаты (только владелец): обычная карточка с пунктирной рамкой —
+   служебный блок не должен выглядеть как часть витрины. */
+.sub-test {
+  border-style: dashed;
+  border-color: var(--border-strong);
+}
+
+.sub-test__text {
+  margin: var(--s2) 0 var(--s3);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  line-height: var(--lh-normal);
+}

@@ -1302,7 +1302,8 @@
 
   // Тарифы, для которых существует страница оплаты (совпадают с config.TARIFFS).
   // Порядок — от короткого срока к длинному, как на витрине подписки.
-  var PAYMENT_TARIFFS = ["monthly", "quarterly", "yearly", "lifetime"];
+  // "test" — тестовый платёж владельца (сервер пускает только OWNER_ID).
+  var PAYMENT_TARIFFS = ["monthly", "quarterly", "yearly", "lifetime", "test"];
 
   /**
    * Открывает отдельную страницу оплаты для выбранного тарифа.
@@ -1552,9 +1553,19 @@
    */
   App._pollPayment = function (paymentId, attempts, delay) {
     App.api.yookassaStatus(paymentId).then(function (st) {
-      if (st && (st.activated || st.is_premium)) {
+      // Успех — только activated: is_premium у владельца и у продлевающих
+      // подписку true ещё ДО оплаты и сказал бы «оплата прошла» сразу.
+      if (st && st.activated) {
         setPendingPayment("");
         return App.refreshSubscription().then(function () {
+          if (st.tariff === "test") {
+            App.toast(App.pick(
+              "Тестовая оплата прошла — приём платежей работает",
+              "Test payment received — payments work"
+            ));
+            App.navigate("subscription");
+            return;
+          }
           App.toast(App.pick("Оплата прошла — подписка активна!", "Payment received — subscription is active!"));
           if (App._current) App.navigate(App._current);
         });

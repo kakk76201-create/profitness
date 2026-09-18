@@ -72,7 +72,8 @@
   // Ключи тарифов, которые умеет показывать страница (порядок — как в подписке).
   // Тариф не из списка страница не откроет (вернёт к витрине), поэтому новый
   // тариф с бэкенда нужно добавить и сюда, и в TARIFF_META.
-  var TARIFF_KEYS = ["monthly", "quarterly", "yearly", "lifetime"];
+  // "test" — тестовый платёж владельца; сервер пускает к нему только OWNER_ID.
+  var TARIFF_KEYS = ["monthly", "quarterly", "yearly", "lifetime", "test"];
 
   // Оформление тарифов: название и срок «по умолчанию» (если сервер
   // не прислал days). Тексты — парами [ru, en], перевод при рендере.
@@ -92,6 +93,11 @@
     lifetime: {
       title: ["Вечный", "Lifetime"],
       term: ["Навсегда", "Forever"]
+    },
+    // Тестовый платёж владельца: проверка приёма оплаты на боевых ключах.
+    test: {
+      title: ["Тестовый платёж", "Test payment"],
+      term: ["Проверка оплаты", "Payment check"]
     }
   };
 
@@ -167,7 +173,17 @@
       tariffs: s.tariffs || {},
       card_enabled: !!s.card_enabled,
       card_currency: s.card_currency || "RUB",
-      card_prices: s.card_prices || {},
+      // Цена теста приходит отдельным полем (только владельцу) — кладём её
+      // рядом с остальными, чтобы итог и кнопка считались одинаково.
+      card_prices: (function () {
+        var prices = {};
+        var src = s.card_prices || {};
+        for (var k in src) {
+          if (Object.prototype.hasOwnProperty.call(src, k)) prices[k] = src[k];
+        }
+        if (s.test_payment_price) prices.test = s.test_payment_price;
+        return prices;
+      })(),
       card_provider: s.card_provider || "none",
       // Чек по 54-ФЗ: нужен ли e-mail и что уже сохранено в профиле.
       receipt_email_required: !!s.receipt_email_required,
@@ -428,7 +444,15 @@
 
     // Заметка о том, как оплата ляжет на текущий доступ.
     var noteHtml = "";
-    if (hasLifetime(s)) {
+    if (key === "test") {
+      noteHtml =
+        '<div class="pay-plan__note">' +
+        esc(pick(
+          "Проверка приёма оплаты — видна только вам. Подписка не изменится; вернуть деньги можно в кабинете ЮKassa.",
+          "Payment check — visible only to you. Your subscription will not change; refund it in the YooKassa dashboard."
+        )) +
+        "</div>";
+    } else if (hasLifetime(s)) {
       noteHtml =
         '<div class="pay-plan__note">' +
         esc(pick("У вас уже вечный доступ", "You already have lifetime access")) +
@@ -589,7 +613,7 @@
     var currency = tariffCurrency(s, key);
     var shown = formatPrice(price, currency);
 
-    if (hasLifetime(s)) {
+    if (hasLifetime(s) && key !== "test") {
       return (
         '<section class="card pay-total">' +
         '<p class="pay-total__lifetime">' +
@@ -837,8 +861,8 @@
       // вместо кнопки оплаты в итоге стоит «Вернуться».
       box.innerHTML =
         planHtml(s, key) +
-        includesHtml() +
-        (hasLifetime(s) ? "" : methodHtml(s)) +
+        (key === "test" ? "" : includesHtml()) +
+        (hasLifetime(s) && key !== "test" ? "" : methodHtml(s)) +
         totalHtml(s, key) +
         legalHtml(s) +
         refundHtml();

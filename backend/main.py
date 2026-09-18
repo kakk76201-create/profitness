@@ -2057,6 +2057,11 @@ def _subscription_status_out(user: User) -> SubscriptionStatusOut:
         legal=config.legal_info(),
         receipt_email_required=bool(config.YOOKASSA_RECEIPT and config.yookassa_enabled()),
         email=getattr(user, "email", None),
+        test_payment_price=(
+            config.TEST_PAYMENT_RUB
+            if config.test_payment_enabled() and user.telegram_id == config.OWNER_ID
+            else None
+        ),
     )
 
 
@@ -2450,6 +2455,13 @@ def yookassa_create(
                     "message": "Оплата картой пока не подключена"},
         )
 
+    # Тестовый платёж — только владелец. Проверка здесь, на сервере: кнопку
+    # на клиенте можно подделать, а 3 ₽ не должны быть лазейкой ни к чему.
+    if data.tariff == config.TEST_TARIFF and not (
+        config.test_payment_enabled() and user.telegram_id == config.OWNER_ID
+    ):
+        raise HTTPException(status_code=403, detail="Тестовый платёж доступен только владельцу")
+
     if config.tariff_for(data.tariff) is None:
         raise HTTPException(status_code=400, detail="Неизвестный тариф")
 
@@ -2578,10 +2590,23 @@ async def payment_yookassa_webhook(
     if outcome == "activation_failed":
         # Оплата прошла, доступ не выдан — пусть ЮKassa повторит уведомление.
         raise HTTPException(status_code=500, detail="activation failed, retry")
+    telegram_id, paid_tariff = yookassa.payment_metadata(payment)
+    if paid_tariff == config.TEST_TARIFF and outcome in ("activated", "already"):
+        # Проверка владельца: сообщаем, что УВЕДОМЛЕНИЕ дошло — ради этого
+        # тест и затевался. Даже если клиент записал платёж раньше вебхука.
+        try:
+            await run_in_threadpool(
+                telegram_bot._bot_api, "sendMessage",
+                {"chat_id": telegram_id,
+                 "text": f"Тестовый платёж {payment.get('amount', {}).get('value')} ₽: "
+                         "уведомление ЮKassa получено, вебхук работает. Подписка не изменилась."},
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("yookassa/webhook: не удалось уведомить владельца о тесте: %s", exc)
+        return {"ok": True}
     if outcome == "activated":
         # Сообщение плательщику в бот — best-effort: сбой Telegram не повод
         # просить ЮKassa о повторе (доступ уже выдан).
-        telegram_id, _tariff = yookassa.payment_metadata(payment)
         try:
             text = telegram_bot._payment_success_text(
                 telegram_bot._user_language(db, telegram_id)
@@ -2629,7 +2654,8 @@ def _yookassa_settle(db: Session, payment: dict, payment_id: str, source: str) -
             f"ЮKassa: оплата {payment_id} без данных получателя — нужен ручной разбор"
         )
         return "bad_metadata"
-    if tariff not in config.TARIFFS:
+    tariff_cfg = config.tariff_for(tariff)
+    if tariff_cfg is None:
         logger.error("%s: платёж %s с неизвестным тарифом %r — доступ не выдан", tag, payment_id, tariff)
         return "unknown_tariff"
     # СВЕРКА СУММЫ на сервере: metadata задаём мы, но платёж мог быть создан
@@ -2661,6 +2687,21 @@ def _yookassa_settle(db: Session, payment: dict, payment_id: str, source: str) -
         paid_amount = float(amount_obj.get("value"))
     except (TypeError, ValueError):
         paid_amount = None
+    if tariff_cfg.get("test"):
+        # Тестовый платёж владельца: только запись в журнал — доступ не
+        # меняется, lifetime владельца остаётся нетронутым.
+        try:
+            db.add(Payment(
+                telegram_id=telegram_id, provider="yookassa", amount=paid_amount,
+                currency="RUB", subscription_type=config.TEST_TARIFF, charge_id=charge_id,
+            ))
+            db.commit()
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            logger.error("%s: не записали тестовый платёж %s: %s", tag, payment_id, exc)
+            return "activation_failed"
+        logger.info("%s: тестовый платёж %s записан (tid=%s)", tag, payment_id, telegram_id)
+        return "activated"
     try:
         payment_providers.activate_premium(
             db, telegram_id, tariff, "yookassa",
@@ -2716,6 +2757,7 @@ async def yookassa_status(
         paid=bool(payment.get("paid")),
         activated=outcome in ("activated", "already"),
         is_premium=subscription.is_premium(user),
+        tariff=_tariff,
     )
 
 

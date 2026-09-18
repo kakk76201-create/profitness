@@ -192,7 +192,8 @@
       card_enabled: !!s.card_enabled,
       card_currency: s.card_currency || "RUB",
       card_prices: s.card_prices || {},
-      card_provider: s.card_provider || "none"
+      card_provider: s.card_provider || "none",
+      test_payment_price: Number(s.test_payment_price) || 0
     };
   }
 
@@ -428,6 +429,9 @@
       '<div class="card sub-status" id="subStatus">' +
       '<div class="skeleton skeleton--block"></div>' +
       "</div>" +
+
+      // ---- Тестовый платёж владельца (заполняется renderTest) ----
+      '<section class="card sub-test" id="subTest" hidden></section>' +
 
       // ---- Тарифы и кнопка оплаты (заполняется renderTariffs) ----
       '<section class="sub-tariffs" id="subTariffs">' +
@@ -826,8 +830,44 @@
   /**
    * Перерисовывает все динамические блоки страницы по текущему App.subscription.
    */
+  /**
+   * Блок «Проверка оплаты» — только владельцу, когда сервер прислал сумму.
+   * Ведёт на обычную страницу оплаты с тарифом "test".
+   */
+  function renderTest() {
+    var box = state.viewEl && state.viewEl.querySelector("#subTest");
+    if (!box) return;
+    var s = sub();
+    if (!s.test_payment_price || s.card_provider === "none") {
+      box.hidden = true;
+      box.innerHTML = "";
+      return;
+    }
+    var price = formatPrice(s.test_payment_price, s.card_currency);
+    box.hidden = false;
+    box.innerHTML =
+      '<span class="eyebrow">' + esc(pick("Проверка оплаты · видно только вам", "Payment check · only you see this")) + "</span>" +
+      '<p class="sub-test__text">' +
+      esc(pick(
+        "Настоящий платёж на " + price + " через ЮKassa: проверяет оплату, возврат в приложение и уведомление. Подписка не изменится.",
+        "A real " + price + " payment via YooKassa: checks payment, return to the app and the notification. Your subscription stays the same."
+      )) +
+      "</p>" +
+      '<button type="button" class="btn btn--ghost btn-block" id="subTestBtn">' +
+      esc(pick("Оплатить ", "Pay ")) + esc(price) +
+      "</button>";
+    var btn = box.querySelector("#subTestBtn");
+    if (btn) {
+      btn.addEventListener("click", function () {
+        haptic("light");
+        App.goPayment("test");
+      });
+    }
+  }
+
   function renderAll() {
     renderStatus();
+    renderTest();
     renderTariffs();
     renderTribute();
     renderLegal();
