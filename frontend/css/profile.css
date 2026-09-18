@@ -1668,3 +1668,44 @@
   color: var(--muted);
   line-height: var(--lh-normal);
 }
+
+/* Переключатель «напоминать» в строке добавки: колокольчик + тумблер.
+   Без времени приёма — приглушён: напоминать некогда. */
+.sup-item__remind {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-shrink: 0;
+  min-height: var(--tap-min);
+  padding: 0 var(--s1);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.sup-item__remind.is-disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+.sup-item__remind-icon {
+  display: inline-flex;
+}
+
+.sup-item__remind:has(:checked) {
+  color: var(--accent-text);
+}
+
+/* Комментарий ИИ к текущему набору добавок. */
+.sup-ai-current {
+  margin: var(--s3) 0;
+  padding: var(--s3);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.sup-ai-current p {
+  margin: var(--s1) 0 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--text);
+}

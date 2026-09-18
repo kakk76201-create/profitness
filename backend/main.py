@@ -191,6 +191,7 @@ from backend.schemas import (
     SupplementIn,
     SupplementListOut,
     SupplementOut,
+    SupplementPatchIn,
     SupplementRecommendIn,
     SupplementRecommendOut,
     SupplementReminderIn,
@@ -1377,26 +1378,149 @@ def food_yesterday(
 # --------------------------------------------------------------------------- #
 #  Спортивное питание / добавки
 # --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------- #
+#  Добавки и их напоминания
+#
+#  Для человека напоминание — свойство добавки: «принимаю креатин в 09:00,
+#  напоминать». Доставка же идёт по SupplementReminder (+ items): одно
+#  сообщение на время со списком всех добавок этого времени. Эти хелперы
+#  держат таблицы напоминаний в соответствии с добавками.
+# --------------------------------------------------------------------------- #
+def _drop_empty_supplement_reminders(db: Session, telegram_id: int, reminder_ids) -> None:
+    """Удалить напоминания пользователя, в которых не осталось ни одной добавки.
+
+    Пустое напоминание рассылка отправила бы общим текстом «пора принять
+    добавки» — а управлять им человеку уже негде.
+    """
+    for rid in set(reminder_ids or []):
+        left = db.query(SupplementReminderItem).filter(SupplementReminderItem.reminder_id == rid).count()
+        if left == 0:
+            db.query(SupplementReminder).filter(
+                SupplementReminder.id == rid, SupplementReminder.telegram_id == telegram_id,
+            ).delete(synchronize_session=False)
+
+
+def _sync_supplement_reminder(db: Session, supp: Supplement) -> None:
+    """Привести напоминания к состоянию добавки (без commit).
+
+    Включено и есть время — добавка ровно в одном включённом напоминании на
+    это время (общем с другими добавками того же времени); иначе — ни в одном.
+    Опустевшие напоминания удаляются.
+    """
+    tid = supp.telegram_id
+    want = supp.intake_time if (supp.reminder_enabled and supp.intake_time) else None
+    links = (
+        db.query(SupplementReminderItem, SupplementReminder)
+        .join(SupplementReminder, SupplementReminder.id == SupplementReminderItem.reminder_id)
+        .filter(SupplementReminderItem.supplement_id == supp.id, SupplementReminder.telegram_id == tid)
+        .all()
+    )
+    kept = False
+    touched = set()
+    for item, rem in links:
+        if want and not kept and rem.time == want and rem.enabled:
+            kept = True
+            continue
+        db.delete(item)
+        touched.add(rem.id)
+    if want and not kept:
+        rem = (
+            db.query(SupplementReminder)
+            .filter(SupplementReminder.telegram_id == tid, SupplementReminder.time == want,
+                    SupplementReminder.enabled.is_(True))
+            .order_by(SupplementReminder.id.asc())
+            .first()
+        )
+        if rem is None:
+            rem = SupplementReminder(telegram_id=tid, label="", time=want, enabled=True)
+            db.add(rem)
+            db.flush()
+        db.add(SupplementReminderItem(reminder_id=rem.id, supplement_id=supp.id))
+    db.flush()
+    _drop_empty_supplement_reminders(db, tid, touched)
+
+
+def _supplement_out(db: Session, supp: Supplement) -> SupplementOut:
+    """Добавка для клиента с ФАКТИЧЕСКИМ состоянием напоминания.
+
+    Флаг берём не из поля добавки, а из того, есть ли она во включённом
+    напоминании: так и старые напоминания (созданные отдельной формой)
+    показываются честно, и переключатель можно выключить.
+    """
+    out = SupplementOut.model_validate(supp)
+    row = (
+        db.query(SupplementReminder.time)
+        .join(SupplementReminderItem, SupplementReminderItem.reminder_id == SupplementReminder.id)
+        .filter(SupplementReminderItem.supplement_id == supp.id,
+                SupplementReminder.telegram_id == supp.telegram_id,
+                SupplementReminder.enabled.is_(True))
+        .order_by(SupplementReminder.time.asc())
+        .first()
+    )
+    out.reminder_enabled = row is not None
+    if row is not None and not out.intake_time:
+        out.intake_time = row[0]
+    return out
+
+
+def _clean_intake_time(value: str | None) -> str | None:
+    """Время приёма: пусто — None, иначе строго HH:MM (400 при мусоре)."""
+    if value is None or not str(value).strip():
+        return None
+    return _normalize_time(value)
+
+
+_REMIND_NEEDS_TIME = "Укажите время приёма — в это время придёт напоминание"
+
+
 @app.post("/supplement/add", response_model=SupplementOut)
 def supplement_add(
     data: SupplementIn,
     user: User = Depends(subscription.require_premium),
     db: Session = Depends(get_db),
-) -> Supplement:
-    """Добавить запись о приёме спортивного питания / добавки."""
+) -> SupplementOut:
+    """Добавить добавку; если включено «напоминать» — сразу и напоминание."""
+    intake_time = _clean_intake_time(data.intake_time)
+    if data.reminder_enabled and not intake_time:
+        raise HTTPException(status_code=400, detail=_REMIND_NEEDS_TIME)
     db_supp = Supplement(
         telegram_id=user.telegram_id,
         name=data.name,
         # Тип убран из UI — терпим его отсутствие (по умолчанию пустая строка).
         type=data.type or "",
         dosage=data.dosage,
-        intake_time=data.intake_time,
-        reminder_enabled=data.reminder_enabled,
+        intake_time=intake_time,
+        reminder_enabled=bool(data.reminder_enabled),
     )
     db.add(db_supp)
+    db.flush()
+    _sync_supplement_reminder(db, db_supp)
     db.commit()
     db.refresh(db_supp)
-    return db_supp
+    return _supplement_out(db, db_supp)
+
+
+@app.patch("/supplement/{supplement_id}", response_model=SupplementOut)
+def supplement_patch(
+    supplement_id: int,
+    data: SupplementPatchIn,
+    user: User = Depends(subscription.require_premium),
+    db: Session = Depends(get_db),
+) -> SupplementOut:
+    """Переключатель «напоминать» и время приёма у добавки из списка."""
+    supp = db.query(Supplement).filter(Supplement.id == supplement_id).first()
+    if supp is None or supp.telegram_id != user.telegram_id:
+        raise HTTPException(status_code=404, detail="Добавка не найдена")
+    if data.intake_time is not None:
+        supp.intake_time = _clean_intake_time(data.intake_time)
+    if data.reminder_enabled is not None:
+        supp.reminder_enabled = bool(data.reminder_enabled)
+    if supp.reminder_enabled and not supp.intake_time:
+        raise HTTPException(status_code=400, detail=_REMIND_NEEDS_TIME)
+    _sync_supplement_reminder(db, supp)
+    db.commit()
+    db.refresh(supp)
+    return _supplement_out(db, supp)
 
 
 @app.get("/supplement/list", response_model=SupplementListOut)
@@ -1411,7 +1535,7 @@ def supplement_list(
         .order_by(Supplement.created_at.asc(), Supplement.id.asc())
         .all()
     )
-    items = [SupplementOut.model_validate(s) for s in rows]
+    items = [_supplement_out(db, s) for s in rows]
     return SupplementListOut(items=items)
 
 
@@ -1430,10 +1554,17 @@ def supplement_delete(
     # Сначала снимаем ссылки из напоминаний: на PostgreSQL внешний ключ
     # supplement_reminder_items.supplement_id иначе даст ForeignKeyViolation
     # (на SQLite ограничения по умолчанию не проверяются, поэтому баг был незаметен).
+    touched = [
+        rid for (rid,) in db.query(SupplementReminderItem.reminder_id)
+        .filter(SupplementReminderItem.supplement_id == supplement_id).all()
+    ]
     db.query(SupplementReminderItem).filter(
         SupplementReminderItem.supplement_id == supplement_id
     ).delete(synchronize_session=False)
-
+    # Напоминание, где была только эта добавка, иначе продолжало бы
+    # приходить общим текстом без возможности его выключить.
+    db.flush()
+    _drop_empty_supplement_reminders(db, user.telegram_id, touched)
     db.delete(supp)
     db.commit()
     return {"ok": True}
@@ -1883,7 +2014,12 @@ def supplement_recommend(
     )
 
     diet_goal = getattr(user, "diet_goal", None)
-
+    # Что человек уже принимает — чтобы совет дополнял набор, а не повторял его.
+    current = [
+        (s.name or "").strip() + (f", {s.dosage.strip()}" if (s.dosage or "").strip() else "")
+        for s in db.query(Supplement).filter(Supplement.telegram_id == user.telegram_id).all()
+        if (s.name or "").strip()
+    ]
     try:
         ratelimit.enforce_ai(user.telegram_id)
         result = recommend_supplements(
@@ -1893,6 +2029,7 @@ def supplement_recommend(
             diet_goal=diet_goal,
             # Язык рекомендаций берём из профиля пользователя ("ru" по умолчанию).
             lang=user.language or "ru",
+            current_supplements=current,
         )
     except AIError as exc:
         logger.warning(
@@ -1922,6 +2059,7 @@ def supplement_recommend(
     ]
     return SupplementRecommendOut(
         suggestions=suggestions,
+        current_note=result.get("current_note"),
         disclaimer="Не является медицинской рекомендацией, проконсультируйтесь со специалистом",
         training_count=training_count,
         improvement_goal=data.improvement_goal,

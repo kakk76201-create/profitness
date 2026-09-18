@@ -487,6 +487,12 @@
       return request("/supplement/list");
     },
 
+    // Изменение добавки: переключатель напоминания и/или время приёма.
+    // Тело: {reminder_enabled?, intake_time?}. Ответ: добавка.
+    updateSupplement: function (id, patch) {
+      return request("/supplement/" + encodeURIComponent(id), { method: "PATCH", body: patch });
+    },
+
     // Удаление добавки по id. Ответ: {ok}.
     deleteSupplement: function (id) {
       return request("/supplement/" + encodeURIComponent(id), {

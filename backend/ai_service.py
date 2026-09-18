@@ -715,7 +715,11 @@ SUPPLEMENT_RECOMMEND_SYSTEM_PROMPT = (
     "- ЧАСТОТУ и ТИП тренировок (training_count — число тренировок за "
     "последние 2 недели; workout_types — какие именно тренировки);\n"
     "- ЦЕЛЬ ДИЕТЫ (diet_goal: loss — похудение, maintain — поддержание, "
-    "gain — набор массы).\n\n"
+    "gain — набор массы);\n"
+    "- ЧТО ПОЛЬЗОВАТЕЛЬ УЖЕ ПРИНИМАЕТ (current_supplements): НЕ предлагай это "
+    "повторно (в том числе под другим названием: «сывороточный протеин» = "
+    "«протеин»), дополняй текущий набор, следи за совместимостью и суммарной "
+    "дозировкой (например, кофеин из нескольких источников).\n\n"
     "Примеры логики (ориентир, не жёсткое правило):\n"
     "- цель «сон» -> магний, глицин;\n"
     "- цель «восстановление» + частые тренировки -> протеин, BCAA/EAA, "
@@ -733,7 +737,10 @@ SUPPLEMENT_RECOMMEND_SYSTEM_PROMPT = (
     '      "dosage"  — строка, типичная суточная дозировка '
     '(например: "3-5 г в день");\n'
     '      "note"    — строка, кратко зачем нужна именно под цель/тренировки '
-    "и как принимать.\n\n"
+    "и как принимать.\n"
+    '  "current_note" — строка или null: 1-2 предложения о том, что пользователь '
+    "уже принимает, — подходит ли это под цель, нет ли дублей или "
+    "лишнего (только если список принимаемого не пуст).\n\n"
     "Правила:\n"
     "- АКТИВНО предлагай реальные СПОРТИВНЫЕ добавки, а не только витамины и "
     "минералы. Уместно и приветствуется рекомендовать (под цель и тренировки): "
@@ -757,7 +764,11 @@ SUPPLEMENT_RECOMMEND_SYSTEM_PROMPT_EN = (
     "- FREQUENCY and TYPE of training (training_count — number of workouts in "
     "the last 2 weeks; workout_types — which workouts exactly);\n"
     "- DIET GOAL (diet_goal: loss — weight loss, maintain — maintenance, "
-    "gain — muscle gain).\n\n"
+    "gain — muscle gain);\n"
+    "- WHAT THE USER ALREADY TAKES (current_supplements): do NOT suggest it "
+    "again (including under another name: «whey protein» = «protein»), "
+    "complement the current stack, watch compatibility and total dosage "
+    "(e.g. caffeine from several sources).\n\n"
     "Examples of the logic (guideline, not a strict rule):\n"
     "- goal «sleep» -> magnesium, glycine;\n"
     "- goal «recovery» + frequent workouts -> protein, BCAA/EAA, omega-3, "
@@ -775,7 +786,10 @@ SUPPLEMENT_RECOMMEND_SYSTEM_PROMPT_EN = (
     '      "dosage"  — string, the typical daily dosage '
     '(for example: "3-5 g per day");\n'
     '      "note"    — string, briefly why it fits the goal/training '
-    "and how to take it.\n\n"
+    "and how to take it.\n"
+    '  "current_note" — string or null: 1-2 sentences about what the user '
+    "already takes — whether it fits the goal, any duplicates or anything "
+    "unnecessary (only if the current list is not empty).\n\n"
     "Rules:\n"
     "- ACTIVELY suggest real SPORTS supplements, not just vitamins and minerals. "
     "It is appropriate and encouraged to recommend (tied to the goal and "
@@ -1172,6 +1186,7 @@ def recommend_supplements(
     workout_types: list[str] | None = None,
     diet_goal: str | None = None,
     lang: str = "ru",
+    current_supplements: list[str] | None = None,
 ) -> dict:
     """
     Персональный подбор спортивных добавок (2-4 шт.) с учётом:
@@ -1197,6 +1212,11 @@ def recommend_supplements(
     AIError (502 на уровне роута). Дисклеймер добавляется на уровне роута.
     """
     lang = _normalize_lang(lang)
+    # Что человек уже принимает: «Креатин, 5 г». Чистим и ограничиваем — это
+    # пользовательский ввод, и в промпт он попадает как данные.
+    current = [
+        str(c).strip()[:80] for c in (current_supplements or []) if c and str(c).strip()
+    ][:20]
 
     # Формируем запрос пользователя из тех данных, что известны — на нужном языке.
     if lang == "en":
@@ -1221,6 +1241,11 @@ def recommend_supplements(
         if diet_goal and str(diet_goal).strip():
             parts.append(f"Diet goal: {str(diet_goal).strip()}.")
 
+        if current:
+            parts.append("I already take: " + "; ".join(current) + ".")
+        else:
+            parts.append("I don't take any supplements yet.")
+
         parts.append("Return the result strictly in JSON format following the instructions.")
     else:
         parts = ["Подбери мне персональные спортивные добавки (2-4 штуки)."]
@@ -1243,6 +1268,11 @@ def recommend_supplements(
 
         if diet_goal and str(diet_goal).strip():
             parts.append(f"Цель диеты: {str(diet_goal).strip()}.")
+
+        if current:
+            parts.append("Уже принимаю: " + "; ".join(current) + ".")
+        else:
+            parts.append("Добавки пока не принимаю.")
 
         parts.append("Верни результат строго в формате JSON по инструкции.")
     user_prompt = "\n".join(parts)
@@ -1282,7 +1312,22 @@ def recommend_supplements(
             }
         )
 
+    # Модель иногда игнорирует «не предлагай то, что уже принимают» — убираем
+    # такие позиции сами, сравнивая нормализованные названия.
+    taken = {_supp_key(c.split(",")[0]) for c in current}
+    raw_count = len(suggestions)
+    suggestions = [s for s in suggestions if _supp_key(s["name"]) not in taken]
+
+    note = data.get("current_note")
+    current_note = note.strip() if isinstance(note, str) and note.strip() and current else None
+
     if not suggestions:
+        if raw_count and current:
+            # Всё предложенное человек уже принимает — это ответ, а не сбой.
+            return {"suggestions": [], "current_note": current_note or (
+                "Your current set already covers this goal — nothing to add." if lang == "en"
+                else "Ваш текущий набор уже закрывает эту цель — добавлять ничего не нужно."
+            )}
         raise AIError(
             "AI не вернул ни одной корректной добавки",
             raw=_debug.get("raw", ""),
@@ -1290,7 +1335,17 @@ def recommend_supplements(
             refusal=_debug.get("refusal"),
         )
 
-    return {"suggestions": suggestions}
+    return {"suggestions": suggestions, "current_note": current_note}
+
+
+def _supp_key(name: str) -> str:
+    """Ключ сравнения названий добавок: регистр, «ё», лишние слова и знаки."""
+    s = (name or "").lower().replace("ё", "е")
+    s = re.sub(r"[^a-zа-я0-9 ]+", " ", s)
+    stop = {"моногидрат", "monohydrate", "сывороточный", "whey", "порошок", "powder",
+            "капсулы", "capsules", "витамин", "vitamin"}
+    words = [w for w in s.split() if w and w not in stop]
+    return " ".join(words) or s.strip()
 
 
 # --------------------------------------------------------------------------- #

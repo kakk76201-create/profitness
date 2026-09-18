@@ -11,23 +11,19 @@
  * показывается пейволл: вкладка не должна «терять» заголовок и выглядеть
  * чужим экраном только потому, что раздел платный.
  *
- * Раздел состоит из трёх частей:
+ * Раздел состоит из двух частей:
  *
  *   1. МОИ ДОБАВКИ
- *      - Список добавок (App.api.getSupplements) с удалением
+ *      - Список добавок (App.api.getSupplements): у каждой — переключатель
+ *        «напоминать» (App.api.updateSupplement) и удаление
  *        (App.api.deleteSupplement).
- *      - Форма добавления: название, тип, дозировка, время приёма (HH:MM),
- *        чекбокс «напоминать» -> App.api.addSupplement.
+ *      - Форма добавления: название, дозировка, время приёма (HH:MM),
+ *        переключатель «напоминать» -> App.api.addSupplement.
+ *      Напоминание — свойство добавки: отдельной формы напоминаний больше
+ *      нет. Сервер сам группирует добавки с одинаковым временем в одно
+ *      сообщение.
  *
- *   2. НАПОМИНАНИЯ О ПРИЁМЕ
- *      - Список напоминаний (App.api.getSupplementReminders) с удалением
- *        (App.api.deleteSupplementReminder). Показывается состав каждого
- *        («Ночь, 22:00 — магний, ZMA»).
- *      - Форма создания: метка/название (Утро/Ночь/своё) + время (input time) +
- *        множественный выбор добавок (чекбоксы по App.api.getSupplements) +
- *        вкл/выкл -> App.api.addSupplementReminder({label,time,enabled,supplement_ids}).
- *
- *   3. AI-СОВЕТЫ ПО ДОБАВКАМ
+ *   2. AI-СОВЕТЫ ПО ДОБАВКАМ
  *      - Пресеты цели улучшения чипами (Сон / Восстановление / Сила / Энергия /
  *        Иммунитет) + поле свободного ввода.
  *      - Кнопка «Получить совет» -> App.api.recommendSupplements({improvement_goal})
@@ -91,8 +87,7 @@
   var state = {
     viewEl: null,           // корневой элемент страницы (#view)
     supLoading: false,      // флаг загрузки списка добавок (защита от гонок)
-    remLoading: false,      // флаг загрузки списка напоминаний
-    supplements: [],        // последний загруженный список добавок (для чекбоксов)
+    supplements: [],        // последний загруженный список добавок
     improvementGoal: ""     // выбранная/введённая цель улучшения для AI-советов
   };
 
@@ -178,21 +173,6 @@
     return '<div class="sup-skeleton">' + rows + "</div>";
   }
 
-  /**
-   * Скелетон списка напоминаний.
-   */
-  function remindersSkeletonHtml() {
-    var rows = "";
-    for (var i = 0; i < 2; i++) {
-      rows +=
-        '<div class="sup-rem-item skeleton-block">' +
-        '<div class="skeleton skeleton-line skeleton-title"></div>' +
-        '<div class="skeleton skeleton-line short"></div>' +
-        "</div>";
-    }
-    return '<div class="sup-rem-skeleton">' + rows + "</div>";
-  }
-
   /* =====================================================================
    *  РАЗМЕТКА: СТАТИЧЕСКИЙ КАРКАС СТРАНИЦЫ
    * ===================================================================== */
@@ -251,54 +231,6 @@
 
       // Форма добавления.
       supplementFormHtml() +
-      "</section>"
-    );
-  }
-
-  /**
-   * Форма создания напоминания о приёме добавок.
-   */
-  function reminderFormHtml() {
-    return (
-      '<form class="sup-rem-form" id="supRemForm" novalidate>' +
-      '<h3 class="sup-rem-form__title">' + esc(pick("Новое напоминание", "New reminder")) + "</h3>" +
-
-      '<div class="sup-rem-form__grid">' +
-      '<label class="field">' +
-      '<span class="field__label">' + esc(pick("Время", "Time")) + "</span>" +
-      '<input class="field__input" id="remTime" type="time">' +
-      "</label>" +
-      "</div>" +
-
-      // Множественный выбор добавок (наполняется по списку принимаемых).
-      '<div class="sup-rem-form__pick">' +
-      '<span class="field__label">' + esc(pick("Какие добавки напомнить", "Which supplements to remind")) + "</span>" +
-      '<div id="remPicks" class="sup-rem-picks"></div>' +
-      "</div>" +
-
-      '<button type="submit" class="btn btn-cta btn-block sup-rem-add" id="remAddBtn">' +
-      esc(pick("Создать напоминание", "Create reminder")) +
-      "</button>" +
-      "</form>"
-    );
-  }
-
-  /**
-   * Карточка раздела «Напоминания о приёме» (список + форма).
-   */
-  function reminderCardHtml() {
-    return (
-      '<section class="card sup-rem-card">' +
-      '<h2 class="sup-rem-card__title">' + esc(pick("Напоминания о приёме", "Intake reminders")) + "</h2>" +
-      '<p class="sup-rem-card__subtitle">' +
-      esc(pick("Telegram напомнит вовремя принять добавки.", "Telegram will remind you to take your supplements on time.")) +
-      "</p>" +
-
-      // Контейнер списка напоминаний (наполняется отдельно).
-      '<div id="remList" class="sup-rem-list"></div>' +
-
-      // Форма создания.
-      reminderFormHtml() +
       "</section>"
     );
   }
@@ -383,11 +315,8 @@
       '<section class="page page-supplements">' +
       headHtml() +
 
-      // Раздел «Мои добавки».
+      // Раздел «Мои добавки» (у каждой — переключатель напоминания).
       supplementCardHtml() +
-
-      // Раздел «Напоминания о приёме».
-      reminderCardHtml() +
 
       // Раздел «AI-советы по добавкам».
       aiCardHtml() +
@@ -416,14 +345,18 @@
         "<span>" + esc(timeValue(s.intake_time)) + "</span>" +
         "</span>";
     }
-    if (s.reminder_enabled) {
-      chips +=
-        '<span class="sup-item__chip sup-item__badge">' +
-        icon("bell", { size: 14 }) +
-        "<span>" +
-        esc(pick("напоминание", "reminder")) +
-        "</span></span>";
-    }
+    // Переключатель «напоминать»: без времени приёма напоминать некогда,
+    // поэтому он неактивен и подписан — время задаётся при добавлении.
+    var hasTime = !!s.intake_time;
+    var remind =
+      '<label class="sup-item__remind' + (hasTime ? "" : " is-disabled") + '" ' +
+      'title="' + esc(hasTime ? pick("Напоминать в Telegram", "Remind in Telegram")
+                              : pick("Нет времени приёма", "No intake time")) + '">' +
+      '<span class="sup-item__remind-icon" aria-hidden="true">' + icon("bell", { size: 16 }) + "</span>" +
+      '<input type="checkbox" class="sup-form__checkbox" data-remind-id="' + esc(s.id) + '"' +
+      (s.reminder_enabled ? " checked" : "") + (hasTime ? "" : " disabled") +
+      ' aria-label="' + esc(pick("Напоминать о приёме", "Remind me to take it")) + '">' +
+      "</label>";
 
     return (
       '<li class="sup-item" data-id="' + esc(s.id) + '">' +
@@ -432,6 +365,7 @@
       meta +
       (chips ? '<span class="sup-item__chips">' + chips + "</span>" : "") +
       "</div>" +
+      remind +
       '<button class="sup-item__del" type="button" data-id="' + esc(s.id) + '" ' +
       'aria-label="' + esc(pick("Удалить добавку", "Delete supplement")) + '" ' +
       'title="' + esc(pick("Удалить", "Delete")) + '">' +
@@ -449,11 +383,7 @@
     var box = byId("supList");
     var items = (data && data.items) || [];
 
-    // Запоминаем список — он нужен для чекбоксов в форме напоминаний.
     state.supplements = items;
-
-    // Список добавок мог измениться — перерисуем чекбоксы напоминаний.
-    renderReminderPicks();
 
     if (!box) return;
 
@@ -477,6 +407,11 @@
     var delButtons = box.querySelectorAll(".sup-item__del");
     for (var k = 0; k < delButtons.length; k++) {
       delButtons[k].addEventListener("click", onSupplementDelete);
+    }
+
+    var toggles = box.querySelectorAll("[data-remind-id]");
+    for (var t = 0; t < toggles.length; t++) {
+      toggles[t].addEventListener("change", onRemindToggle);
     }
   }
 
@@ -507,140 +442,6 @@
    *  РАЗМЕТКА: ДИНАМИЧЕСКИЕ ЧАСТИ — НАПОМИНАНИЯ
    * ===================================================================== */
 
-  /**
-   * Отрисовывает чекбоксы выбора добавок в форме напоминания
-   * на основе текущего списка принимаемых добавок (state.supplements).
-   */
-  function renderReminderPicks() {
-    var box = byId("remPicks");
-    if (!box) return;
-
-    var items = state.supplements || [];
-    if (!items.length) {
-      box.innerHTML =
-        '<p class="sup-rem-picks__empty">' +
-        esc(pick(
-          "Сначала добавьте добавки выше — тогда их можно будет выбрать для напоминания.",
-          "Add supplements above first — then you can pick them for a reminder."
-        )) +
-        "</p>";
-      return;
-    }
-
-    var html = items
-      .map(function (s) {
-        var label = s.name || pick("Без названия", "Untitled");
-        return (
-          '<label class="sup-rem-pick">' +
-          '<input type="checkbox" class="sup-rem-pick__input" ' +
-          'value="' + esc(s.id) + '">' +
-          '<span class="sup-rem-pick__label">' + esc(label) + "</span>" +
-          "</label>"
-        );
-      })
-      .join("");
-
-    box.innerHTML = html;
-  }
-
-  /**
-   * Разметка одной строки напоминания.
-   * Показывает состав («Ночь, 22:00 — магний, ZMA»).
-   */
-  function reminderRowHtml(r) {
-    var time = timeValue(r.time);
-    var sups = (r.supplements || [])
-      .map(function (s) {
-        return esc(s.name || "");
-      })
-      .filter(function (n) {
-        return n !== "";
-      });
-
-    // Заголовок теперь только время (метка убрана из UI).
-    var head = time ? esc(time) : esc(pick("Напоминание", "Reminder"));
-
-    // Состав через тире: «— магний, ZMA».
-    var composition = sups.length
-      ? '<span class="sup-rem-item__sups"> — ' + sups.join(", ") + "</span>"
-      : '<span class="sup-rem-item__sups sup-rem-item__sups--empty"> — ' +
-        esc(pick("добавки не выбраны", "no supplements selected")) + "</span>";
-
-    return (
-      '<li class="sup-rem-item" data-id="' + esc(r.id) + '">' +
-      '<div class="sup-rem-item__main">' +
-      '<span class="sup-rem-item__head">' + head + composition + "</span>" +
-      "</div>" +
-      '<button class="sup-rem-item__del" type="button" data-id="' + esc(r.id) + '" ' +
-      'aria-label="' + esc(pick("Удалить напоминание", "Delete reminder")) + '" ' +
-      'title="' + esc(pick("Удалить", "Delete")) + '">' +
-      icon("close", { size: 18 }) +
-      "</button>" +
-      "</li>"
-    );
-  }
-
-  /**
-   * Отрисовка списка напоминаний.
-   * @param {Object} data { items:[...] }
-   */
-  function renderReminders(data) {
-    var box = byId("remList");
-    if (!box) return;
-
-    var items = (data && data.items) || [];
-
-    if (!items.length) {
-      box.innerHTML =
-        '<div class="sup-rem-empty">' +
-        '<div class="sup-rem-empty__icon" aria-hidden="true">' +
-        icon("bell", { size: 24 }) +
-        "</div>" +
-        '<p class="sup-rem-empty__text">' +
-        esc(pick(
-          "Напоминаний пока нет. Создайте первое с помощью формы ниже.",
-          "No reminders yet. Create your first one with the form below."
-        )) +
-        "</p>" +
-        "</div>";
-      return;
-    }
-
-    var rows = "";
-    for (var i = 0; i < items.length; i++) {
-      rows += reminderRowHtml(items[i]);
-    }
-    box.innerHTML = '<ul class="sup-rem-item-list">' + rows + "</ul>";
-
-    var delButtons = box.querySelectorAll(".sup-rem-item__del");
-    for (var k = 0; k < delButtons.length; k++) {
-      delButtons[k].addEventListener("click", onReminderDelete);
-    }
-  }
-
-  /**
-   * Состояние ошибки загрузки напоминаний с кнопкой «Повторить».
-   */
-  function renderRemindersError(message) {
-    var box = byId("remList");
-    if (!box) return;
-    box.innerHTML =
-      '<div class="sup-rem-error">' +
-      '<div class="sup-rem-error__icon" aria-hidden="true">' +
-      icon("warning", { size: 24 }) +
-      "</div>" +
-      '<p class="sup-rem-error__title">' + esc(pick("Не удалось загрузить напоминания", "Couldn’t load reminders")) + "</p>" +
-      '<p class="sup-rem-error__text">' + esc(message || pick("Неизвестная ошибка", "Unknown error")) + "</p>" +
-      '<button class="btn btn-ghost sup-rem-error__retry" type="button">' + esc(pick("Повторить", "Retry")) + "</button>" +
-      "</div>";
-    var retry = box.querySelector(".sup-rem-error__retry");
-    if (retry) {
-      retry.addEventListener("click", function () {
-        loadReminders();
-      });
-    }
-  }
-
   /* =====================================================================
    *  РАЗМЕТКА: ДИНАМИЧЕСКИЕ ЧАСТИ — AI-СОВЕТЫ
    * ===================================================================== */
@@ -657,6 +458,13 @@
     var suggestions = (res && res.suggestions) || [];
     var disclaimer = res && res.disclaimer ? res.disclaimer : "";
     var goal = res && res.improvement_goal ? res.improvement_goal : "";
+    // Что ИИ думает о том, что человек уже принимает: дубли, лишнее, «всё ок».
+    var currentHtml = res && res.current_note
+      ? '<div class="sup-ai-current">' +
+        '<span class="eyebrow">' + esc(pick("Что вы уже принимаете", "What you already take")) + "</span>" +
+        "<p>" + esc(res.current_note) + "</p>" +
+        "</div>"
+      : "";
 
     if (!suggestions.length) {
       // Даже при пустых рекомендациях показываем дисклеймер, если он пришёл.
@@ -669,12 +477,13 @@
         : "";
       box.innerHTML =
         '<div class="sup-ai-box__inner">' +
-        '<div class="sup-ai-box__empty">' +
-        esc(pick(
-          "Подходящих рекомендаций не нашлось. Попробуйте уточнить цель.",
-          "No suitable recommendations found. Try refining your goal."
-        )) +
-        "</div>" +
+        (currentHtml ||
+          '<div class="sup-ai-box__empty">' +
+          esc(pick(
+            "Подходящих рекомендаций не нашлось. Попробуйте уточнить цель.",
+            "No suitable recommendations found. Try refining your goal."
+          )) +
+          "</div>") +
         emptyDisclaimer +
         "</div>";
       return;
@@ -745,6 +554,7 @@
       '<div class="sup-ai-box__inner">' +
       '<p class="sup-ai-box__heading">' + esc(pick("Рекомендации", "Recommendations")) + "</p>" +
       goalHtml +
+      currentHtml +
       '<div class="sup-ai-suggest-list">' + cards + "</div>" +
       disclaimerHtml +
       "</div>";
@@ -801,31 +611,6 @@
       });
   }
 
-  /**
-   * Загрузка списка напоминаний (со скелетоном и обработкой ошибок).
-   */
-  function loadReminders() {
-    if (state.remLoading) return;
-    state.remLoading = true;
-
-    var box = byId("remList");
-    if (box) box.innerHTML = remindersSkeletonHtml();
-
-    App.api
-      .getSupplementReminders()
-      .then(function (data) {
-        renderReminders(data);
-      })
-      .catch(function (err) {
-        renderRemindersError(
-          (err && err.message) || pick("Проблема с сетью. Проверьте соединение.", "Network problem. Check your connection.")
-        );
-      })
-      .then(function () {
-        state.remLoading = false;
-      });
-  }
-
   /* =====================================================================
    *  ОБРАБОТЧИКИ: МОИ ДОБАВКИ
    * ===================================================================== */
@@ -864,6 +649,14 @@
     if (time) {
       payload.intake_time = time;
     }
+    // Напоминание приходит во время приёма — без времени его не поставить.
+    if (payload.reminder_enabled && !time) {
+      toast(pick("Укажите время приёма — в это время придёт напоминание",
+                 "Set the intake time — the reminder will come then"));
+      haptic("error");
+      if (timeEl) timeEl.focus();
+      return;
+    }
 
     if (btn) btn.disabled = true;
     App.showLoading();
@@ -872,13 +665,14 @@
       .addSupplement(payload)
       .then(function () {
         haptic("success");
-        toast(pick("Добавка добавлена", "Supplement added"));
+        toast(payload.reminder_enabled
+          ? pick("Добавлено — напомню в " + time, "Added — I'll remind you at " + time)
+          : pick("Добавка добавлена", "Supplement added"));
         // Очищаем форму.
         nameEl.value = "";
         if (dosageEl) dosageEl.value = "";
         if (timeEl) timeEl.value = "";
         if (reminderEl) reminderEl.checked = false;
-        // Перезагружаем список (он же обновит чекбоксы напоминаний).
         loadSupplements();
       })
       .catch(function (err) {
@@ -924,110 +718,34 @@
       });
   }
 
-  /* =====================================================================
-   *  ОБРАБОТЧИКИ: НАПОМИНАНИЯ
-   * ===================================================================== */
-
   /**
-   * Отправка формы создания напоминания.
+   * Переключатель «напоминать» в строке добавки. Сервер сам кладёт добавку
+   * в общее сообщение её времени или убирает оттуда; при ошибке возвращаем
+   * переключатель в прежнее положение.
    */
-  function onReminderSubmit(e) {
-    if (e) e.preventDefault();
-
-    var timeEl = byId("remTime");
-    var picksBox = byId("remPicks");
-    var btn = byId("remAddBtn");
-    if (!timeEl) return;
-
-    var time = (timeEl.value || "").trim();
-    if (!time) {
-      toast(pick("Укажите время напоминания", "Set the reminder time"));
-      haptic("error");
-      timeEl.focus();
-      return;
-    }
-
-    // Собираем id выбранных добавок.
-    var supplementIds = [];
-    if (picksBox) {
-      var checks = picksBox.querySelectorAll(".sup-rem-pick__input:checked");
-      for (var i = 0; i < checks.length; i++) {
-        var sid = parseInt(checks[i].value, 10);
-        if (!isNaN(sid)) supplementIds.push(sid);
-      }
-    }
-
-    if (!supplementIds.length) {
-      toast(pick("Выберите хотя бы одну добавку", "Pick at least one supplement"));
-      haptic("error");
-      return;
-    }
-
-    var payload = {
-      // Метка убрана из UI — бэкенд подставит "" по умолчанию.
-      label: "",
-      time: time,
-      // Существующее напоминание всегда активно.
-      enabled: true,
-      supplement_ids: supplementIds
-    };
-
-    if (btn) btn.disabled = true;
-    App.showLoading();
-
-    App.api
-      .addSupplementReminder(payload)
-      .then(function () {
-        haptic("success");
-        toast(pick("Напоминание создано", "Reminder created"));
-        // Сбрасываем форму.
-        timeEl.value = "";
-        if (picksBox) {
-          var allChecks = picksBox.querySelectorAll(".sup-rem-pick__input");
-          for (var j = 0; j < allChecks.length; j++) {
-            allChecks[j].checked = false;
-          }
-        }
-        loadReminders();
-      })
-      .catch(function (err) {
-        haptic("error");
-        toast((err && err.message) || pick("Не удалось создать напоминание", "Couldn’t create reminder"));
-      })
-      .finally(function () {
-        if (btn) btn.disabled = false;
-        App.hideLoading();
-      });
-  }
-
-  /**
-   * Удаление напоминания по кнопке-крестику.
-   */
-  function onReminderDelete(ev) {
-    var btn = ev.currentTarget;
-    var id = parseInt(btn.getAttribute("data-id"), 10);
+  function onRemindToggle(ev) {
+    var el = ev.currentTarget;
+    var id = parseInt(el.getAttribute("data-remind-id"), 10);
     if (isNaN(id)) return;
-    if (btn.disabled) return;
-
-    btn.disabled = true;
-    btn.classList.add("is-busy");
-    haptic("light");
-    App.showLoading();
-
+    var on = !!el.checked;
+    el.disabled = true;
+    haptic("selection");
     App.api
-      .deleteSupplementReminder(id)
-      .then(function () {
-        toast(pick("Напоминание удалено", "Reminder deleted"));
-        loadReminders();
+      .updateSupplement(id, { reminder_enabled: on })
+      .then(function (s) {
+        el.checked = !!(s && s.reminder_enabled);
+        var t = s && s.intake_time ? timeValue(s.intake_time) : "";
+        toast(el.checked
+          ? pick("Напомню в " + t, "I'll remind you at " + t)
+          : pick("Напоминание выключено", "Reminder turned off"));
       })
       .catch(function (err) {
-        btn.disabled = false;
-        btn.classList.remove("is-busy");
+        el.checked = !on;
         haptic("error");
-        toast((err && err.message) || pick("Не удалось удалить напоминание", "Couldn’t delete reminder"));
+        toast((err && err.message) || pick("Не удалось изменить напоминание", "Couldn’t change the reminder"));
       })
       .finally(function () {
-        App.hideLoading();
+        el.disabled = false;
       });
   }
 
@@ -1209,10 +927,6 @@
     var supForm = byId("supForm");
     if (supForm) supForm.addEventListener("submit", onSupplementSubmit);
 
-    // Форма напоминания.
-    var remForm = byId("supRemForm");
-    if (remForm) remForm.addEventListener("submit", onReminderSubmit);
-
     // Чипы AI-целей.
     var chipsBox = byId("supAiChips");
     if (chipsBox) {
@@ -1287,19 +1001,13 @@
       }
 
       state.supLoading = false;
-      state.remLoading = false;
       state.supplements = [];
 
       viewEl.innerHTML = pageTemplate();
 
-      // Стартовое пустое состояние чекбоксов напоминаний (до загрузки добавок).
-      renderReminderPicks();
-
       bindEvents();
 
-      // Параллельно загружаем добавки и напоминания.
       loadSupplements();
-      loadReminders();
 
       // Предзаполняем цель улучшения для AI-советов.
       prefillImprovementGoal();
@@ -1314,7 +1022,6 @@
     onHide: function () {
       state.viewEl = null;
       state.supLoading = false;
-      state.remLoading = false;
       state.supplements = [];
     }
   };

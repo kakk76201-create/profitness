@@ -32,7 +32,7 @@
  *     • профиля нет / onboarding_completed=false → App.navigate("trainer-onboarding");
  *     • вкладка «Сегодня»: нет активной программы → «Программа не создана»;
  *       иначе карточка дня (в процессе / по плану / отдых / неделя закрыта),
- *       лента недели, стрик, «Самочувствие», «Питание сегодня».
+ *       лента недели, стрик, «Самочувствие».
  *
  * «Самочувствие» — совет по восстановлению (POST /recovery/advice): переехал
  * сюда из удалённого раздела «Тренировки». Место естественное: зону тела
@@ -110,7 +110,6 @@
     segment: null,       // открытая вкладка
     panes: {},           // вкладка → {mounted, version}
     starting: false,     // идёт старт сессии
-    nutritionReq: 0,     // счётчик запросов совета (игнорируем устаревшие ответы)
     recoveryZone: null,  // выбранная зона тела в «Самочувствии»
     recoveryBusy: false  // идёт запрос совета по восстановлению
   };
@@ -552,21 +551,6 @@
   }
 
   /**
-   * Карточка «Питание сегодня» — контейнер со скелетоном (грузится лениво).
-   */
-  function nutritionCardHtml() {
-    return (
-      '<section class="card tr-nutrition-card" id="trNutrition">' +
-      '<h3 class="tr-nutrition-card__title">' + esc(pick("Питание сегодня", "Nutrition today")) + "</h3>" +
-      '<div id="trNutritionBody">' +
-      '<div class="skeleton skeleton-line"></div>' +
-      '<div class="skeleton skeleton-line short"></div>' +
-      "</div>" +
-      "</section>"
-    );
-  }
-
-  /**
    * Карточка «Самочувствие» — совет по восстановлению (POST /recovery/advice).
    * Зоны тела — обычные текстовые чипы: список из восьми пунктов читается
    * быстрее без картинок, а половину зон («шея», «колени») эмодзи и вовсе
@@ -705,11 +689,9 @@
       weekStripHtml(ov) +
       "</section>" +
       streakHtml(ov) +
-      recoveryCardHtml() +
-      nutritionCardHtml();
+      recoveryCardHtml();
     bindToday(ov);
     bindRecovery();
-    loadNutrition();
   }
 
   /**
@@ -867,7 +849,6 @@
     if (!pane || !pane.mounted) return;
     pane.mounted = false;
     if (seg === "today") {
-      state.nutritionReq++;
       state.recoveryBusy = false;
       return;
     }
@@ -1180,100 +1161,6 @@
    *  ПИТАНИЕ СЕГОДНЯ (ленивая загрузка, ИИ при промахе кэша)
    * ===================================================================== */
 
-  function loadNutrition() {
-    var box = byId("trNutritionBody");
-    if (!box) return;
-    var reqId = ++state.nutritionReq;
-    App.api
-      .trainerNutritionToday(App.todayStr())
-      .then(function (tip) {
-        if (reqId !== state.nutritionReq) return;
-        renderNutrition(tip);
-      })
-      .catch(function (err) {
-        if (reqId !== state.nutritionReq) return;
-        var b = byId("trNutritionBody");
-        if (!b) return;
-        b.innerHTML =
-          '<p class="tr-nutrition-card__muted">' +
-          esc(T.errMessage(err, pick("Совет пока недоступен", "Tip is unavailable right now"))) +
-          "</p>" +
-          '<button type="button" class="btn btn-ghost tr-nutrition-card__retry" id="trNutritionRetry">' +
-          esc(pick("Повторить", "Retry")) +
-          "</button>";
-        var retry = byId("trNutritionRetry");
-        if (retry) {
-          retry.addEventListener("click", function () {
-            App.haptic("light");
-            b.innerHTML = '<div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line short"></div>';
-            loadNutrition();
-          });
-        }
-      });
-  }
-
-  function renderNutrition(tip) {
-    var box = byId("trNutritionBody");
-    if (!box) return;
-    tip = tip || {};
-    var n = tip.numbers || {};
-    var kindLabel = tip.kind === "training"
-      ? pick("Тренировочный день", "Training day")
-      : pick("День отдыха", "Rest day");
-    var numbers = "";
-    if (n.goal_kcal != null) {
-      numbers += "<span>" + esc(pick("Цель ", "Goal ")) + "<b>" + esc(App.fmt(n.goal_kcal)) + "</b> " + esc(pick("ккал", "kcal")) + "</span>";
-    }
-    if (n.eaten_kcal != null) {
-      numbers += "<span>" + esc(pick("Съедено ", "Eaten ")) + "<b>" + esc(App.fmt(n.eaten_kcal)) + "</b></span>";
-    }
-    if (n.burned_kcal) {
-      numbers += "<span>" + esc(pick("Сожжено ", "Burned ")) + "<b>" + esc(App.fmt(n.burned_kcal)) + "</b></span>";
-    }
-    if (n.protein_goal != null) {
-      numbers +=
-        "<span>" + esc(pick("Белок ", "Protein ")) + "<b>" +
-        esc(App.fmt(n.protein_eaten || 0)) + "</b> / " + esc(App.fmt(n.protein_goal)) + " " + esc(pick("г", "g")) + "</span>";
-    }
-    var rows = "";
-    if (tip.calories_note) rows += row(pick("Калории", "Calories"), tip.calories_note);
-    if (tip.protein_note) rows += row(pick("Белок", "Protein"), tip.protein_note);
-    if (tip.pre_workout) rows += row(pick("До тренировки", "Before workout"), tip.pre_workout);
-    if (tip.post_workout) rows += row(pick("После", "After"), tip.post_workout);
-    if (tip.hydration) rows += row(pick("Вода", "Hydration"), tip.hydration);
-    var tips = tip.tips || [];
-    if (tips.length) rows += row(pick("Советы", "Tips"), tips.join(" · "));
-
-    box.innerHTML =
-      '<p class="tr-nutrition-card__headline">' +
-      esc(kindLabel + (tip.headline ? ": " + tip.headline : "")) +
-      "</p>" +
-      (numbers ? '<div class="tr-nutrition-card__numbers">' + numbers + "</div>" : "") +
-      rows +
-      '<button type="button" class="btn btn-ghost btn-block" id="trWhatToEat">' +
-      esc(pick("Что съесть?", "What should I eat?")) +
-      "</button>";
-
-    var btn = byId("trWhatToEat");
-    if (btn) {
-      btn.addEventListener("click", function () {
-        App.haptic("light");
-        // Подсказка дневнику открыть «Что съесть?» (should: deep-link).
-        App.state.diaryOpenSuggest = true;
-        App.navigate("diary");
-      });
-    }
-  }
-
-  function row(label, text) {
-    return (
-      '<div class="tr-nutrition-card__row">' +
-      '<span class="tr-nutrition-card__label">' + esc(label) + "</span>" +
-      esc(text) +
-      "</div>"
-    );
-  }
-
   /* =====================================================================
    *  ЗАГРУЗКА
    * ===================================================================== */
@@ -1384,7 +1271,6 @@
       state.loading = false;
       state.ovReq++;
       state.starting = false;
-      state.nutritionReq++;
       state.recoveryBusy = false;
       T.closeSheet(true);
     },

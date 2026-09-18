@@ -404,6 +404,16 @@ class SupplementIn(BaseModel):
     reminder_enabled: bool = False       # включено ли напоминание
 
 
+class SupplementPatchIn(BaseModel):
+    """Изменение добавки из списка: переключатель напоминания и/или время.
+
+    Поле не передано — не меняется; intake_time="" — убрать время.
+    """
+
+    reminder_enabled: Optional[bool] = None
+    intake_time: Optional[str] = None
+
+
 class SupplementOut(BaseModel):
     """Добавка, отдаваемая клиенту (с идентификатором)."""
 
@@ -595,6 +605,8 @@ class SupplementRecommendOut(BaseModel):
     """
 
     suggestions: List[SupplementSuggestItem] = []
+    # Короткий комментарий ИИ к тому, что человек уже принимает (или None).
+    current_note: Optional[str] = None
     disclaimer: str                          # медицинский дисклеймер
     training_count: int = 0                  # число тренировок за 2 недели
     improvement_goal: Optional[str] = None   # применённая цель улучшения

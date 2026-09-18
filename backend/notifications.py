@@ -728,8 +728,11 @@ def _process_supplement_reminder(db, reminder: "SupplementReminder",
     if names:
         text = _msg("supplement_reminder_named", lang, label=label, names=", ".join(names))
     else:
-        # Список пуст (или не удалось получить) — общий текст по метке.
-        text = _msg("supplement_reminder_plain", lang, label=label)
+        # В напоминании не осталось добавок: отдельной формы напоминаний в
+        # приложении больше нет, и выключить такое «пустое» сообщение человеку
+        # было бы негде. Не шлём.
+        logger.debug("_process_supplement_reminder: пустое напоминание rid=%s — пропуск", rid)
+        return
 
     if send_telegram(tid, text):
         _mark_sent(db, tid, kind, today)
