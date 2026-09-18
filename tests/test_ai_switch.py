@@ -13,8 +13,8 @@ def chk(n, cond, x=""):
     if not cond: fails.append(n + ("  " + str(x) if x else ""))
 
 chk("gpt-4o: классические параметры", A._completion_params("gpt-4o", 700, 0.3) == {"max_tokens": 700, "temperature": 0.3})
-chk("gpt-5-mini: minimal, без temperature, лимит как есть",
-    A._completion_params("gpt-5-mini", 700, 0.3) == {"max_completion_tokens": 700, "reasoning_effort": "minimal"},
+chk("gpt-5-mini: minimal, без temperature, лимит с запасом",
+    A._completion_params("gpt-5-mini", 700, 0.3) == {"max_completion_tokens": 2200, "reasoning_effort": "minimal"},
     A._completion_params("gpt-5-mini", 700, 0.3))
 chk("снапшот gpt-5-mini-2025-08-07: minimal", A._completion_params("gpt-5-mini-2025-08-07", 700, 0.3)["reasoning_effort"] == "minimal")
 chk("gpt-5.6-luna: low + запас под размышления",

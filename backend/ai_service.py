@@ -138,8 +138,11 @@ def _completion_params(model: str, max_tokens: int, temperature: float) -> dict:
     reasoning = name.startswith(("gpt-5", "o1", "o3", "o4"))
     if reasoning:
         effort = REASONING_EFFORT or ("minimal" if _MINIMAL_EFFORT_RE.match(name) else "low")
-        budget = max_tokens if effort == "minimal" else max_tokens + REASONING_HEADROOM
-        return {"max_completion_tokens": budget, "reasoning_effort": effort}
+        # Запас даём и при minimal: даже минимальные размышления расходуются из
+        # того же лимита, и при упоре ответ приходит пустым (finish=length).
+        # Платим за фактически сгенерированные токены, не за потолок — запас
+        # ничего не стоит, пока не нужен.
+        return {"max_completion_tokens": max_tokens + REASONING_HEADROOM, "reasoning_effort": effort}
     return {"max_tokens": max_tokens, "temperature": temperature}
 
 
