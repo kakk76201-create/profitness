@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 
 from sqlalchemy import func
 
@@ -28,6 +28,27 @@ from backend.models import AppEvent, Payment, User
 logger = logging.getLogger("analytics")
 
 EVENTS_RETENTION_DAYS = int(os.getenv("EVENTS_RETENTION_DAYS", "180"))
+
+# Дни считаем в часовом поясе приложения (как напоминания), а не по часам
+# сервера: Railway живёт в UTC, и «сегодня» сменялось бы в 03:00 по Москве.
+try:
+    from zoneinfo import ZoneInfo
+
+    _TZ = ZoneInfo(os.getenv("APP_TZ", "Europe/Moscow"))
+except Exception:  # noqa: BLE001 — без базы поясов считаем по часам сервера
+    _TZ = None
+
+
+def _today() -> date:
+    """Сегодняшняя дата в часовом поясе приложения."""
+    return datetime.now(_TZ).date() if _TZ else date.today()
+
+
+def _utc_start(d: date) -> datetime:
+    """Начало местного дня d в UTC без пояса — как хранятся created_at в БД."""
+    if _TZ is None:
+        return datetime.combine(d, time.min)
+    return datetime.combine(d, time.min, tzinfo=_TZ).astimezone(timezone.utc).replace(tzinfo=None)
 
 # События, которые пишет сам сервер.
 SERVER_EVENTS = {
@@ -55,7 +76,7 @@ def track(telegram_id: int | None, name: str) -> None:
         return
     try:
         with SessionLocal() as db:
-            db.add(AppEvent(telegram_id=int(telegram_id), name=name, day=date.today().isoformat()))
+            db.add(AppEvent(telegram_id=int(telegram_id), name=name, day=_today().isoformat()))
             db.commit()
     except Exception as exc:  # noqa: BLE001 — аналитика не должна ломать запрос
         logger.debug("analytics.track(%s): %r", name, exc)
@@ -63,7 +84,7 @@ def track(telegram_id: int | None, name: str) -> None:
 
 def purge_old(db) -> int:
     """Удалить события старше срока хранения. Возвращает число удалённых строк."""
-    border = (date.today() - timedelta(days=EVENTS_RETENTION_DAYS)).isoformat()
+    border = (_today() - timedelta(days=EVENTS_RETENTION_DAYS)).isoformat()
     n = db.query(AppEvent).filter(AppEvent.day < border).delete(synchronize_session=False)
     db.commit()
     return n
@@ -88,14 +109,15 @@ def _pct(part: int, whole: int) -> str:
 
 def report(db, days: int = 7) -> str:
     """Текстовый отчёт владельцу: аудитория, использование, воронка оплаты."""
-    today = date.today()
+    today = _today()
     since = (today - timedelta(days=days - 1)).isoformat()
+    since_utc = _utc_start(today - timedelta(days=days - 1))
     t = today.isoformat()
 
     users_total = db.query(func.count(User.telegram_id)).scalar() or 0
     new_users = (
         db.query(func.count(User.telegram_id))
-        .filter(User.created_at >= datetime.combine(today - timedelta(days=days - 1), datetime.min.time()))
+        .filter(User.created_at >= since_utc)
         .scalar() or 0
     )
     dau = _uniq(db, "app_open", t)
@@ -110,7 +132,7 @@ def report(db, days: int = 7) -> str:
     revenue = (
         db.query(func.coalesce(func.sum(Payment.amount), 0))
         .filter(
-            Payment.created_at >= datetime.combine(today - timedelta(days=days - 1), datetime.min.time()),
+            Payment.created_at >= since_utc,
             Payment.currency == "RUB",
             Payment.provider.in_(("yookassa", "cloudpayments")),
             Payment.subscription_type != "test",
