@@ -546,14 +546,6 @@ body.is-task-screen #view {
   margin: 12px 0;
 }
 
-.macro {
-  flex: 1;
-  text-align: center;
-  background: var(--bg);
-  border-radius: var(--radius-sm);
-  padding: 12px 6px;
-}
-
 .macro__val {
   display: block;
   font-size: 17px;
@@ -1823,23 +1815,6 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   margin-top: 4px;
 }
 
-/* Контейнер результата подсказки (наполняется JS-ом). */
-.sup-suggest-box {
-  display: block;
-}
-
-/* Дисклеймер по спортпиту: заметный, но мягкий (тёплый персиковый фон). */
-.sup-disclaimer {
-  margin-top: 12px;
-  padding: 10px 14px;
-  border-radius: var(--radius-sm);
-  border-left: 3px solid var(--danger);
-  background: var(--danger-soft);
-  color: var(--text);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
 /* ============================================================
    СТРАНИЦА «МОЙ РАЦИОН» — ДОПОЛНЕНИЯ
    ============================================================ */
@@ -2513,258 +2488,6 @@ html.is-pointer .tab-home:focus .tab-home__disc {
 }
 
 /* ============================================================
-   НАПОМИНАНИЯ О ПРИЁМЕ ДОБАВОК (sup-rem-*) — карточкой
-   ============================================================ */
-.sup-rem-card {
-  display: block;
-}
-
-.sup-rem-card__title {
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-
-.sup-rem-card__subtitle {
-  font-size: 13px;
-  color: var(--muted);
-  margin-bottom: 14px;
-  line-height: 1.5;
-}
-
-/* Контейнер списка напоминаний. */
-.sup-rem-list {
-  display: block;
-  margin-bottom: 4px;
-}
-
-.sup-rem-skeleton {
-  display: block;
-}
-
-/* Список строк напоминаний. */
-.sup-rem-item-list {
-  list-style: none;
-}
-
-/* Одна строка напоминания о приёме добавок. */
-.sup-rem-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 0;
-  border-top: 1px solid var(--border);
-}
-
-.sup-rem-item:first-child {
-  border-top: none;
-}
-
-/* Скелетон-строка напоминания (отдельная плашка). */
-.sup-rem-item.skeleton-block {
-  display: block;
-  height: auto;
-  padding: 16px;
-  border-top: none;
-  background: var(--bg);
-}
-
-.sup-rem-item__main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
-}
-
-/* Заголовок строки: «Ночь, 22:00 — магний, ZMA». */
-.sup-rem-item__head {
-  font-weight: 600;
-  color: var(--text);
-  min-width: 0;
-}
-
-/* Состав напоминания (перечень добавок). */
-.sup-rem-item__sups {
-  font-weight: 500;
-  color: var(--muted);
-}
-
-/* Состав не выбран — ещё более приглушённо/курсивом. */
-.sup-rem-item__sups--empty {
-  font-style: italic;
-}
-
-/* Кнопка удаления напоминания ✕. */
-.sup-rem-item__del {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  min-height: 32px;
-  flex-shrink: 0;
-  padding: 0;
-  border: none;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--danger);
-  font-size: 15px;
-  line-height: 1;
-  cursor: pointer;
-  transition: background .15s ease, transform .08s ease;
-}
-
-.sup-rem-item__del:active {
-  background: var(--danger-soft);
-  transform: scale(.92);
-}
-
-.sup-rem-item__del:disabled {
-  opacity: .5;
-  cursor: default;
-}
-
-/* Пустое состояние списка напоминаний. */
-.sup-rem-empty {
-  text-align: center;
-  color: var(--muted);
-  padding: 22px 12px;
-}
-
-.sup-rem-empty__icon {
-  font-size: 36px;
-  line-height: 1;
-  margin-bottom: 10px;
-}
-
-.sup-rem-empty__text {
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-/* Ошибка загрузки напоминаний. */
-.sup-rem-error {
-  text-align: center;
-  color: var(--text);
-  padding: 18px 8px;
-}
-
-.sup-rem-error__icon {
-  font-size: 36px;
-  line-height: 1;
-  margin-bottom: 10px;
-}
-
-.sup-rem-error__title {
-  font-size: 15px;
-  font-weight: 700;
-  margin-bottom: 6px;
-}
-
-.sup-rem-error__text {
-  font-size: 13px;
-  color: var(--muted);
-  margin-bottom: 14px;
-  line-height: 1.5;
-}
-
-.sup-rem-error__retry {
-  width: auto;
-  min-width: 160px;
-  margin: 0 auto;
-}
-
-/* --- Форма создания напоминания о приёме --- */
-.sup-rem-form {
-  display: block;
-  margin-top: 6px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
-}
-
-.sup-rem-form__title {
-  font-size: 16px;
-  font-weight: 700;
-  margin-bottom: 12px;
-}
-
-/* Название + время — в две колонки. */
-.sup-rem-form__grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-/* Блок множественного выбора добавок. */
-.sup-rem-form__pick {
-  margin-bottom: 14px;
-}
-
-.sup-rem-form__pick .field__label {
-  margin-bottom: 10px;
-}
-
-/* Кнопка «Создать напоминание» — отступ сверху. */
-.sup-rem-add {
-  margin-top: 4px;
-}
-
-/* --- Множественный выбор добавок чекбоксами --- */
-.sup-rem-picks {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* Подсказка, когда добавок ещё нет. */
-.sup-rem-picks__empty {
-  font-size: 13px;
-  color: var(--muted);
-  line-height: 1.5;
-  background: var(--bg);
-  border-radius: var(--radius-sm);
-  padding: 12px 14px;
-}
-
-/* Один пункт выбора: чекбокс + название добавки (вся строка кликабельна). */
-.sup-rem-pick {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border: 1.5px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--white);
-  cursor: pointer;
-  user-select: none;
-  transition: background .15s ease, border-color .15s ease;
-}
-
-.sup-rem-pick:active {
-  background: var(--surface-2);
-}
-
-.sup-rem-pick__input {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-  accent-color: var(--cta);
-  cursor: pointer;
-}
-
-.sup-rem-pick__label {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* ============================================================
    AI-СОВЕТЫ ПО ДОБАВКАМ (sup-ai-*) — карточкой
    ============================================================ */
 .sup-ai-card {
@@ -3010,35 +2733,6 @@ html.is-pointer .tab-home:focus .tab-home__disc {
 
 /* Кнопка «Повторить» в ошибке — компактная по центру. */
 .diary-notif-retry {
-  width: auto;
-  min-width: 160px;
-  margin: 0 auto;
-}
-
-/* ============================================================
-   ВЕЧЕРНЯЯ СВОДКА (acc-summary-*) — карточкой на page-account
-   ============================================================ */
-.acc-summary {
-  display: block;
-}
-
-/* Поле времени сводки (наследует .field). */
-.acc-summary-time {
-  margin-top: 14px;
-  margin-bottom: 4px;
-}
-
-.acc-summary-time[hidden] {
-  display: none;
-}
-
-/* Поле ввода времени сводки (наследует .field__input). */
-.acc-summary-time__input {
-  min-height: 46px;
-}
-
-/* Кнопка «Повторить» в ошибке сводки — компактная по центру. */
-.acc-summary-error .btn {
   width: auto;
   min-width: 160px;
   margin: 0 auto;
@@ -3575,27 +3269,6 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   border-left: 4px solid var(--cta);
 }
 
-/* Иконка 💎 в кружке-подложке. */
-.acc-sub-card__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: var(--bg);
-  font-size: 22px;
-  line-height: 1;
-}
-
-.acc-sub-card__body {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
 .acc-sub-card__title {
   font-size: 16px;
   font-weight: 700;
@@ -3614,15 +3287,6 @@ html.is-pointer .tab-home:focus .tab-home__disc {
 .acc-sub-card--premium .acc-sub-card__status {
   color: var(--cta);
   font-weight: 600;
-}
-
-/* Стрелка «›» справа. */
-.acc-sub-card__arrow {
-  flex-shrink: 0;
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--muted);
-  line-height: 1;
 }
 
 /* ============================================================
@@ -4416,66 +4080,6 @@ html.is-pointer .tab-home:focus .tab-home__disc {
    Палитра пастельная, согласована с блоком .diary-recommend / .recent.
    ============================================================ */
 
-/* --- Панель премиум-действий с шаблонами ---
-   Контейнер переиспользует .diary-actions (flex + gap). Три кнопки
-   шаблонов несут .diary-actions__btn ради единого размера; собственные
-   tpl-классы добавляют адресные стили (мягкий акцентный фон). На узких
-   экранах три кнопки в один ряд тесноваты — разрешаем перенос. */
-.tpl-actions {
-  flex-wrap: wrap;
-}
-
-/* Активная (выбранная) кнопка «Шаблоны» — как у базовых действий. */
-.tpl-actions__btn.is-active {
-  background: var(--cta);
-  border-color: var(--cta);
-  color: var(--on-accent);
-}
-
-/* Заблокированная (free) кнопка шаблона: пунктир + лёгкое затемнение.
-   Совпадает с поведением .diary-actions__btn.is-locked. */
-.tpl-actions__btn.is-locked {
-  opacity: .85;
-  border-style: dashed;
-}
-
-/* --- Запасной paywall шаблонов (.tpl-locked) ---
-   Показывается, только если единый App.paywall недоступен. */
-.tpl-locked {
-  text-align: center;
-  background: var(--white);
-}
-
-/* Инлайн-поле ввода имени шаблона (наследует .field__input). */
-.tpl-save__name {
-  width: 100%;
-}
-
-/* Кнопка «Сохранить шаблон» (CTA). */
-.tpl-save__submit {
-  margin-top: 4px;
-}
-
-/* Карточка одного шаблона: слева имя/мета, справа действия. */
-.tpl-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: var(--bg);
-  border-radius: var(--radius-sm);
-  padding: 12px 14px;
-  animation: fadeIn .28s ease;
-}
-
-/* Кнопка «Добавить» (применить шаблон) — компактный CTA. */
-.tpl-card__apply {
-  width: auto;
-  min-width: 96px;
-  min-height: 44px;
-  padding: 0 16px;
-  font-size: 14px;
-}
-
 /* ============================================================
    ЭТАП 5 — AI-ФУНКЦИИ (пастельная палитра)
    Недельный AI-отчёт (rep-*), AI-планировщик меню (plan-*),
@@ -4488,12 +4092,6 @@ html.is-pointer .tab-home:focus .tab-home__disc {
    Карточка отчёта: подсказка, кнопка генерации, тело (summary,
    буллеты-инсайты, выделенный фокус недели, плитки ключевых цифр).
    ------------------------------------------------------------ */
-
-/* Карточка отчёта — обычная card. Когда внутри paywall (rep-gate),
-   убираем фон/паддинг, чтобы блок paywall выглядел самостоятельно. */
-.rep-card {
-  display: block;
-}
 
 /* Подсказка над кнопкой генерации. */
 .rep-hint {
@@ -5079,22 +4677,6 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   padding: 16px 14px;
 }
 
-/* ============================================================
-   ТРЕКИНГ ЦИКЛА (page-account.js, префикс cyc-, Этап 6)
-   Деликатная пастель: розовые/лавандовые оттенки по фазам.
-   Форма ввода, плашка фазы, прогнозы, советы, заметка, дисклеймер.
-   ============================================================ */
-.cyc-card {
-  display: block;
-}
-
-/* В режиме paywall убираем фон/паддинг карточки (paywall рисует свой блок). */
-.cyc-card.cyc-gate {
-  background: transparent;
-  box-shadow: none;
-  padding: 0;
-}
-
 /* Вводная подсказка (когда данных ещё нет). */
 .cyc-hint {
   font-size: 13px;
@@ -5352,15 +4934,6 @@ html.is-pointer .tab-home:focus .tab-home__disc {
   color: var(--muted);
   margin-top: 4px;
   margin-bottom: 12px;
-}
-
-/* ============================================================
-   ФОТО-ПРОГРЕСС (page-account.js, префикс prog-, Этап 7)
-   Приватная пометка, кнопка добавления, инлайн-форма загрузки,
-   таймлайн миниатюр, сравнение «до/после» со шторкой-слайдером.
-   ============================================================ */
-.prog-card {
-  display: block;
 }
 
 /* Приватная пометка (замок). */
@@ -6109,19 +5682,6 @@ button.cal-cell--selected:active {
   padding: 0 16px 16px;
 }
 
-/* Убираем нижний margin у первого/последнего вложенного элемента,
-   чтобы тело не «плавало» после раскрытия. */
-.acc-fold__body > .acc-title:first-child {
-  margin-top: 0;
-}
-
-/* Внутренний заголовок карточки дублирует шапку аккордеона (его рисуют
-   JS-рендеры премиум-карточек: Вес/Адаптивные/Отчёт/Цикл/Фото). Прячем —
-   заголовок уже несёт шапка .acc-fold__head. */
-.acc-fold__body .acc-title {
-  display: none;
-}
-
 /* ============================================================
    #1) Контейнер календаря на странице тренировок (wk-).
    Зеркалит .diary-datebar-wrap / .diary-datebar__cal, чтобы общий
@@ -6151,34 +5711,7 @@ button.cal-cell--selected:active {
    ============================================================ */
 
 /* ---------- 1) Плавающая кнопка настроек (шестерёнка) ---------- */
-/* Круглая FAB внизу справа над таббаром — как .diary-fab, но с ⚙. */
-.acc-fab {
-  position: fixed;
-  right: 16px;
-  bottom: calc(var(--tabbar-height) + var(--safe-bottom) + 16px);
-  z-index: 60;
-  width: 62px;
-  height: 62px;
-  border: none;
-  border-radius: 50%;
-  background: var(--cta);
-  color: var(--on-accent);
-  font-size: 28px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: var(--shadow-2);
-  transition: background .18s ease, transform .1s ease, box-shadow .18s ease;
-}
-
 /* ---------- 2) Группы в листе настроек ---------- */
-/* Лист переиспользует .diary-sheet*; здесь — внутренние секции. */
-.acc-set-group + .acc-set-group {
-  margin-top: 20px;
-}
-
 /* ---------- 3) Кнопка-тумблер (активировать / деактивировать) ---------- */
 /* OFF — зелёный CTA-вид; ON — приглушённый (уже активно, тап = выключить). */
 .tgl-btn {
@@ -6323,11 +5856,6 @@ button.cal-cell--selected:active {
 }
 
 /* ---------- 6) Список времени приёмов пищи (дневник) ---------- */
-/* Сворачиваемый блок — по образцу .acc-fold; здесь свой минимальный набор. */
-.mr-fold {
-  margin-top: 12px;
-}
-
 .mr-times {
   display: flex;
   flex-direction: column;
