@@ -1135,3 +1135,9 @@
 .diary-suggest:active {
   opacity: .7;
 }
+
+/* Вторая строка-действие идёт вплотную к первой: одна линия-разделитель
+   на пару, без двойного отступа. */
+.diary-suggest + .diary-suggest--plan {
+  margin-top: var(--s3);
+}

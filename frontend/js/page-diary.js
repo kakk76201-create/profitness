@@ -596,6 +596,20 @@
       icon(isPremium() ? "chevron" : "lock", { size: 16 }) +
       "</span>" +
       "</button>" +
+      // «Что приготовить» — AI-план меню на день или неделю со списком
+      // покупок. Жил только в листе «+», и его не находили.
+      '<button type="button" class="diary-suggest diary-suggest--plan" data-diary-plan>' +
+      '<span class="diary-suggest__icon" aria-hidden="true">' + icon("utensils", { size: 18 }) + "</span>" +
+      '<span class="diary-suggest__text">' +
+      '<span class="diary-suggest__title">' + App.escapeHtml(pick("Что приготовить", "What to cook")) + "</span>" +
+      '<span class="diary-suggest__sub">' +
+      App.escapeHtml(pick("Меню на день или неделю и список покупок", "A day or week menu and a shopping list")) +
+      "</span>" +
+      "</span>" +
+      '<span class="diary-suggest__end" aria-hidden="true">' +
+      icon(isPremium() ? "chevron" : "lock", { size: 16 }) +
+      "</span>" +
+      "</button>" +
       "</section>"
     );
   }
@@ -767,6 +781,13 @@
       suggestBtn.addEventListener("click", function () {
         App.haptic && App.haptic("light");
         onSheetAction("recommend");
+      });
+    }
+    var planBtn = content.querySelector("[data-diary-plan]");
+    if (planBtn) {
+      planBtn.addEventListener("click", function () {
+        App.haptic && App.haptic("light");
+        onSheetAction("meal-plan");
       });
     }
 
