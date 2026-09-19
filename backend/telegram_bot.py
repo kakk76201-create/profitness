@@ -521,6 +521,38 @@ def _db_target_info() -> str:
         return f"неизвестно ({exc})"
 
 
+def _handle_stats_command(db, message: dict, text: str) -> None:
+    """/stats [дней] — отчёт владельцу: аудитория, использование, путь к оплате.
+
+    Только владелец (по OWNER_ID); остальным — молчание, как у других
+    служебных команд. Период по умолчанию 7 дней, можно «/stats 30».
+    """
+    try:
+        from_id = int(message.get("from", {}).get("id"))
+    except Exception:  # noqa: BLE001
+        return
+    if not OWNER_ID or from_id != OWNER_ID:
+        return
+    chat_id = message.get("chat", {}).get("id")
+    if chat_id is None:
+        return
+    days = 7
+    parts = text.split()
+    if len(parts) > 1 and parts[1].isdigit():
+        days = max(1, min(90, int(parts[1])))
+    try:
+        from backend import analytics
+
+        body = analytics.report(db, days)
+    except Exception as exc:  # noqa: BLE001
+        try:
+            db.rollback()
+        except Exception as exc2:  # noqa: BLE001
+            logger.debug("Подавлено исключение: %r", exc2)
+        body = f"Не удалось собрать отчёт: {exc}"
+    _bot_api("sendMessage", {"chat_id": chat_id, "text": body})
+
+
 def _handle_users_command(db, message: dict) -> None:
     """/users — показать владельцу последних пользователей из базы."""
     try:
@@ -1191,6 +1223,9 @@ def handle_update(db, update: dict) -> None:
                 return
             if stripped.startswith("/pending"):
                 _handle_pending_command(db, message)
+                return
+            if stripped.startswith("/stats"):
+                _handle_stats_command(db, message, stripped)
                 return
 
             # Приветствие по /start.

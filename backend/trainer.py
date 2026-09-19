@@ -32,7 +32,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from backend import ai_service, fitness, models as M, ratelimit, subscription, trainer_ai, trainer_logic
+from backend import ai_service, analytics, fitness, models as M, ratelimit, subscription, trainer_ai, trainer_logic
 from backend.ai_service import AIError
 from backend.database import get_db
 from backend.models import User
@@ -1100,6 +1100,7 @@ def trainer_program_generate(
         tid, program.id, len(expanded), first_date, last_date, program.ai_model,
         knowledge.get("split_id"), len(knowledge.get("fixes") or []),
     )
+    analytics.track(tid, "trainer_program")
     return program_out(db, program, lang, start_date)
 
 
@@ -2162,6 +2163,7 @@ def trainer_session_finish(
     )
     pr_rows = json_list(session.prs_json)
     pr_ex = exercises_by_id(db, [p.get("exercise_id") for p in pr_rows if isinstance(p, dict)])
+    analytics.track(tid, "workout_done")
     return TrainerFinishOut(
         session=session_out(db, session),
         summary=TrainerFinishSummaryOut(

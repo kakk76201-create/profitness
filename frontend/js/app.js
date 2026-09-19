@@ -652,6 +652,14 @@
       if (email) body.email = email;
       return request("/payment/yookassa/create", { method: "POST", body: body });
     },
+    // Событие аналитики (просмотр экрана воронки). Ошибки глушим: аналитика
+    // не должна мешать работе приложения.
+    trackEvent: function (name) {
+      return request("/events", { method: "POST", body: { name: name } }).catch(function () {
+        return null;
+      });
+    },
+
     // Состояние своего платежа ЮKassa; при оплате сервер сразу выдаёт доступ.
     yookassaStatus: function (paymentId) {
       return request("/payment/yookassa/status/" + encodeURIComponent(paymentId));
@@ -1075,6 +1083,8 @@
   };
 
   App.navigate = function (name) {
+    if (name === "subscription") App.track("screen_subscription");
+    else if (name === "payment") App.track("screen_payment");
     var target = App._pages[name];
     if (!target) {
       // Запрошена незарегистрированная страница — игнорируем во избежание краша.
@@ -1189,10 +1199,24 @@
     return "--hero-img:url(" + new URL("img/" + file + "?v=" + IMG_VERSION, document.baseURI).href + ")";
   };
 
+  // Просмотры экранов воронки: каждое событие — один раз за запуск
+  // приложения, чтобы перелистывание туда-обратно не раздувало цифры.
+  var trackedOnce = {};
+  App.track = function (name) {
+    if (trackedOnce[name]) return;
+    trackedOnce[name] = true;
+    try {
+      App.api.trackEvent(name);
+    } catch (e) {
+      /* аналитика не критична */
+    }
+  };
+
   App.paywall = function (viewEl, opts) {
     if (!viewEl) {
       return;
     }
+    App.track("paywall");
     opts = opts || {};
     var iconName = opts.icon || "lock";
     var title = opts.title || App.pick("Премиум-функция", "Premium feature");

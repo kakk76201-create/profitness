@@ -549,7 +549,7 @@
       .then(function () {
         App.hideLoading();
         if (btn) btn.disabled = false;
-        App.navigate("diary");
+        App.navigate("today");
       });
   }
 
@@ -678,9 +678,9 @@
       })
       .then(function () {
         App.hideLoading();
-        // В любом случае уводим в дневник: цель либо посчитана, либо
+        // В любом случае уводим на главный экран: цель либо посчитана, либо
         // пользователь сможет задать её вручную в аккаунте.
-        App.navigate("diary");
+        App.navigate("today");
       });
   }
 

@@ -1299,6 +1299,20 @@ def _acquire_scheduler_lock() -> bool:
         return True
 
 
+def _purge_analytics() -> None:
+    """Удалить события аналитики старше срока хранения (best-effort)."""
+    try:
+        from backend import analytics
+        from backend.database import SessionLocal
+
+        with SessionLocal() as db:
+            n = analytics.purge_old(db)
+        if n:
+            logger.info("analytics: удалено старых событий: %s", n)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("analytics: чистка не удалась: %s", exc)
+
+
 def start_scheduler():
     """Запустить фоновый планировщик проверки уведомлений.
 
@@ -1339,6 +1353,16 @@ def start_scheduler():
             id="check_notifications",
             replace_existing=True,
             # Если предыдущий запуск задержался — не накапливаем пропущенные.
+            max_instances=1,
+            coalesce=True,
+        )
+        # Раз в сутки — чистка старых событий аналитики (срок хранения ограничен).
+        scheduler.add_job(
+            _purge_analytics,
+            trigger="interval",
+            hours=24,
+            id="purge_analytics",
+            replace_existing=True,
             max_instances=1,
             coalesce=True,
         )

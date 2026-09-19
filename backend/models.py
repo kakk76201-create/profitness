@@ -432,6 +432,24 @@ class SupplementReminderItem(Base):
     supplement_id = Column(Integer, ForeignKey("supplements.id"))
 
 
+class AppEvent(Base):
+    """Событие продуктовой аналитики (см. backend/analytics.py).
+
+    Только кто / что / когда — без содержимого. Хранится ограниченный срок,
+    удаляется вместе с аккаунтом.
+    """
+
+    __tablename__ = "app_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(BigInteger, index=True)
+    # Имя события из белого списка analytics.ALL_EVENTS.
+    name = Column(String, index=True)
+    # День события "YYYY-MM-DD" — по нему считаются отчёты и чистка.
+    day = Column(String, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Payment(Base):
     """
     Журнал успешных платежей за подписку.

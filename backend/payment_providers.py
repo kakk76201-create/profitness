@@ -118,6 +118,11 @@ def activate_premium(
 
         db.commit()
         db.refresh(user)
+        # Настоящие оплаты (не пробный период и не ручная выдача) — в воронку.
+        if provider in ("yookassa", "cloudpayments", "tribute"):
+            from backend import analytics
+
+            analytics.track(telegram_id, "payment_success")
 
         logger.info(
             "Активирован премиум: telegram_id=%s tariff=%s provider=%s until=%s",

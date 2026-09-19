@@ -81,6 +81,7 @@ from sqlalchemy.orm import Session
 
 from backend import (
     adaptive,
+    analytics,
     cloudpayments,
     config,
     cycle,
@@ -117,6 +118,7 @@ from backend.ai_service import (
 from backend.auth import get_current_user
 from backend.database import SessionLocal, get_db, init_db
 from backend.models import (
+    AppEvent,
     CycleLog,
     DiaryEntry,
     FavoriteFood,
@@ -485,7 +487,9 @@ def auth_verify(user: User = Depends(get_current_user)) -> User:
 
     Зависимость get_current_user уже выполняет валидацию и создание/обновление
     записи пользователя, поэтому достаточно вернуть текущего пользователя.
+    Этот запрос приложение делает один раз при запуске — это и есть «открытие».
     """
+    analytics.track(user.telegram_id, "app_open")
     return user
 
 
@@ -640,6 +644,7 @@ async def food_analyze(
 
     # Скан успешно выполнен — фиксируем использование (для премиум ничего не делает).
     subscription.record_scan(db, user)
+    analytics.track(user.telegram_id, "scan_photo")
 
     return AnalyzeOut(
         dish_name=result["dish_name"],
@@ -727,6 +732,7 @@ async def food_voice(
         )
         for it in parsed.get("items", [])
     ]
+    analytics.track(user.telegram_id, "scan_voice")
     return VoiceFoodOut(
         transcript=text,
         meal_type=parsed.get("meal_type"),
@@ -1315,6 +1321,7 @@ def food_calculate(
             detail = str(exc)
         raise HTTPException(status_code=502, detail=detail)
 
+    analytics.track(user.telegram_id, "food_text")
     return FoodCalculateOut(**result)
 
 
@@ -2570,6 +2577,24 @@ async def payment_cloudpayments_webhook(
 _EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]{2,}")
 
 
+# --------------------------------------------------------------------------- #
+#  Аналитика: просмотры экранов воронки от клиента
+# --------------------------------------------------------------------------- #
+@app.post("/events")
+def post_event(data: dict, user: User = Depends(get_current_user)) -> dict:
+    """Клиент сообщает о просмотре экрана воронки (подписка, оплата, пейволл).
+
+    Только события из белого списка analytics.CLIENT_EVENTS; частота ограничена,
+    чтобы клиент не мог раздуть таблицу. Ответ всегда {"ok": true}.
+    """
+    name = str((data or {}).get("name") or "")[:40]
+    if name in analytics.CLIENT_EVENTS:
+        ok, _why = ratelimit.check(f"events:{user.telegram_id}", 30, 300)
+        if ok:
+            analytics.track(user.telegram_id, name)
+    return {"ok": True}
+
+
 @app.post("/payment/yookassa/create", response_model=YookassaCreateOut)
 def yookassa_create(
     data: YookassaCreateIn,
@@ -2633,6 +2658,8 @@ def yookassa_create(
             status_code=502, detail="Не удалось создать платёж. Попробуйте позже."
         )
 
+    if data.tariff != config.TEST_TARIFF:
+        analytics.track(user.telegram_id, "payment_create")
     return YookassaCreateOut(
         payment_id=created["id"], confirmation_url=created["confirmation_url"]
     )
@@ -4074,6 +4101,7 @@ def account_delete_data(
 
     # 3. Все таблицы, привязанные к telegram_id пользователя.
     for model in (
+        AppEvent,
         DiaryEntry,
         Workout,
         Supplement,
