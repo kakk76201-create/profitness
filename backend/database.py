@@ -64,9 +64,18 @@ if IS_EPHEMERAL_SQLITE:
         "В облаке (Railway) диск эфемерный: данные пользователей будут стираться "
         "при каждом деплое. Задайте DATABASE_URL со ссылкой на PostgreSQL."
     ) % DATABASE_URL
+    if _cloud and os.getenv("ALLOW_SQLITE_IN_PROD") != "1":
+        # НЕ просто предупреждение: с эфемерным SQLite приложение спокойно
+        # работает, принимает оплаты и фото — а при следующем деплое всё
+        # исчезает. Лучше упавший деплой, чем тихая потеря данных людей.
+        # ALLOW_SQLITE_IN_PROD=1 — аварийный выход, осознанно и временно.
+        raise RuntimeError(
+            _msg + " Старт остановлен, чтобы не потерять данные пользователей. "
+            "Если это осознанно (разовый прогон без БД) — ALLOW_SQLITE_IN_PROD=1."
+        )
     if _cloud:
         logger.error("=" * 70)
-        logger.error("!!! КРИТИЧНО: %s", _msg)
+        logger.error("!!! КРИТИЧНО: %s (разрешено ALLOW_SQLITE_IN_PROD=1)", _msg)
         logger.error("=" * 70)
     else:
         logger.info("Локальная разработка: %s", DATABASE_URL)
