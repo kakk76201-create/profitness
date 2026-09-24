@@ -87,6 +87,7 @@ from backend import (
     cycle,
     fitness,
     food_search,
+    legal,
     notifications,
     nutrition,
     ratelimit,
@@ -119,6 +120,7 @@ from backend.auth import get_current_user
 from backend.database import SessionLocal, get_db, init_db
 from backend.models import (
     AppEvent,
+    Consent,
     CycleLog,
     DiaryEntry,
     FavoriteFood,
@@ -150,6 +152,8 @@ from backend.schemas import (
     AnalyzeOut,
     CopyYesterdayIn,
     CycleLogIn,
+    ConsentIn,
+    ConsentOut,
     CycleStatusOut,
     DiaryDayOut,
     DiaryEntryIn,
@@ -588,7 +592,7 @@ def update_profile(
 # --------------------------------------------------------------------------- #
 #  Распознавание еды
 # --------------------------------------------------------------------------- #
-@app.post("/food/analyze", response_model=AnalyzeOut)
+@app.post("/food/analyze", response_model=AnalyzeOut, dependencies=[Depends(legal.require_ai_consent)])
 async def food_analyze(
     file: UploadFile = File(...),
     user: User = Depends(get_current_user),
@@ -664,7 +668,7 @@ async def food_analyze(
 # --------------------------------------------------------------------------- #
 #  Голосовой ввод еды (Этап 2): речь -> текст (Whisper) -> разбор блюд (GPT)
 # --------------------------------------------------------------------------- #
-@app.post("/food/voice", response_model=VoiceFoodOut)
+@app.post("/food/voice", response_model=VoiceFoodOut, dependencies=[Depends(legal.require_ai_consent)])
 async def food_voice(
     file: UploadFile = File(...),
     user: User = Depends(subscription.require_premium),
@@ -1070,7 +1074,7 @@ def workout_delete(
     return {"ok": True}
 
 
-@app.post("/workout/estimate", response_model=WorkoutEstimateOut)
+@app.post("/workout/estimate", response_model=WorkoutEstimateOut, dependencies=[Depends(legal.require_ai_consent)])
 def workout_estimate(
     data: WorkoutEstimateIn,
     user: User = Depends(subscription.require_premium),
@@ -1228,7 +1232,7 @@ async def food_search_route(
     )
 
 
-@app.post("/food/recommend", response_model=RecommendOut)
+@app.post("/food/recommend", response_model=RecommendOut, dependencies=[Depends(legal.require_ai_consent)])
 def food_recommend(
     data: RecommendIn,
     user: User = Depends(subscription.require_premium),
@@ -1282,7 +1286,7 @@ def food_recommend(
 # --------------------------------------------------------------------------- #
 #  Умный расчёт КБЖУ по названию/количеству (базовый дневник — БЕЗ премиума)
 # --------------------------------------------------------------------------- #
-@app.post("/food/calculate", response_model=FoodCalculateOut)
+@app.post("/food/calculate", response_model=FoodCalculateOut, dependencies=[Depends(legal.require_ai_consent)])
 def food_calculate(
     data: FoodCalculateIn,
     user: User = Depends(get_current_user),
@@ -1577,7 +1581,7 @@ def supplement_delete(
     return {"ok": True}
 
 
-@app.get("/supplement/suggest", response_model=SupplementSuggestOut)
+@app.get("/supplement/suggest", response_model=SupplementSuggestOut, dependencies=[Depends(legal.require_ai_consent)])
 def supplement_suggest(
     user: User = Depends(subscription.require_premium),
 ) -> SupplementSuggestOut:
@@ -1983,7 +1987,7 @@ def supplement_reminder_delete(
 # --------------------------------------------------------------------------- #
 #  Персональные рекомендации по спортпиту (ИИ, с учётом тренировок и цели)
 # --------------------------------------------------------------------------- #
-@app.post("/supplement/recommend", response_model=SupplementRecommendOut)
+@app.post("/supplement/recommend", response_model=SupplementRecommendOut, dependencies=[Depends(legal.require_ai_consent)])
 def supplement_recommend(
     data: SupplementRecommendIn,
     user: User = Depends(subscription.require_premium),
@@ -2076,7 +2080,7 @@ def supplement_recommend(
 # --------------------------------------------------------------------------- #
 #  Восстановление после тренировок (ИИ)
 # --------------------------------------------------------------------------- #
-@app.post("/recovery/advice", response_model=RecoveryAdviceOut)
+@app.post("/recovery/advice", response_model=RecoveryAdviceOut, dependencies=[Depends(legal.require_ai_consent)])
 def recovery_advice_route(
     data: RecoveryAdviceIn,
     user: User = Depends(subscription.require_premium),
@@ -3291,7 +3295,7 @@ def diary_copy_yesterday(
 #  подписки) и объявлены ВЫШЕ app.mount. При сбое ИИ отдаём 502 (как в остальных
 #  AI-роутах); при включённом DEBUG_AI добавляем причину и «сырой» ответ модели.
 # --------------------------------------------------------------------------- #
-@app.get("/report/weekly", response_model=WeeklyReportOut)
+@app.get("/report/weekly", response_model=WeeklyReportOut, dependencies=[Depends(legal.require_ai_consent)])
 def report_weekly(
     user: User = Depends(subscription.require_premium),
     db: Session = Depends(get_db),
@@ -3441,7 +3445,7 @@ def report_weekly(
     )
 
 
-@app.post("/meal-plan/generate", response_model=MealPlanOut)
+@app.post("/meal-plan/generate", response_model=MealPlanOut, dependencies=[Depends(legal.require_ai_consent)])
 def meal_plan_generate(
     data: MealPlanIn,
     user: User = Depends(subscription.require_premium),
@@ -3522,7 +3526,7 @@ def meal_plan_generate(
     return MealPlanOut(days=days, shopping_list=shopping_list)
 
 
-@app.post("/meal-plan/regenerate-item", response_model=RegenerateItemOut)
+@app.post("/meal-plan/regenerate-item", response_model=RegenerateItemOut, dependencies=[Depends(legal.require_ai_consent)])
 def meal_plan_regenerate_item(
     data: RegenerateItemIn,
     user: User = Depends(subscription.require_premium),
@@ -3566,7 +3570,7 @@ def meal_plan_regenerate_item(
     )
 
 
-@app.post("/food/suggest", response_model=FoodSuggestOut)
+@app.post("/food/suggest", response_model=FoodSuggestOut, dependencies=[Depends(legal.require_ai_consent)])
 def food_suggest(
     data: FoodSuggestIn,
     user: User = Depends(subscription.require_premium),
@@ -3627,7 +3631,7 @@ def food_suggest(
     return FoodSuggestOut(suggestions=suggestions, training_note=training_context)
 
 
-@app.get("/food/healthy-snacks", response_model=HealthySnacksOut)
+@app.get("/food/healthy-snacks", response_model=HealthySnacksOut, dependencies=[Depends(legal.require_ai_consent)])
 def food_healthy_snacks(
     user: User = Depends(subscription.require_premium),
     db: Session = Depends(get_db),
@@ -3748,7 +3752,7 @@ def cycle_status(
     return _build_cycle_status_out(log)
 
 
-@app.post("/cycle/log", response_model=CycleStatusOut)
+@app.post("/cycle/log", response_model=CycleStatusOut, dependencies=[Depends(legal.require_health_consent)])
 def cycle_log(
     data: CycleLogIn,
     user: User = Depends(subscription.require_premium),
@@ -3882,7 +3886,7 @@ def _progress_photo_out(photo: ProgressPhoto) -> ProgressPhotoOut:
     )
 
 
-@app.post("/progress/upload", response_model=ProgressPhotoOut)
+@app.post("/progress/upload", response_model=ProgressPhotoOut, dependencies=[Depends(legal.require_health_consent)])
 async def progress_upload(
     file: UploadFile = File(...),
     date: str | None = Form(None),
@@ -4131,11 +4135,189 @@ def account_delete_data(
             synchronize_session=False
         )
 
-    # 4. Сам профиль пользователя. При следующем входе будет создан заново (чистый).
+    # 4. Журнал согласий не стираем (он подтверждает правомерность обработки),
+    #    но фиксируем отзыв: при следующем входе человек согласится заново.
+    legal.revoke_all(db, tid)
+
+    # 5. Сам профиль пользователя. При следующем входе будет создан заново (чистый).
     db.query(User).filter(User.telegram_id == tid).delete(synchronize_session=False)
 
     db.commit()
     return {"ok": True, "deleted": True}
+
+
+# --------------------------------------------------------------------------- #
+#  Документы и согласия (152-ФЗ)
+#
+#  Маршрут документов объявлен ВЫШЕ app.mount: иначе статика отдала бы сырой
+#  фрагмент без оболочки и без реквизитов.
+# --------------------------------------------------------------------------- #
+@app.get("/legal/{name}.html", include_in_schema=False)
+def serve_legal(name: str):
+    """Страница документа: соглашение, политика, оферта, текст согласий.
+
+    Без авторизации: политику должно быть видно снаружи — её проверяют
+    платёжный сервис и надзорный орган. Имя сверяется с белым списком, поэтому
+    прочитать по этому пути посторонний файл нельзя.
+    """
+    from fastapi.responses import HTMLResponse
+
+    try:
+        page = legal.render(name)
+    except (KeyError, OSError):
+        raise HTTPException(status_code=404, detail="Not found")
+    return HTMLResponse(page, headers={"Cache-Control": "public, max-age=300"})
+
+
+def _consent_out(db: Session, tid: int) -> ConsentOut:
+    """Собрать ответ о согласиях (одинаков для GET и POST)."""
+    return ConsentOut(
+        version=config.LEGAL_VERSION,
+        date=config.LEGAL_DATE,
+        needs_consent=legal.needs_gate(db, tid),
+        required=list(legal.REQUIRED),
+        optional=list(legal.OPTIONAL),
+        state=legal.state(db, tid),
+        docs=legal.doc_urls(),
+    )
+
+
+@app.get("/consent", response_model=ConsentOut)
+def consent_status(
+    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> ConsentOut:
+    """Какие согласия человек дал и нужно ли показать экран согласий."""
+    return _consent_out(db, user.telegram_id)
+
+
+@app.post("/consent", response_model=ConsentOut)
+def consent_update(
+    data: ConsentIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ConsentOut:
+    """Записать решения человека (экран согласий и переключатели в профиле).
+
+    Присылать можно любое подмножество: не указанное остаётся как было.
+    Отзыв обязательного согласия разрешён — при следующем запуске снова
+    покажется экран согласий, а данные человек удаляет сам.
+    """
+    values = {k: v for k, v in data.model_dump().items() if v is not None}
+    if not values:
+        raise HTTPException(status_code=400, detail="Нечего сохранять")
+    legal.save(db, user.telegram_id, values)
+    return _consent_out(db, user.telegram_id)
+
+
+# --------------------------------------------------------------------------- #
+#  Выгрузка своих данных (право на доступ к копии, ст. 14 152-ФЗ)
+# --------------------------------------------------------------------------- #
+# Таблицы, которые попадают в выгрузку. Тот же список, что и при удалении,
+# плюс профиль, платежи и журнал согласий: человек имеет право видеть всё,
+# что о нём хранится.
+_EXPORT_MODELS = (
+    ("profile", User),
+    ("consents", Consent),
+    ("payments", Payment),
+    ("diary", DiaryEntry),
+    ("workouts", Workout),
+    ("weight", WeightLog),
+    ("supplements", Supplement),
+    ("supplement_reminders", SupplementReminder),
+    ("training_reminders", TrainingReminder),
+    ("favorites", FavoriteFood),
+    ("meal_templates", MealTemplate),
+    ("notification_settings", NotificationSettings),
+    ("cycle", CycleLog),
+    ("progress_photos", ProgressPhoto),
+    ("trainer_profile", TrainerProfile),
+    ("trainer_programs", TrainerProgram),
+    ("trainer_program_days", TrainerProgramDay),
+    ("trainer_sessions", TrainerSession),
+    ("trainer_session_exercises", TrainerSessionExercise),
+    ("trainer_sets", TrainerSetLog),
+    ("trainer_records", TrainerRecord),
+    ("trainer_exercise_states", TrainerExerciseState),
+    ("trainer_weekly_reviews", TrainerWeeklyReview),
+)
+
+
+def _export_value(value):
+    """Привести значение колонки к тому, что переживёт json.dumps."""
+    if isinstance(value, (datetime, date_cls)):
+        return value.isoformat()
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        # Сами снимки в JSON не кладём — файл раздуется до десятков мегабайт.
+        # Их человек скачивает в приложении по одному.
+        return f"<изображение, {len(bytes(value))} байт>"
+    return value
+
+
+def _collect_export(db: Session, tid: int) -> dict:
+    """Собрать все данные пользователя в один словарь."""
+    out = {
+        "telegram_id": tid,
+        "exported_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "app": "Fitness Up",
+        "legal_version": config.LEGAL_VERSION,
+        "note": (
+            "Выгрузка всех данных, которые хранит приложение. Фотографии "
+            "(еды и прогресса) в файл не включены из-за размера — их можно "
+            "скачать в приложении."
+        ),
+    }
+    for key, model in _EXPORT_MODELS:
+        rows = db.query(model).filter(model.telegram_id == tid).all()
+        items = [
+            {c.name: _export_value(getattr(row, c.name)) for c in model.__table__.columns}
+            for row in rows
+        ]
+        if key == "profile":
+            out[key] = items[0] if items else None
+        else:
+            out[key] = items
+    return out
+
+
+@app.post("/account/export")
+def account_export(
+    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> dict:
+    """Прислать человеку файл со всеми его данными в личные сообщения бота.
+
+    Отдавать файл прямо в ответ нельзя: мини-приложение живёт внутри Telegram,
+    где «скачать файл» работает не везде. Поэтому собираем JSON и отправляем
+    документом в тот же чат — он гарантированно дойдёт и сохранится.
+    """
+    tid = user.telegram_id
+    ok, _why = ratelimit.check(f"export:{tid}", 1, 5)
+    if not ok:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "rate_limited",
+                "message": "Выгрузку можно запросить раз в минуту и не чаще 5 раз в день.",
+            },
+        )
+
+    data = _collect_export(db, tid)
+    payload = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+    filename = f"fitness-up-data-{datetime.utcnow().date().isoformat()}.json"
+    sent = telegram_bot.send_document(
+        tid,
+        filename,
+        payload,
+        caption="Копия ваших данных из Fitness Up. Файл только для вас.",
+    )
+    if not sent:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "export_failed",
+                "message": "Не удалось отправить файл в Telegram. Попробуйте позже.",
+            },
+        )
+    return {"sent": True, "filename": filename, "bytes": len(payload)}
 
 
 # --------------------------------------------------------------------------- #

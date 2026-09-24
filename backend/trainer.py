@@ -32,7 +32,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from backend import ai_service, analytics, fitness, models as M, ratelimit, subscription, trainer_ai, trainer_logic
+from backend import ai_service, analytics, fitness, legal, models as M, ratelimit, subscription, trainer_ai, trainer_logic
 from backend.ai_service import AIError
 from backend.database import get_db
 from backend.models import User
@@ -878,7 +878,7 @@ def trainer_profile_get(
     return profile_out(get_profile_or_404(db, user.telegram_id))
 
 
-@router.post("/profile", response_model=TrainerProfileOut)
+@router.post("/profile", response_model=TrainerProfileOut, dependencies=[Depends(legal.require_health_consent)])
 def trainer_profile_save(
     data: TrainerProfileIn,
     user: User = Depends(subscription.require_premium),
@@ -1001,7 +1001,7 @@ def _ai_body_dict(user: User) -> dict:
     }
 
 
-@router.post("/program/generate", response_model=TrainerProgramOut)
+@router.post("/program/generate", response_model=TrainerProgramOut, dependencies=[Depends(legal.require_ai_consent)])
 def trainer_program_generate(
     data: TrainerGenerateIn,
     user: User = Depends(subscription.require_premium),
@@ -1225,6 +1225,11 @@ def trainer_exercise_get(
     cache = json_obj(exercise.technique_json)
     cached = cache.get(lang) if isinstance(cache.get(lang), dict) else None
     status = exercise.technique_status or "none"
+
+    # Без согласия на передачу за границу описание техники не запрашиваем:
+    # сам экран упражнения при этом открывается как обычно.
+    if technique and cached is None and not legal.granted(db, tid, "cross_border"):
+        technique = False
 
     if technique and cached is None:
         ratelimit.enforce_ai(tid)
@@ -2691,7 +2696,7 @@ def review_out(review, lang: str) -> TrainerWeeklyReviewOut:
 # --------------------------------------------------------------------------- #
 #  §4.5 Недельный разбор: генерация, чтение, применение
 # --------------------------------------------------------------------------- #
-@router.post("/review/weekly", response_model=TrainerWeeklyReviewOut)
+@router.post("/review/weekly", response_model=TrainerWeeklyReviewOut, dependencies=[Depends(legal.require_ai_consent)])
 def trainer_review_weekly(
     data: TrainerReviewIn,
     user: User = Depends(subscription.require_premium),
@@ -2837,7 +2842,7 @@ def day_nutrition_numbers(db: Session, user: User, day_iso: str) -> TrainerNutri
     )
 
 
-@router.get("/nutrition/today", response_model=TrainerNutritionTipOut)
+@router.get("/nutrition/today", response_model=TrainerNutritionTipOut, dependencies=[Depends(legal.require_ai_consent)])
 def trainer_nutrition_today(
     date: Optional[str] = Query(None, description="Локальная дата клиента, YYYY-MM-DD"),
     user: User = Depends(subscription.require_premium),

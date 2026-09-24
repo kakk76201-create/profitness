@@ -25,6 +25,9 @@ init_db()
 with TestClient(app):
     pass
 c = TestClient(app)
+# Согласия на обработку данных (152-ФЗ): без них закрыты функции с ИИ
+# и данными о здоровье — тест проверяет не их, поэтому даём сразу.
+c.post("/consent", json={"pd": True, "terms": True, "health": True, "cross_border": True})
 
 fails = []
 def chk(n, cond, x=""):

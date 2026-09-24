@@ -102,22 +102,52 @@ def _greeting_text(lang: str, name: str) -> str:
 
     name — имя пользователя (может быть пустым). HTML не используется, поэтому
     спецсимволы в имени безопасны для отправки как обычный текст.
+
+    В конце — ссылка на политику обработки данных: человек должен видеть её
+    до того, как начнёт что-то вводить, а не только внутри приложения.
     """
+    from backend import config as _config
+
+    base = (_config.MINI_APP_URL or "").rstrip("/")
+    privacy = f"{base}/legal/privacy.html" if base else ""
+
     if lang == "en":
-        return (
+        text = (
             (f"Hi, {name}! " if name else "Hi! ")
             + "This is the Fitness Up bot 🥗\n\n"
             "Open the mini app to count calories from photos, keep a food diary, "
             "track workouts and supplements.\n"
             "You can subscribe right inside the app."
         )
+        if privacy:
+            text += f"\n\nHow we handle your data: {privacy}"
+        return text
+
     # Русский вариант (по умолчанию) — без изменений относительно прежнего текста.
-    return (
+    text = (
         (f"Привет, {name}! " if name else "Привет! ")
         + "Это бот Fitness Up 🥗\n\n"
         "Открывайте мини-приложение, чтобы считать калории по фото, "
         "вести дневник питания, тренировки и спортпит.\n"
         "Оформить подписку можно прямо в приложении."
+    )
+    if privacy:
+        text += f"\n\nКак мы обращаемся с данными: {privacy}"
+    return text
+
+
+def _voice_consent_text(lang: str) -> str:
+    """Отказ, когда нет согласия на передачу данных за границу."""
+    if lang == "en":
+        return (
+            "Voice recognition runs on servers abroad. Open the app and allow "
+            "cross-border transfer in Profile → Data — after that send the voice "
+            "message again."
+        )
+    return (
+        "Распознавание голоса работает на серверах за границей. Откройте "
+        "приложение и включите согласие на передачу данных за границу в "
+        "«Профиль → Данные» — после этого пришлите голосовое ещё раз."
     )
 
 
@@ -351,6 +381,43 @@ def _download_file(file_path: str) -> bytes | None:
     except Exception as exc:
         logger.warning("_download_file: ошибка скачивания файла: %s", exc)
         return None
+
+
+def send_document(
+    chat_id: int, filename: str, content: bytes, caption: str = ""
+) -> bool:
+    """Отправить человеку файл в личные сообщения (метод sendDocument).
+
+    Используется для выгрузки персональных данных: внутри Telegram скачать
+    файл из мини-приложения удаётся не на всех платформах, а документ в чате
+    доходит всегда и остаётся в истории.
+
+    Файл уходит МНОГОЧАСТНОЙ формой (multipart), а не JSON, поэтому здесь
+    отдельный вызов, а не _bot_api. Возвращает True при успехе; исключений
+    наружу не бросает.
+    """
+    if not BOT_TOKEN or httpx is None or not content:
+        logger.warning("send_document: нет BOT_TOKEN/httpx/содержимого — пропуск")
+        return False
+
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
+    try:
+        resp = httpx.post(
+            url,
+            data={"chat_id": str(chat_id), "caption": caption[:1024]},
+            files={"document": (filename, content, "application/json")},
+            timeout=60,
+        )
+        data = resp.json() if resp.status_code == 200 else None
+        if isinstance(data, dict) and data.get("ok"):
+            return True
+        logger.warning(
+            "send_document: статус=%s ответ=%s", resp.status_code, (resp.text or "")[:300]
+        )
+        return False
+    except Exception as exc:  # noqa: BLE001 — выгрузка не должна валить запрос
+        logger.warning("send_document: ошибка отправки файла: %s", exc)
+        return False
 
 
 # --------------------------------------------------------------------------- #
@@ -979,6 +1046,14 @@ def _handle_voice_message(db, message: dict) -> None:
             "chat_id": chat_id,
             "text": _voice_premium_required_text(lang),
         })
+        return
+
+    # Голосовое уходит на распознавание за границу — ровно то же, что и в
+    # приложении, поэтому и согласие нужно то же (ст. 12 152-ФЗ).
+    from backend import legal as _legal
+
+    if not _legal.granted(db, from_id, "cross_border"):
+        _bot_api("sendMessage", {"chat_id": chat_id, "text": _voice_consent_text(lang)})
         return
 
     # --- Дальше работаем в защищённом блоке: любая ошибка -> вежливый ответ ---- #

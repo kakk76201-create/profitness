@@ -230,8 +230,21 @@ YOOKASSA_TAX_SYSTEM_CODE = int(os.getenv("YOOKASSA_TAX_SYSTEM_CODE", "0") or 0) 
 LEGAL_SELLER = os.getenv("LEGAL_SELLER", "").strip()
 LEGAL_INN = os.getenv("LEGAL_INN", "").strip()
 SUPPORT_CONTACT = os.getenv("SUPPORT_CONTACT", "").strip()
-OFFER_URL = os.getenv("OFFER_URL", "").strip()
-PRIVACY_URL = os.getenv("PRIVACY_URL", "").strip()
+
+# Документы приложение публикует само: /legal/terms.html, /legal/privacy.html,
+# /legal/offer.html, /legal/consent.html (тексты — frontend/legal/*.html,
+# реквизиты подставляются из переменных выше). OFFER_URL/PRIVACY_URL нужны
+# только если документы лежат ГДЕ-ТО ЕЩЁ — тогда они перекрывают свои.
+_SELF_LEGAL = (MINI_APP_URL or "").rstrip("/") + "/legal"
+OFFER_URL = os.getenv("OFFER_URL", "").strip() or (f"{_SELF_LEGAL}/offer.html" if MINI_APP_URL else "")
+PRIVACY_URL = os.getenv("PRIVACY_URL", "").strip() or (f"{_SELF_LEGAL}/privacy.html" if MINI_APP_URL else "")
+
+# Редакция документов и дата её публикации. Смена LEGAL_VERSION — команда
+# «переспросить всех»: обязательные согласия, данные на прошлую редакцию,
+# перестают действовать, и при следующем запуске человек увидит экран
+# согласий заново. Меняйте вместе с текстом документов, а не просто так.
+LEGAL_VERSION = os.getenv("LEGAL_VERSION", "1.0").strip() or "1.0"
+LEGAL_DATE = os.getenv("LEGAL_DATE", "24.09.2026").strip() or "24.09.2026"
 
 
 def cloudpayments_enabled() -> bool:

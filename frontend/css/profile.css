@@ -1704,3 +1704,47 @@
   min-height: 36px;
   line-height: 34px;
 }
+
+/* ---------- Документы и согласия (раздел «Данные») ---------- */
+.acc-docs {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: var(--s3);
+}
+
+.acc-doc-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  width: 100%;
+  min-height: var(--tap-min);
+  padding: var(--s2) 0;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  font: var(--fw-medium) var(--fs-body) / var(--lh-normal) var(--font-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.acc-doc-link:first-child {
+  border-top: none;
+}
+
+.acc-doc-link svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.acc-doc-link:active {
+  color: var(--accent-text);
+}
+
+.acc-consent-note {
+  margin: var(--s2) 0 var(--s4);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+}

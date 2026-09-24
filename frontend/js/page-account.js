@@ -683,9 +683,88 @@
     return html + "</div>";
   }
 
-  /** Тело раздела «Данные» — необратимое удаление аккаунта. */
+  /** Одна строка-переключатель необязательного согласия. */
+  function consentRowHtml(kind, title, hint) {
+    return notifRowHtml({
+      icon: kind === "health" ? "heart" : "infinity",
+      title: title,
+      hint: hint,
+      control: switchHtml("accConsent_" + kind, App.hasConsent(kind), title)
+    });
+  }
+
+  /**
+   * Тело раздела «Данные»: документы, согласия, копия данных и удаление.
+   *
+   * Всё, что закон даёт человеку в отношении его данных, собрано в одном
+   * месте: прочитать документы, включить и выключить необязательные согласия
+   * (152-ФЗ, ст. 9 ч. 2), получить копию и удалить всё (ст. 14).
+   */
   function dataBodyHtml() {
+    var docs = (App.consent && App.consent.docs) || {};
+    var links = [
+      ["privacy", L("Политика обработки данных", "Privacy policy")],
+      ["terms", L("Пользовательское соглашение", "Terms of use")],
+      ["offer", L("Публичная оферта", "Public offer")],
+      ["consent", L("Текст согласий", "Consent texts")]
+    ];
+    var linksHtml = "";
+    for (var i = 0; i < links.length; i++) {
+      linksHtml +=
+        '<button type="button" class="acc-doc-link" data-doc="' +
+        links[i][0] +
+        '">' +
+        esc(links[i][1]) +
+        icon("chevron", { size: 16 }) +
+        "</button>";
+    }
+
     return (
+      '<div class="acc-docs">' + linksHtml + "</div>" +
+
+      // ---- Необязательные согласия ----
+      consentRowHtml(
+        "health",
+        L("Данные о здоровье", "Health data"),
+        L(
+          "Травмы, цикл, фото прогресса. Выключите — перестанут работать тренер, трекер цикла и фото.",
+          "Injuries, cycle, progress photos. Switch off and the trainer, cycle tracker and photos stop working."
+        )
+      ) +
+      consentRowHtml(
+        "cross_border",
+        L("Передача данных ИИ-сервису", "Sending data to the AI service"),
+        L(
+          "Распознавание еды и советы работают на серверах в США. Выключите — фото, голос и советы ИИ отключатся.",
+          "Food recognition and advice run on servers in the USA. Switch off and photo, voice and AI advice turn off."
+        )
+      ) +
+      '<p class="acc-consent-note">' +
+      esc(
+        L(
+          "Записи при выключении согласия остаются у вас — их можно скачать или удалить ниже.",
+          "Switching a consent off keeps your records — you can download or delete them below."
+        )
+      ) +
+      "</p>" +
+
+      // ---- Копия данных ----
+      '<button type="button" class="btn btn--ghost btn-block" id="accExportData">' +
+      icon("inbox") +
+      "<span>" +
+      esc(L("Скачать мои данные", "Download my data")) +
+      "</span>" +
+      "</button>" +
+      '<p class="acc-danger-hint">' +
+      esc(
+        L(
+          "Файл со всеми вашими записями придёт сообщением от бота.",
+          "A file with all your records will arrive as a message from the bot."
+        )
+      ) +
+      "</p>" +
+
+      // ---- Удаление ----
       '<p class="acc-danger-hint">' +
       esc(
         L(
@@ -870,16 +949,97 @@
     if (window.confirm(message)) cb();
   }
 
+  /** Открыть документ браузером Telegram (или обычной вкладкой вне него). */
+  function openDoc(name) {
+    var docs = (App.consent && App.consent.docs) || {};
+    var url = docs[name] || "/legal/" + name + ".html";
+    try {
+      if (App.tg && typeof App.tg.openLink === "function") {
+        App.tg.openLink(url);
+        return;
+      }
+    } catch (e) {
+      /* ниже обычное открытие */
+    }
+    window.open(url, "_blank");
+  }
+
+  /**
+   * Переключатель необязательного согласия. Выключение НЕ удаляет записи:
+   * человек сначала решает, оставить их себе или удалить отдельной кнопкой.
+   * @param {string} kind "health" | "cross_border"
+   * @param {HTMLElement} sw
+   */
+  function onConsentToggle(kind, sw) {
+    var next = !App.hasConsent(kind);
+    var values = {};
+    values[kind] = next;
+    // Рисуем сразу, откатываем при ошибке — переключатель должен отвечать мгновенно.
+    sw.classList.toggle("acc-switch--on", next);
+    sw.setAttribute("aria-checked", next ? "true" : "false");
+    App.haptic("selection");
+    App.api
+      .saveConsent(values)
+      .then(function (state) {
+        App.consent = state;
+        App.toast(
+          next
+            ? L("Согласие сохранено", "Consent saved")
+            : L("Согласие отозвано", "Consent revoked")
+        );
+      })
+      .catch(function (err) {
+        var on = App.hasConsent(kind);
+        sw.classList.toggle("acc-switch--on", on);
+        sw.setAttribute("aria-checked", on ? "true" : "false");
+        App.haptic("error");
+        App.toast(err && err.message ? err.message : L("Ошибка", "Error"));
+      });
+  }
+
+  /** Запросить копию своих данных — файл придёт сообщением от бота. */
+  function onExportData(btn) {
+    btn.disabled = true;
+    App.api
+      .exportData()
+      .then(function () {
+        App.haptic("success");
+        App.toast(
+          L("Файл отправлен в чат с ботом", "The file was sent to the bot chat")
+        );
+      })
+      .catch(function (err) {
+        App.haptic("error");
+        App.toast(err && err.message ? err.message : L("Ошибка", "Error"));
+      })
+      .then(function () {
+        btn.disabled = false;
+      });
+  }
+
   /**
    * Обработчик кнопки «Удалить мои данные». Спрашивает подтверждение, затем
    * зовёт бэкенд-удаление и перезапускает приложение (чистый онбординг с нуля).
    * @param {HTMLElement} btn
    */
   function onDeleteData(btn) {
+    // Оплаченная подписка при удалении профиля сгорает без возврата —
+    // об этом нужно сказать прямо и с датой, а не общей фразой.
+    var sub = App.subscription || {};
+    var subLine = "";
+    if (sub.is_premium && !sub.is_owner) {
+      var until = sub.subscription_type === "lifetime" || !sub.subscription_until
+        ? L("бессрочная подписка", "your lifetime subscription")
+        : L("подписка до ", "your subscription until ") + formatUntil(sub.subscription_until);
+      subLine = L(
+        " Оплаченная " + until + " сгорит, деньги не возвращаются.",
+        " Your paid access (" + until + ") will be lost, with no refund."
+      );
+    }
     var msg = L(
-      "Удалить все ваши данные и профиль? Это действие необратимо, а активная подписка прекратится.",
-      "Delete all your data and profile? This cannot be undone and any active subscription will end."
-    );
+      "Удалить все ваши данные и профиль? Это действие необратимо: дневник, вес, тренировки, фото и настройки будут стёрты.",
+      "Delete all your data and profile? This cannot be undone: diary, weight, workouts, photos and settings will be erased."
+    ) + subLine;
     confirmDanger(msg, function () {
       if (btn) btn.disabled = true;
       App.showLoading();
@@ -3982,6 +4142,31 @@
             themeBtns[k].classList.toggle("acc-lang__btn--active", on);
             themeBtns[k].setAttribute("aria-pressed", on ? "true" : "false");
           }
+        });
+      }
+
+      // Документы и согласия (раздел «Данные»).
+      var docBtns = viewEl.querySelectorAll("[data-doc]");
+      for (var d = 0; d < docBtns.length; d++) {
+        docBtns[d].addEventListener("click", function () {
+          App.haptic("light");
+          openDoc(this.getAttribute("data-doc"));
+        });
+      }
+      ["health", "cross_border"].forEach(function (kind) {
+        var sw = viewEl.querySelector("#accConsent_" + kind);
+        if (sw) {
+          sw.addEventListener("click", function () {
+            onConsentToggle(kind, sw);
+          });
+        }
+      });
+
+      // Копия своих данных файлом в чат с ботом.
+      var expBtn = viewEl.querySelector("#accExportData");
+      if (expBtn) {
+        expBtn.addEventListener("click", function () {
+          onExportData(expBtn);
         });
       }
 

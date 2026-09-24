@@ -6636,3 +6636,128 @@ select.onb-field__input {
   line-height: 1.45;
   color: var(--text);
 }
+
+/* =====================================================================
+ *  ЭКРАН СОГЛАСИЙ (page-consent.js)
+ *
+ *  Первый экран, который человек видит при запуске. Он не должен выглядеть
+ *  как договор мелким шрифтом: крупный заголовок, четыре понятные строки с
+ *  галочками и одна кнопка. Сами документы открываются отдельной ссылкой.
+ * ===================================================================== */
+.page-consent {
+  padding: var(--s5) var(--gutter) var(--s6);
+}
+
+.cns-head h1 {
+  margin: var(--s1) 0 var(--s3);
+  font: var(--fw-bold) var(--fs-h1) / var(--lh-tight) var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-btn);
+}
+
+.cns-lead {
+  margin: 0 0 var(--s5);
+  color: var(--muted);
+  font-size: var(--fs-body);
+  line-height: var(--lh-normal);
+}
+
+.cns-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.cns-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s3);
+  padding: var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.cns-row--on {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.cns-check {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-top: 2px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--on-accent);
+  cursor: pointer;
+}
+
+.cns-row--on .cns-check {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.cns-row__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  min-width: 0;
+}
+
+.cns-row__title {
+  color: var(--text);
+  font: var(--fw-semibold) var(--fs-body) / var(--lh-normal) var(--font-body);
+}
+
+.cns-req {
+  color: var(--accent-text);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-eyebrow);
+  white-space: nowrap;
+}
+
+.cns-row__hint {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+}
+
+.cns-doc {
+  align-self: flex-start;
+  min-height: 32px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent-text);
+  font: var(--fw-medium) var(--fs-sm) / 1 var(--font-body);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.cns-error {
+  margin: var(--s3) 0 0;
+  color: var(--danger);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+}
+
+.cns-actions {
+  margin-top: var(--s5);
+}
+
+.cns-meta {
+  margin: var(--s3) 0 0;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  text-align: center;
+}

@@ -53,6 +53,10 @@
       legal: null
     },
 
+    // Состояние согласий на обработку данных (GET /consent). До загрузки —
+    // null: интерфейс ничего не блокирует сам, решает сервер.
+    consent: null,
+
     // Реестр зарегистрированных страниц: { name: controller }.
     _pages: {},
 
@@ -258,6 +262,11 @@
                 typeof data.detail.error === "string") {
               err.code = data.detail.error;
             }
+            // Функция упёрлась в выключенное согласие — показываем экран
+            // согласий, а не один лишь тост: иначе непонятно, что включить.
+            if (err.code === "consent_required") {
+              App.requestConsent(data && data.detail && data.detail.kind);
+            }
             throw err;
           }
 
@@ -318,6 +327,21 @@
     // Подтверждение авторизации и получение профиля (триггерит upsert на бэке).
     verify: function () {
       return request("/auth/verify", { method: "POST" });
+    },
+
+    // Состояние согласий на обработку данных (152-ФЗ) и ссылки на документы.
+    getConsent: function () {
+      return request("/consent");
+    },
+
+    // Сохранить отмеченные согласия. Присылаем только то, что меняем.
+    saveConsent: function (values) {
+      return request("/consent", { method: "POST", body: values });
+    },
+
+    // Копия всех своих данных: сервер присылает файл в чат с ботом.
+    exportData: function () {
+      return request("/account/export", { method: "POST" });
     },
 
     // Анализ фото еды. Принимает File, отправляет multipart/form-data.
@@ -1054,6 +1078,7 @@
    * Возврат с таких экранов — только их собственной кнопкой «Назад»/«Закрыть».
    */
   var TASK_PAGES = {
+    consent: true,
     "trainer-session": true,
     "trainer-onboarding": true,
     onboarding: true,
@@ -2036,31 +2061,17 @@
         return App.refreshSubscription();
       })
       .then(function () {
-        // Стартовая страница — «Сегодня»: один экран отвечает на вопрос
-        // «что у меня сейчас» (калории, тренировка дня, вес, серия) и ведёт
-        // в нужный раздел. Первый запуск без цели по калориям — мастер
-        // онбординга. Камеру на старте не открываем: иначе Telegram сразу
-        // спрашивает разрешение, ещё до того как человек понял, что это.
-        // Вернулись из браузера после оплаты (start_param=paid) или остался
-        // незавершённый платёж — проверяем его и открываем экран подписки,
-        // чтобы человек увидел результат, а не искал его по разделам.
-        var startParam = "";
-        try {
-          startParam = String((App.tg && App.tg.initDataUnsafe && App.tg.initDataUnsafe.start_param) || "");
-        } catch (e) {
-          startParam = "";
+        // Согласия спрашиваем ДО первого экрана: без них у приложения нет
+        // права обрабатывать записи человека. Сбой запроса не блокирует
+        // запуск — доступ всё равно проверяет сервер на каждом маршруте.
+        return App.refreshConsent();
+      })
+      .then(function () {
+        if (App.consent && App.consent.needs_consent) {
+          App.navigate("consent");
+          return;
         }
-        var resumed = App._resumePendingPayment();
-        if (
-          !App.state.profile ||
-          App.state.profile.daily_goal_kcal == null
-        ) {
-          App.navigate("onboarding");
-        } else if (resumed || startParam === "paid") {
-          App.navigate("subscription");
-        } else {
-          App.navigate("today");
-        }
+        App._startRouting();
       });
 
     // Приложение свернули на время оплаты и вернулись — проверяем платёж.
@@ -2073,6 +2084,96 @@
     } catch (e) {
       /* не критично */
     }
+  };
+
+  /**
+   * Куда идти после запуска (и после экрана согласий).
+   * Вынесено из App.init, чтобы согласия могли вернуть человека в тот же
+   * маршрут, а не в «Сегодня» мимо онбординга и результата оплаты.
+   */
+  App._startRouting = function () {
+    // Стартовая страница — «Сегодня»: один экран отвечает на вопрос
+    // «что у меня сейчас» (калории, тренировка дня, вес, серия) и ведёт
+    // в нужный раздел. Первый запуск без цели по калориям — мастер
+    // онбординга. Камеру на старте не открываем: иначе Telegram сразу
+    // спрашивает разрешение, ещё до того как человек понял, что это.
+    // Вернулись из браузера после оплаты (start_param=paid) или остался
+    // незавершённый платёж — проверяем его и открываем экран подписки,
+    // чтобы человек увидел результат, а не искал его по разделам.
+    var startParam = "";
+    try {
+      startParam = String((App.tg && App.tg.initDataUnsafe && App.tg.initDataUnsafe.start_param) || "");
+    } catch (e) {
+      startParam = "";
+    }
+    var resumed = App._resumePendingPayment();
+    if (
+      !App.state.profile ||
+      App.state.profile.daily_goal_kcal == null
+    ) {
+      App.navigate("onboarding");
+    } else if (resumed || startParam === "paid") {
+      App.navigate("subscription");
+    } else {
+      App.navigate("today");
+    }
+  };
+
+  /**
+   * Перечитать состояние согласий (best-effort: при сбое остаётся прежнее).
+   * @returns {Promise}
+   */
+  App.refreshConsent = function () {
+    return App.api
+      .getConsent()
+      .then(function (data) {
+        App.consent = data;
+        return data;
+      })
+      .catch(function (err) {
+        console.warn("Не удалось получить согласия: " + err.message);
+        return App.consent;
+      });
+  };
+
+  /**
+   * Действует ли согласие данного вида ("health" | "cross_border" | ...).
+   * Это ПОДСКАЗКА для интерфейса; настоящую проверку делает сервер.
+   * @param {string} kind
+   * @returns {boolean}
+   */
+  App.hasConsent = function (kind) {
+    var st = (App.consent && App.consent.state) || {};
+    return !!(st[kind] && st[kind].granted);
+  };
+
+  /**
+   * Открыть экран согласий из середины работы (ответ 403 consent_required)
+   * и запомнить, куда вернуться.
+   */
+  App.requestConsent = function (kind) {
+    if (App._current === "consent") return;
+    // Человек уже решал по этому виду и сказал «нет» — не тащим его на экран
+    // снова и снова при каждом открытии раздела: хватит тоста на странице.
+    var st = (App.consent && App.consent.state && App.consent.state[kind]) || null;
+    if (st && st.date && !st.granted) return;
+    App.state.consentReturn = App._current || null;
+    setTimeout(function () {
+      App.refreshConsent().then(function () {
+        App.navigate("consent");
+      });
+    }, 0);
+  };
+
+  /** Куда уйти после того, как человек сохранил согласия. */
+  App.afterConsent = function () {
+    var back = App.state.consentReturn;
+    App.state.consentReturn = null;
+    if (back && back !== "consent") {
+      App.navigate(back);
+      return;
+    }
+    App._startRouting();
   };
 
   /* =====================================================================

@@ -450,6 +450,29 @@ class AppEvent(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class Consent(Base):
+    """Журнал согласий на обработку персональных данных (152-ФЗ).
+
+    Только добавление: каждое «дал» и «отозвал» — отдельная строка, текущее
+    состояние = последняя запись по виду (см. backend/legal.py). Журнал
+    переживает удаление профиля: он подтверждает, что обработка велась с
+    согласия и когда оно было отозвано. Данных о здоровье в нём нет.
+    """
+
+    __tablename__ = "consents"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(BigInteger, index=True)
+    # Вид согласия: pd | terms | health | cross_border (legal.KINDS).
+    kind = Column(String, index=True)
+    granted = Column(Boolean, default=True)
+    # Редакция документов, на которую человек согласился (config.LEGAL_VERSION).
+    version = Column(String)
+    # Откуда пришло решение: app | account_deleted и т.п.
+    source = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Payment(Base):
     """
     Журнал успешных платежей за подписку.
