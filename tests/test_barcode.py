@@ -127,8 +127,10 @@ LABEL = {"kind": "label", "dish_name": "Сырок глазированный", 
 NOFOOD = {"kind": "dish", "dish_name": ai_service.NO_FOOD_NAME, "weight_grams": 0, "calories": 0,
           "proteins": 0, "fats": 0, "carbs": 0, "confidence": "high", "note": ""}
 
+before = scans_used()
 with patch("backend.main.analyze_food_image", lambda *a, **k: dict(NOFOOD)):
     r = c.post("/food/analyze", files={"file": ("m.jpg", barcode_jpeg(MISSING), "image/jpeg")})
+chk("ненайденный код: скан не списан", scans_used() == before, (before, scans_used()))
 chk("не найден: код в ответе для фронта", r.json().get("barcode") == MISSING and r.json().get("kind") == "dish", r.json())
 
 # Этикетка после ненайденного кода: фронт присылает продукт с кодом.
@@ -194,7 +196,10 @@ with patch.object(telegram_bot, "_bot_api", fake_api), \
     chk("бот: ИИ не звали", not ai_calls)
 
     calls.clear()
+    scans_before_unknown = scans_used()
     photo("unknown")
+    chk("бот: ненайденный код не списывает скан", scans_used() == scans_before_unknown,
+        (scans_before_unknown, scans_used()))
     texts = [p.get("text", "") for m, p in calls if m == "sendMessage"]
     chk("бот: код не найден — просим этикетку", any(FOURTH in t for t in texts), texts)
 

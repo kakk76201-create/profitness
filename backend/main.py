@@ -80,6 +80,7 @@ from PIL import Image, ImageOps
 from sqlalchemy.orm import Session
 
 from backend import (
+    ai_service,
     adaptive,
     analytics,
     cloudpayments,
@@ -684,7 +685,12 @@ async def food_analyze(
         raise HTTPException(status_code=502, detail=detail)
 
     # Скан успешно выполнен — фиксируем использование (для премиум ничего не делает).
-    subscription.record_scan(db, user)
+    # Исключение — снимок штрихкода, которого нет в базе: это не распознавание
+    # еды, а первый шаг «снимите этикетку», и платить за него сканом нечестно.
+    no_food = (result.get("dish_name") in (ai_service.NO_FOOD_NAME, ai_service.NO_FOOD_NAME_EN)
+               or not result.get("calories"))
+    if not (code and no_food):
+        subscription.record_scan(db, user)
     analytics.track(user.telegram_id, "scan_photo")
 
     # На одном фото и штрихкод, и этикетка — сразу пополняем общий каталог:

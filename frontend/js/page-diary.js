@@ -2028,6 +2028,10 @@
         "Не нашли? Введите своё блюдо и нажмите «Рассчитать КБЖУ».",
         "Not found? Type your own dish and tap “Calculate”."
       )) +
+      "</p>" +
+      // Данные базы — по лицензии ODbL: источник обязан быть указан.
+      '<p class="fsearch__credit">' +
+      App.escapeHtml(pick("Данные: Open Food Facts (ODbL)", "Data: Open Food Facts (ODbL)")) +
       "</p>";
 
     var list = box.querySelector(".fsearch__list");

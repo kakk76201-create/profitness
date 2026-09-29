@@ -550,8 +550,9 @@ def _gate(db, message: dict, need: str):
             ratelimit.enforce_ai(tid)
         elif need == "barcode":
             # Фото ещё не разобрано: если на нём штрихкод, ИИ не понадобится,
-            # и скан не тратится. Лимит скана проверим перед ИИ (_charge_scan).
-            ratelimit.enforce_search(tid)
+            # и скан не тратится. Здесь — только согласия; лимит поиска
+            # спишем, если код найдётся, лимит скана — перед ИИ (_charge_scan).
+            pass
         else:
             ratelimit.enforce_calc(tid, subscription.is_premium(user))
     except HTTPException as exc:
@@ -827,6 +828,12 @@ def handle_photo(db, message: dict) -> None:
     _typing(chat_id, "typing")
     code = barcode.decode(image)
     if code:
+        try:
+            ratelimit.enforce_search(user.telegram_id)
+        except HTTPException:
+            _send(chat_id, _t(lang, "Слишком много запросов подряд. Попробуйте через минуту.",
+                              "Too many requests in a row. Try again in a minute."))
+            return
         found = barcode.lookup(db, code, lang)
         if found:
             per = {k: float(found[k]) for k in ("calories", "proteins", "fats", "carbs")}
@@ -854,11 +861,16 @@ def handle_photo(db, message: dict) -> None:
                           "Couldn't recognize the photo. Try a clearer shot or describe it in text."))
         return
 
-    subscription.record_scan(db, user)
+    name = res.get("dish_name") or ""
+    no_food = name in (ai_service.NO_FOOD_NAME, ai_service.NO_FOOD_NAME_EN) or not res.get("calories")
+    # Снимок штрихкода, которого нет в базе, — не распознавание еды: скан не
+    # списываем, иначе человек платил бы двумя сканами (код + этикетка) за то,
+    # о чём мы сами его попросили.
+    if not (code and no_food):
+        subscription.record_scan(db, user)
     analytics.track(user.telegram_id, "bot_photo")
 
-    name = res.get("dish_name") or ""
-    if name in (ai_service.NO_FOOD_NAME, ai_service.NO_FOOD_NAME_EN) or not res.get("calories"):
+    if no_food:
         if code:
             # Штрихкод прочитан, но товара нет ни у нас, ни в открытой базе.
             _PENDING_CODES[user.telegram_id] = (code, datetime.utcnow().timestamp() + PENDING_CODE_SEC)

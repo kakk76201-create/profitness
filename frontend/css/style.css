@@ -6776,3 +6776,10 @@ select.onb-field__input {
   font-size: var(--fs-xs);
   text-align: center;
 }
+
+/* Атрибуция базы продуктов (лицензия ODbL требует указывать источник). */
+.fsearch__credit {
+  margin: var(--s1) 0 0;
+  color: var(--muted);
+  font-size: var(--fs-2xs);
+}
