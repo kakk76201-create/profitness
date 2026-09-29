@@ -246,11 +246,7 @@
    * @returns {string} breakfast | lunch | dinner | snack
    */
   function mealByHour() {
-    var h = new Date().getHours();
-    if (h < 11) return "breakfast";
-    if (h < 16) return "lunch";
-    if (h < 21) return "dinner";
-    return "snack";
+    return App.mealByHour();
   }
 
   /**

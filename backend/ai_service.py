@@ -1553,7 +1553,8 @@ PARSE_FOOD_SYSTEM_PROMPT = (
     '  "items" — массив блюд, по одному объекту на продукт: '
     '{"dish_name": строка на русском, "quantity": число (количество/вес), '
     '"unit": "pcs"|"g"|"ml"|"serving", "calories": целое ккал, "proteins": число г, '
-    '"fats": число г, "carbs": число г}.\n\n'
+    '"fats": число г, "carbs": число г, "amount_stated": true|false, '
+    '"added_fat_g": число г}.\n\n'
     "Правила:\n"
     '- "unit" — СТРОГО один из ключей: "pcs" (штучное: яйца, бананы, котлеты), '
     '"g" (весовое: хлеб, рис, мясо), "ml" (жидкое: молоко, сок), '
@@ -1568,6 +1569,13 @@ PARSE_FOOD_SYSTEM_PROMPT = (
     "- Учитывай количество/вес (штуки, граммы) при оценке.\n"
     "- Оценивай реалистично; для настоящей еды калории и БЖУ больше нуля.\n"
     "- Не добавляй того, чего нет в описании; если еды в тексте нет — items пустой.\n"
+    '- "amount_stated" — true, если количество этого продукта НАЗВАНО в описании '
+    "(«200 г», «два яйца», «стакан», «тарелка», «половина»); false, если назван только "
+    "продукт («гречка с котлетой») — тогда quantity — твоя оценка обычной порции.\n"
+    '- "added_fat_g" — сколько граммов масла/жира для ЖАРКИ или заправки ты заложил в '
+    "оценку этого блюда (жареная картошка, яичница, салат с маслом); 0 — если блюдо без "
+    "добавленного жира или в описании сказано, что без масла. Если количество масла "
+    "названо в описании явно — укажи его, а не своё предположение.\n"
     "- dish_name — на русском языке."
 )
 
@@ -1582,7 +1590,8 @@ PARSE_FOOD_SYSTEM_PROMPT_EN = (
     '  "items" — array of dishes, one object per product: '
     '{"dish_name": string in English, "quantity": number (count/weight), '
     '"unit": "pcs"|"g"|"ml"|"serving", "calories": integer kcal, "proteins": number g, '
-    '"fats": number g, "carbs": number g}.\n\n'
+    '"fats": number g, "carbs": number g, "amount_stated": true|false, '
+    '"added_fat_g": number g}.\n\n'
     "Rules:\n"
     '- "unit" must be STRICTLY one of the keys: "pcs" (countable: eggs, bananas, cutlets), '
     '"g" (by weight: bread, rice, meat), "ml" (liquid: milk, juice), '
@@ -1597,6 +1606,13 @@ PARSE_FOOD_SYSTEM_PROMPT_EN = (
     "- Take the stated quantity/weight (pieces, grams) into account.\n"
     "- Estimate realistically; for real food calories and macros are greater than zero.\n"
     "- Do not add anything not in the description; if there is no food — items is empty.\n"
+    '- "amount_stated" — true if the amount of this item IS STATED in the description '
+    '("200 g", "two eggs", "a glass", "a plate", "half"); false if only the food is named '
+    '("buckwheat with a cutlet") — then quantity is your estimate of a usual portion.\n'
+    '- "added_fat_g" — grams of oil/fat for FRYING or dressing you included in the '
+    "estimate of this dish (fried potatoes, fried eggs, salad with oil); 0 if the dish has "
+    "no added fat or the description says it was without oil. If the amount of oil is "
+    "stated explicitly, use it instead of your guess.\n"
     "- dish_name must be in English."
 )
 
@@ -1755,6 +1771,11 @@ def parse_food_text(text: str, lang: str = "ru") -> dict:
                 "proteins": _coerce_float(it.get("proteins")),
                 "fats": _coerce_float(it.get("fats")),
                 "carbs": _coerce_float(it.get("carbs")),
+                # Названо ли количество в самом описании (иначе это оценка
+                # модели — бот предложит уточнить) и сколько жира для жарки
+                # заложено в оценку (бот может спросить про масло).
+                "amount_stated": it.get("amount_stated") is True,
+                "added_fat_g": max(0.0, _coerce_float(it.get("added_fat_g"))),
             }
         )
 

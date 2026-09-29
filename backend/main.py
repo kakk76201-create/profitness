@@ -72,7 +72,7 @@ if DEV_MODE and IS_PRODUCTION:
 if DEBUG_AI and IS_PRODUCTION:
     logger.error("DEBUG_AI=1 в проде: сырые ответы модели уходят клиенту — выключите.")
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -120,6 +120,7 @@ from backend.auth import get_current_user
 from backend.database import SessionLocal, get_db, init_db
 from backend.models import (
     AppEvent,
+    BotMealDraft,
     Consent,
     CycleLog,
     DiaryEntry,
@@ -315,6 +316,20 @@ async def lifespan(app: FastAPI):
             trainer_seed.ensure_exercises(db)
     except Exception as exc:  # noqa: BLE001 — seed не должен валить старт
         logger.exception("Не удалось загрузить библиотеку упражнений тренера: %s", exc)
+
+    # Вебхук бота должен получать нажатия кнопок карточек еды. Проверка идёт
+    # в фоне (сеть не должна задерживать старт) и только в проде — локально и
+    # в тестах трогать настоящий вебхук нельзя.
+    if IS_PRODUCTION and os.getenv("BOT_WEBHOOK_AUTOFIX", "1") != "0":
+        import threading
+
+        def _fix_webhook():
+            try:
+                telegram_bot.ensure_webhook_updates()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("ensure_webhook_updates: %s", exc)
+
+        threading.Thread(target=_fix_webhook, daemon=True).start()
 
     # Планировщик пуш-уведомлений — НЕОБЯЗАТЕЛЬНАЯ часть. Любая его ошибка
     # не должна мешать старту API, поэтому оборачиваем в try/except.
@@ -2275,6 +2290,7 @@ def scans_remaining(
 @app.post("/telegram/webhook")
 async def telegram_webhook(
     request: Request,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
 ) -> dict:
     """Приём апдейтов бота от Telegram (webhook).
@@ -2298,8 +2314,14 @@ async def telegram_webhook(
 
     try:
         update = await request.json()
-        # Обработка синхронная (внутри бывают блокирующие вызовы OpenAI при
-        # голосовых). Выносим в threadpool, чтобы не морозить event loop.
+        # Еда в чате и кнопки карточек: ИИ думает секунды, а Telegram, не
+        # дождавшись ответа, повторяет доставку — приём пищи записался бы
+        # дважды. Подтверждаем сразу, обрабатываем после ответа.
+        if telegram_bot.is_background_update(update):
+            background.add_task(telegram_bot.process_update_in_background, update)
+            return {"ok": True}
+        # Остальное (оплаты, команды) — синхронно, но в threadpool, чтобы не
+        # морозить event loop.
         await run_in_threadpool(telegram_bot.handle_update, db, update)
     except telegram_bot.PaymentActivationError:
         # Оплата прошла, но активация не удалась — просим Telegram повторить
@@ -4106,6 +4128,7 @@ def account_delete_data(
     # 3. Все таблицы, привязанные к telegram_id пользователя.
     for model in (
         AppEvent,
+        BotMealDraft,
         DiaryEntry,
         Workout,
         Supplement,
@@ -4220,6 +4243,7 @@ _EXPORT_MODELS = (
     ("consents", Consent),
     ("payments", Payment),
     ("diary", DiaryEntry),
+    ("bot_meal_drafts", BotMealDraft),
     ("workouts", Workout),
     ("weight", WeightLog),
     ("supplements", Supplement),

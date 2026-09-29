@@ -48,6 +48,7 @@ from backend.models import User, ProGrant, DiaryEntry, Payment
 from backend import payment_providers
 from backend import subscription
 from backend import ai_service
+from backend import bot_food
 
 logger = logging.getLogger("telegram_bot")
 
@@ -136,21 +137,6 @@ def _greeting_text(lang: str, name: str) -> str:
     return text
 
 
-def _voice_consent_text(lang: str) -> str:
-    """Отказ, когда нет согласия на передачу данных за границу."""
-    if lang == "en":
-        return (
-            "Voice recognition runs on servers abroad. Open the app and allow "
-            "cross-border transfer in Profile → Data — after that send the voice "
-            "message again."
-        )
-    return (
-        "Распознавание голоса работает на серверах за границей. Откройте "
-        "приложение и включите согласие на передачу данных за границу в "
-        "«Профиль → Данные» — после этого пришлите голосовое ещё раз."
-    )
-
-
 def _payment_success_text(lang: str) -> str:
     """Текст подтверждения успешной оплаты на нужном языке."""
     if lang == "en":
@@ -209,40 +195,8 @@ def _validate_pre_checkout(pcq: dict) -> tuple[bool, str | None]:
 
 
 # --------------------------------------------------------------------------- #
-#  Локализация голосового ввода еды (Этап 2)
+#  Тексты еды в чате (сама логика — backend/bot_food.py)
 # --------------------------------------------------------------------------- #
-# Человекочитаемые названия приёмов пищи для сводки (RU / EN).
-_MEAL_TITLES = {
-    "ru": {
-        "breakfast": "завтрак",
-        "lunch": "обед",
-        "dinner": "ужин",
-        "snack": "перекус",
-    },
-    "en": {
-        "breakfast": "breakfast",
-        "lunch": "lunch",
-        "dinner": "dinner",
-        "snack": "snack",
-    },
-}
-
-
-def _voice_premium_required_text(lang: str) -> str:
-    """Вежливый отказ free-пользователю на голосовой ввод (нужна подписка)."""
-    if lang == "en":
-        return (
-            "🎤 Voice food logging is a premium feature.\n"
-            "Open Fitness Up to subscribe and add meals just by speaking."
-        )
-    # Русский вариант (по умолчанию).
-    return (
-        "🎤 Голосовой ввод еды — премиум-функция.\n"
-        "Откройте Fitness Up, оформите подписку — и добавляйте "
-        "приёмы пищи просто голосом."
-    )
-
-
 def _voice_error_text(lang: str) -> str:
     """Вежливое сообщение об ошибке обработки голосового (не распознали и т.п.)."""
     if lang == "en":
@@ -254,49 +208,6 @@ def _voice_error_text(lang: str) -> str:
     return (
         "😔 Не удалось обработать голосовое сообщение. "
         "Попробуйте ещё раз и опишите чуть чётче, что вы съели."
-    )
-
-
-def _voice_summary_text(lang: str, transcript: str, meal_type: str, items: list) -> str:
-    """
-    Собрать сводку по распознанному голосовому приёму пищи (RU / EN).
-
-    transcript — распознанный Whisper текст; meal_type — итоговый приём пищи
-    ("breakfast"/"lunch"/"dinner"/"snack"); items — список словарей блюд с
-    полями dish_name/calories. Возвращает готовый текст сообщения пользователю:
-    распознанный текст + список «блюдо — N ккал» + «Итого X ккал» + приём пищи.
-    """
-    meal_title = _MEAL_TITLES.get(lang, _MEAL_TITLES["ru"]).get(meal_type, meal_type)
-
-    # Итоговая калорийность по всем добавленным блюдам.
-    total = 0
-    lines = []
-    for it in items:
-        try:
-            cal = int(it.get("calories") or 0)
-        except Exception:
-            cal = 0
-        total += cal
-        name = str(it.get("dish_name") or "").strip() or ("dish" if lang == "en" else "блюдо")
-        if lang == "en":
-            lines.append(f"• {name} — {cal} kcal")
-        else:
-            lines.append(f"• {name} — {cal} ккал")
-
-    body = "\n".join(lines)
-    if lang == "en":
-        return (
-            f"🎤 Recognized: «{transcript}»\n\n"
-            f"{body}\n\n"
-            f"Total: {total} kcal\n"
-            f"Added to: {meal_title}."
-        )
-    # Русский вариант (по умолчанию).
-    return (
-        f"🎤 Распознано: «{transcript}»\n\n"
-        f"{body}\n\n"
-        f"Итого: {total} ккал\n"
-        f"Добавлено в приём: {meal_title}."
     )
 
 
@@ -978,182 +889,6 @@ def _handle_owner_command(db, message: dict, text: str) -> None:
 
 
 # --------------------------------------------------------------------------- #
-#  Голосовой ввод еды (Этап 2): voice / audio -> Whisper -> GPT -> дневник
-# --------------------------------------------------------------------------- #
-def _handle_voice_message(db, message: dict) -> None:
-    """
-    Обработать голосовое (voice) или аудио (audio) сообщение пользователя.
-
-    Сценарий (всё внутри try/except — сбой не валит обработку апдейта):
-      1) определяем отправителя и его язык;
-      2) проверяем премиум: free-пользователю вежливо отвечаем про подписку
-         и выходим (subscription.is_premium);
-      3) скачиваем файл (getFile -> file_path -> _download_file);
-      4) распознаём речь (ai_service.transcribe_audio) и парсим блюда
-         (ai_service.parse_food_text) на языке пользователя;
-      5) добавляем каждое блюдо в DiaryEntry за сегодня (meal_type из фразы,
-         либо "snack" по умолчанию), коммитим;
-      6) отправляем пользователю сводку на его языке (RU/EN).
-
-    При любой ошибке ИИ/скачивания — вежливое сообщение пользователю, без падения.
-    """
-    # --- 1) Отправитель и чат для ответа -------------------------------------- #
-    from_id = None
-    try:
-        from_id = int(message.get("from", {}).get("id"))
-    except Exception:
-        from_id = None
-
-    chat_id = None
-    try:
-        chat_id = message.get("chat", {}).get("id")
-    except Exception:
-        chat_id = None
-    if chat_id is None:
-        chat_id = from_id
-
-    if from_id is None or chat_id is None:
-        # Без отправителя/чата ответить и сохранить данные некуда.
-        return
-
-    # --- 2) Премиум-проверка -------------------------------------------------- #
-    # Ищем пользователя в БД. Язык: по User.language, а для незнакомого
-    # пользователя — по language_code из самого апдейта.
-    user = None
-    try:
-        user = db.query(User).filter(User.telegram_id == from_id).first()
-    except Exception as exc:
-        logger.warning("_handle_voice_message: ошибка поиска пользователя tid=%s: %s", from_id, exc)
-        try:
-            db.rollback()
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("Подавлено исключение: %r", exc)
-        user = None
-
-    if user is not None:
-        lang = _norm_lang(getattr(user, "language", None))
-    else:
-        lang_code = ""
-        try:
-            lang_code = message.get("from", {}).get("language_code", "") or ""
-        except Exception:
-            lang_code = ""
-        lang = _norm_lang(lang_code)
-
-    # Нет пользователя в БД или нет активной подписки — вежливый отказ.
-    if user is None or not subscription.is_premium(user):
-        _bot_api("sendMessage", {
-            "chat_id": chat_id,
-            "text": _voice_premium_required_text(lang),
-        })
-        return
-
-    # Голосовое уходит на распознавание за границу — ровно то же, что и в
-    # приложении, поэтому и согласие нужно то же (ст. 12 152-ФЗ).
-    from backend import legal as _legal
-
-    if not _legal.granted(db, from_id, "cross_border"):
-        _bot_api("sendMessage", {"chat_id": chat_id, "text": _voice_consent_text(lang)})
-        return
-
-    # --- Дальше работаем в защищённом блоке: любая ошибка -> вежливый ответ ---- #
-    try:
-        # --- 3) Достаём file_id из voice или audio и скачиваем файл ----------- #
-        voice = message.get("voice")
-        audio = message.get("audio")
-        media = voice if isinstance(voice, dict) else audio
-        file_id = None
-        if isinstance(media, dict):
-            file_id = media.get("file_id")
-        if not file_id:
-            logger.warning("_handle_voice_message: не найден file_id (tid=%s)", from_id)
-            _bot_api("sendMessage", {"chat_id": chat_id, "text": _voice_error_text(lang)})
-            return
-
-        file_info = _bot_api("getFile", {"file_id": file_id})
-        file_path = None
-        if isinstance(file_info, dict):
-            file_path = file_info.get("file_path")
-        if not file_path:
-            logger.warning("_handle_voice_message: getFile не вернул file_path (tid=%s)", from_id)
-            _bot_api("sendMessage", {"chat_id": chat_id, "text": _voice_error_text(lang)})
-            return
-
-        audio_bytes = _download_file(file_path)
-        if not audio_bytes:
-            logger.warning("_handle_voice_message: не удалось скачать файл (tid=%s)", from_id)
-            _bot_api("sendMessage", {"chat_id": chat_id, "text": _voice_error_text(lang)})
-            return
-
-        # --- 4) Распознавание речи и парсинг блюд ----------------------------- #
-        text = ai_service.transcribe_audio(audio_bytes, "voice.ogg", lang=lang)
-        parsed = ai_service.parse_food_text(text, lang=lang)
-
-        items = parsed.get("items") or []
-        if not items:
-            # GPT не выделил ни одного блюда — сообщаем пользователю.
-            _bot_api("sendMessage", {"chat_id": chat_id, "text": _voice_error_text(lang)})
-            return
-
-        # Приём пищи: из фразы, иначе "snack" по умолчанию.
-        meal_type = parsed.get("meal_type")
-        if meal_type not in ("breakfast", "lunch", "dinner", "snack"):
-            meal_type = "snack"
-
-        # --- 5) Добавляем каждое блюдо в дневник за сегодня ------------------- #
-        today = datetime.utcnow().date().isoformat()
-        added = []
-        for it in items:
-            try:
-                entry = DiaryEntry(
-                    telegram_id=from_id,
-                    date=today,
-                    meal_type=meal_type,
-                    dish_name=str(it.get("dish_name") or "").strip(),
-                    calories=int(it.get("calories") or 0),
-                    proteins=float(it.get("proteins") or 0),
-                    fats=float(it.get("fats") or 0),
-                    carbs=float(it.get("carbs") or 0),
-                )
-                db.add(entry)
-                added.append(it)
-            except Exception as exc:
-                logger.warning("_handle_voice_message: пропуск блюда %r: %s", it, exc)
-
-        if not added:
-            # Ничего не удалось добавить — откатываем и сообщаем об ошибке.
-            try:
-                db.rollback()
-            except Exception as exc:  # noqa: BLE001
-                logger.debug("Подавлено исключение: %r", exc)
-            _bot_api("sendMessage", {"chat_id": chat_id, "text": _voice_error_text(lang)})
-            return
-
-        db.commit()
-
-        # --- 6) Сводка пользователю на его языке ------------------------------ #
-        summary = _voice_summary_text(lang, text, meal_type, added)
-        _bot_api("sendMessage", {"chat_id": chat_id, "text": summary})
-
-    except ai_service.AIError as exc:
-        # Ошибка ИИ (нет речи / не распознали / GPT не ответил) — вежливый ответ.
-        logger.warning("_handle_voice_message: AIError (tid=%s): %s", from_id, exc)
-        try:
-            db.rollback()
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("Подавлено исключение: %r", exc)
-        _bot_api("sendMessage", {"chat_id": chat_id, "text": _voice_error_text(lang)})
-    except Exception as exc:
-        # Любой иной сбой — логируем, вежливо отвечаем, не падаем.
-        logger.warning("_handle_voice_message: общий сбой (tid=%s): %s", from_id, exc)
-        try:
-            db.rollback()
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("Подавлено исключение: %r", exc)
-        _bot_api("sendMessage", {"chat_id": chat_id, "text": _voice_error_text(lang)})
-
-
-# --------------------------------------------------------------------------- #
 #  Главный обработчик входящего апдейта (webhook)
 # --------------------------------------------------------------------------- #
 def handle_update(db, update: dict) -> None:
@@ -1189,14 +924,30 @@ def handle_update(db, update: dict) -> None:
                 _bot_api("answerPreCheckoutQuery", payload)
             return
 
+        # Нажатие кнопки на карточке еды («Добавить», «Обед», «150 г»…).
+        callback = update.get("callback_query")
+        if isinstance(callback, dict):
+            if str(callback.get("data") or "").startswith("f:"):
+                bot_food.handle_callback(db, callback)
+            elif callback.get("id"):
+                _bot_api("answerCallbackQuery", {"callback_query_id": callback["id"]})
+            return
+
         # Дальше работаем с message (обычное сообщение / событие оплаты).
         # Поддерживаем и edited_message: пользователь мог отредактировать команду.
+        # Еду из ИСПРАВЛЕННОГО сообщения не берём — иначе правка опечатки
+        # добавила бы тот же приём пищи второй раз.
         message = update.get("message")
+        is_edit = False
         if not isinstance(message, dict):
             message = update.get("edited_message")
+            is_edit = True
         if not isinstance(message, dict):
             # Нет сообщения — обрабатывать нечего.
             return
+        # Еда пишется только из личного чата с ботом, не из групп.
+        is_private = (message.get("chat") or {}).get("type", "private") == "private"
+        food_ok = is_private and not is_edit
 
         # РЕГИСТРАЦИЯ: любой контакт с ботом заносит пользователя в БД, чтобы
         # /givepro @username работал сразу после /start (не дожидаясь, пока
@@ -1272,11 +1023,14 @@ def handle_update(db, update: dict) -> None:
                 raise PaymentActivationError(str(exc))
             return
 
-        # --- 3) Голосовой / аудио ввод еды (премиум, Этап 2) ----------------- #
-        # Если в сообщении есть voice или audio — обрабатываем как голосовой
-        # ввод еды. Премиум-проверка и вся обработка — внутри _handle_voice_message.
+        # --- 3) Еда в чате: голос, фото (backend/bot_food.py) ---------------- #
         if isinstance(message.get("voice"), dict) or isinstance(message.get("audio"), dict):
-            _handle_voice_message(db, message)
+            if food_ok:
+                bot_food.handle_voice(db, message)
+            return
+        if bot_food.is_photo_message(message):
+            if food_ok:
+                bot_food.handle_photo(db, message)
             return
 
         # --- 4) Текстовые команды -------------------------------------------- #
@@ -1335,6 +1089,12 @@ def handle_update(db, update: dict) -> None:
                     _bot_api("sendMessage", msg)
                 return
 
+            # Любой другой текст без «/» — это еда: «гречка 200 г и котлета»
+            # или ответ на вопрос карточки («150»). Неизвестные команды молчат.
+            if food_ok and not stripped.startswith("/"):
+                bot_food.handle_text(db, message)
+                return
+
     except PaymentActivationError:
         # Сбой активации ПОСЛЕ оплаты — пробрасываем, чтобы вебхук вернул не-200
         # и Telegram повторил доставку (дедуп по charge_id защитит от дубля).
@@ -1346,3 +1106,114 @@ def handle_update(db, update: dict) -> None:
             db.rollback()
         except Exception as exc:  # noqa: BLE001
             logger.debug("Подавлено исключение: %r", exc)
+
+
+# --------------------------------------------------------------------------- #
+#  Фоновая обработка: еда в чате (ИИ думает секунды — Telegram ждать не должен)
+# --------------------------------------------------------------------------- #
+# Распознавание фото или голоса занимает 5–15 секунд. Пока вебхук не ответил,
+# Telegram не шлёт следующее сообщение этого чата, а при долгом ожидании
+# повторяет доставку — и приём пищи мог бы записаться дважды. Поэтому такие
+# апдейты вебхук подтверждает сразу, а обрабатывает после ответа.
+import threading as _threading
+from collections import OrderedDict as _OrderedDict
+
+_SEEN_UPDATES: "_OrderedDict[int, bool]" = _OrderedDict()
+_SEEN_LOCK = _threading.Lock()
+_USER_LOCKS: dict = {}
+
+
+def is_background_update(update: dict) -> bool:
+    """Нужно ли обработать апдейт в фоне (еда и кнопки), а не в самом вебхуке.
+
+    Оплаты и команды — синхронно: для оплаты важен ответ вебхука (при сбое
+    Telegram должен повторить доставку).
+    """
+    if not isinstance(update, dict):
+        return False
+    if isinstance(update.get("callback_query"), dict):
+        return True
+    message = update.get("message")
+    if not isinstance(message, dict) or message.get("successful_payment"):
+        return False
+    if isinstance(message.get("voice"), dict) or isinstance(message.get("audio"), dict):
+        return True
+    if bot_food.is_photo_message(message):
+        return True
+    text = message.get("text")
+    return isinstance(text, str) and bool(text.strip()) and not text.strip().startswith("/")
+
+
+def _already_seen(update_id) -> bool:
+    """Повторная доставка того же апдейта не должна добавить еду второй раз."""
+    if update_id is None:
+        return False
+    with _SEEN_LOCK:
+        if update_id in _SEEN_UPDATES:
+            return True
+        _SEEN_UPDATES[update_id] = True
+        while len(_SEEN_UPDATES) > 2000:
+            _SEEN_UPDATES.popitem(last=False)
+    return False
+
+
+def _user_lock(update: dict):
+    """Замок на пользователя: его сообщения обрабатываются строго по очереди.
+
+    Иначе фото и следующее за ним «и чай» разбирались бы параллельно и одно из
+    них потерялось бы при записи черновика.
+    """
+    src = update.get("callback_query") or update.get("message") or {}
+    tid = (src.get("from") or {}).get("id")
+    with _SEEN_LOCK:
+        lock = _USER_LOCKS.get(tid)
+        if lock is None:
+            lock = _threading.Lock()
+            _USER_LOCKS[tid] = lock
+    return lock
+
+
+def process_update_in_background(update: dict) -> None:
+    """Обработать апдейт после ответа вебхуку: своя сессия БД, свой замок."""
+    if _already_seen(update.get("update_id")):
+        return
+    from backend.database import SessionLocal
+
+    with _user_lock(update):
+        try:
+            with SessionLocal() as db:
+                handle_update(db, update)
+        except Exception as exc:  # noqa: BLE001 — фон не должен ронять процесс
+            logger.warning("process_update_in_background: %s", exc)
+
+
+# --------------------------------------------------------------------------- #
+#  Вебхук должен получать нажатия кнопок
+# --------------------------------------------------------------------------- #
+def ensure_webhook_updates() -> None:
+    """Добавить callback_query в allowed_updates вебхука, если его там нет.
+
+    Раньше вебхук регистрировали с allowed_updates=["message","pre_checkout_query"]:
+    при такой настройке Telegram просто не присылает нажатия кнопок, и карточки
+    еды «не нажимаются». Проверяем при старте и чиним сами — адрес вебхука не
+    меняем, секрет берём тот же, что проверяет /telegram/webhook.
+    """
+    from backend import config as _config
+
+    secret = _config.TELEGRAM_WEBHOOK_SECRET
+    if not BOT_TOKEN or not secret:
+        return
+    info = _bot_api("getWebhookInfo", {})
+    if not isinstance(info, dict) or not info.get("url"):
+        return
+    allowed = info.get("allowed_updates")
+    if not isinstance(allowed, list) or "callback_query" in allowed:
+        # Список не задан — Telegram и так присылает все основные типы.
+        return
+    wanted = sorted(set(allowed) | {"message", "pre_checkout_query", "callback_query"})
+    ok = _bot_api("setWebhook", {
+        "url": info["url"],
+        "secret_token": secret,
+        "allowed_updates": wanted,
+    })
+    logger.info("ensure_webhook_updates: allowed_updates -> %s (%s)", wanted, "ok" if ok else "ошибка")

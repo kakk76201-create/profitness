@@ -2529,6 +2529,20 @@
     return any ? Math.round(sum) : null;
   };
 
+  /**
+   * Приём пищи по часам: до 12 — завтрак, до 17 — обед, до 22 — ужин,
+   * позже — перекус. Те же границы у бота (bot_food.meal_by_time), чтобы
+   * еда из чата и из приложения попадала в один и тот же приём.
+   * @returns {string} breakfast | lunch | dinner | snack
+   */
+  App.mealByHour = function () {
+    var h = new Date().getHours();
+    if (h < 12) return "breakfast";
+    if (h < 17) return "lunch";
+    if (h < 22) return "dinner";
+    return "snack";
+  };
+
   // Публикуем объект приложения в глобальной области.
   window.App = App;
 })();

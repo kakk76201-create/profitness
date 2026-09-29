@@ -450,6 +450,38 @@ class AppEvent(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class BotMealDraft(Base):
+    """Черновик приёма пищи в чате с ботом (см. backend/bot_food.py).
+
+    Человек присылает боту фото, текст или голосовое — блюда копятся здесь,
+    пока он не нажмёт «Добавить». Состояние в базе, а не в памяти: вебхук
+    не хранит состояние между запросами, и перезапуск сервера не должен
+    терять начатый приём пищи. После добавления строка остаётся — в ней
+    id созданных записей дневника для кнопки «Отменить».
+    """
+
+    __tablename__ = "bot_meal_drafts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(BigInteger, index=True)
+    chat_id = Column(BigInteger)
+    # open — копится; added — записан в дневник; cancelled — отменён до
+    # записи; undone — записан, потом отменён кнопкой.
+    status = Column(String, default="open", index=True)
+    # Местная дата приёма "YYYY-MM-DD" (часовой пояс приложения).
+    date = Column(String)
+    # Приём пищи, выбранный явно (во фразе или кнопкой); None — по времени.
+    meal_type = Column(String, nullable=True)
+    # Блюда черновика (JSON-массив, формат — bot_food._item).
+    items_json = Column(Text, default="[]")
+    # Сообщение-карточка с кнопками, которое бот редактирует на месте.
+    card_message_id = Column(Integer, nullable=True)
+    # id записей дневника, созданных кнопкой «Добавить» (для «Отменить»).
+    entry_ids_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class Consent(Base):
     """Журнал согласий на обработку персональных данных (152-ФЗ).
 
