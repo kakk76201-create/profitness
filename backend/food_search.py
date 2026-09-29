@@ -41,7 +41,7 @@ SEARCH_URL = os.getenv("OFF_SEARCH_URL", "https://search.openfoodfacts.org/searc
 
 # User-Agent обязателен по правилам Open Food Facts.
 USER_AGENT = os.getenv(
-    "OFF_USER_AGENT", "CalorieMiniApp/1.0 (https://t.me/pro_f1t_bot)"
+    "OFF_USER_AGENT", "FitnessUp/1.0 (https://t.me/fitness_up_bot)"
 )
 
 # Таймаут внешнего запроса: лучше быстро отдать пустой список, чем держать юзера.

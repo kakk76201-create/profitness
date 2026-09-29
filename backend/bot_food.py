@@ -40,7 +40,7 @@ from datetime import datetime, timedelta
 
 from fastapi import HTTPException
 
-from backend import ai_service, analytics, config, legal, products, ratelimit, subscription
+from backend import ai_service, analytics, barcode, config, legal, products, ratelimit, subscription
 from backend.models import BotMealDraft, DiaryEntry, User
 
 logger = logging.getLogger("bot_food")
@@ -255,7 +255,7 @@ def _nice(x: float) -> float:
 def _qty_options(it: dict) -> list:
     unit = it.get("unit") or "serving"
     cur = float(it.get("qty") or 0)
-    if it.get("src") == "label":
+    if it.get("src") in ("label", "barcode"):
         # Продукт с упаковки: порции от половины сотни до целой пачки.
         opts = {50.0, 100.0, 150.0, 200.0}
         pack = float(it.get("pack_g") or 0)
@@ -344,8 +344,11 @@ def _card(draft: BotMealDraft, lang: str):
         kind, idx = q
         it = items[idx]
         name = html.escape(it["name"])
-        if kind == "qty" and it.get("src") == "label":
+        if kind == "qty" and it.get("src") in ("label", "barcode"):
             per = it.get("per100") or {}
+            if it.get("src") == "barcode":
+                text += "\n\n🔎 " + _t(lang, f"Найдено по штрихкоду {it.get('barcode') or ''}.",
+                                         f"Found by barcode {it.get('barcode') or ''}.")
             text += "\n\n🏷 " + _t(
                 lang,
                 f"КБЖУ с упаковки, на 100 г: {_fmt_num(per.get('calories'))} ккал · "
@@ -545,6 +548,10 @@ def _gate(db, message: dict, need: str):
         elif need == "photo":
             subscription.assert_scan_available(db, user)
             ratelimit.enforce_ai(tid)
+        elif need == "barcode":
+            # Фото ещё не разобрано: если на нём штрихкод, ИИ не понадобится,
+            # и скан не тратится. Лимит скана проверим перед ИИ (_charge_scan).
+            ratelimit.enforce_search(tid)
         else:
             ratelimit.enforce_calc(tid, subscription.is_premium(user))
     except HTTPException as exc:
@@ -759,9 +766,49 @@ def is_photo_message(message: dict) -> bool:
     return _photo_file_id(message)[0] is not None
 
 
+# Штрихкод, который не нашёлся: ждём фото этикетки, чтобы записать товар
+# в общий каталог под этим кодом. В памяти и ненадолго — после перезапуска
+# продукт просто сохранится без привязки к коду.
+_PENDING_CODES: dict = {}
+PENDING_CODE_SEC = 15 * 60
+
+
+def _pending_code(tid: int):
+    item = _PENDING_CODES.get(tid)
+    if item and item[1] > datetime.utcnow().timestamp():
+        return item[0]
+    _PENDING_CODES.pop(tid, None)
+    return None
+
+
+def _charge_scan(db, message: dict, user: User, lang: str) -> bool:
+    """Проверить бесплатный лимит фото перед ИИ. False — отказ уже отправлен."""
+    chat_id = message["chat"]["id"]
+    try:
+        subscription.assert_scan_available(db, user)
+        ratelimit.enforce_ai(user.telegram_id)
+    except HTTPException as exc:
+        btn = _app_button(lang, "Оформить подписку", "Subscribe")
+        if exc.status_code == 402:
+            _send(chat_id, _t(
+                lang,
+                f"Бесплатные распознавания фото на сегодня закончились ({config.FREE_SCAN_LIMIT} в день). "
+                "Напишите, что съели, текстом — это бесплатно, или оформите подписку. "
+                "Штрихкоды известных продуктов читаются без лимита.",
+                f"Today's free photo scans are used up ({config.FREE_SCAN_LIMIT} a day). "
+                "Type what you ate instead — that's free — or subscribe. "
+                "Barcodes of known products are read without a limit.",
+            ), [[btn]] if btn else None)
+        else:
+            _send(chat_id, _t(lang, "Слишком много запросов подряд. Попробуйте через минуту.",
+                              "Too many requests in a row. Try again in a minute."))
+        return False
+    return True
+
+
 def handle_photo(db, message: dict) -> None:
-    """Фото еды: распознать и положить в черновик (порцию можно уточнить)."""
-    gate = _gate(db, message, "photo")
+    """Фото: штрихкод → продукт из каталога; иначе ИИ (блюдо или этикетка)."""
+    gate = _gate(db, message, "barcode")
     if gate is None:
         return
     user, lang = gate
@@ -778,6 +825,27 @@ def handle_photo(db, message: dict) -> None:
         return
 
     _typing(chat_id, "typing")
+    code = barcode.decode(image)
+    if code:
+        found = barcode.lookup(db, code, lang)
+        if found:
+            per = {k: float(found[k]) for k in ("calories", "proteins", "fats", "carbs")}
+            products.upsert_personal(db, user.telegram_id, found["name"], per,
+                                     brand=found.get("brand") or "", barcode=code, source="barcode")
+            analytics.track(user.telegram_id, "scan_barcode")
+            it = _item(found["name"], 100, "g", per["calories"], per["proteins"], per["fats"],
+                       per["carbs"], stated=False, src="barcode", per100=per)
+            it["barcode"] = code
+            m = _GRAMS_RE.search(caption)
+            if m:
+                it["qty"] = float(m.group(1))
+                it["qty_done"] = True
+                _recalc(it)
+            _add_items(db, message, lang, [it], _meal_from_words(caption), caption)
+            return
+
+    if not _charge_scan(db, message, user, lang):
+        return
     try:
         res = ai_service.analyze_food_image(image, mime or "image/jpeg", lang)
     except (ai_service.AIError, RuntimeError) as exc:
@@ -791,6 +859,17 @@ def handle_photo(db, message: dict) -> None:
 
     name = res.get("dish_name") or ""
     if name in (ai_service.NO_FOOD_NAME, ai_service.NO_FOOD_NAME_EN) or not res.get("calories"):
+        if code:
+            # Штрихкод прочитан, но товара нет ни у нас, ни в открытой базе.
+            _PENDING_CODES[user.telegram_id] = (code, datetime.utcnow().timestamp() + PENDING_CODE_SEC)
+            _send(chat_id, _t(
+                lang,
+                f"Штрихкод {code} прочитал, но такого товара пока нет в базе. Сфотографируйте "
+                "таблицу КБЖУ на упаковке — запомню продукт, и в следующий раз он найдётся по штрихкоду.",
+                f"I read barcode {code}, but this product isn't in the database yet. Take a photo of the "
+                "nutrition table on the package — I'll remember it, and next time the barcode will work.",
+            ))
+            return
         _send(chat_id, _t(lang, "Не вижу на фото еды. Пришлите снимок блюда или напишите, что съели.",
                           "I don't see food in the photo. Send a photo of the dish or type what you ate."))
         return
@@ -799,7 +878,14 @@ def handle_photo(db, message: dict) -> None:
     if per:
         # Этикетка: цифры переписаны с упаковки. Сохраняем продукт в личный
         # список — в следующий раз он найдётся поиском по названию.
-        products.upsert_personal(db, user.telegram_id, name, per, source="label")
+        # Код с этого же фото или с предыдущего, не найденного: товар — в общий
+        # каталог, чтобы следующий скан этого штрихкода сработал сразу.
+        link_code = code or _pending_code(user.telegram_id)
+        products.upsert_personal(db, user.telegram_id, name, per, barcode=link_code, source="label")
+        if link_code:
+            products.save_shared(db, link_code, name, per, source="label")
+            barcode.forget_missing(link_code)
+            _PENDING_CODES.pop(user.telegram_id, None)
         it = _item(name, 100, "g", per.get("calories"), per.get("proteins"), per.get("fats"),
                    per.get("carbs"), stated=False, src="label", per100=per)
         it["pack_g"] = res.get("package_grams")

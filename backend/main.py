@@ -86,6 +86,7 @@ from backend import (
     config,
     cycle,
     fitness,
+    barcode,
     food_search,
     legal,
     products,
@@ -157,6 +158,7 @@ from backend.schemas import (
     CycleLogIn,
     ConsentIn,
     ConsentOut,
+    BarcodeOut,
     ProductIn,
     ProductListOut,
     CycleStatusOut,
@@ -624,12 +626,6 @@ async def food_analyze(
     бросит 402, если лимит исчерпан), а ПОСЛЕ успешного результата фиксируем
     использование (record_scan). Для премиум-пользователей лимита нет.
     """
-    # Проверяем лимит ДО любой тяжёлой работы: не читаем файл впустую и не
-    # дёргаем ИИ, если бесплатный лимит на сегодня уже исчерпан (бросит 402).
-    subscription.assert_scan_available(db, user)
-    # Дополнительный анти-абьюз лимит частоты AI-вызовов.
-    ratelimit.enforce_ai(user.telegram_id)
-
     # Читаем не больше лимита + 1 байт, чтобы поймать превышение размера.
     image_bytes = await file.read(MAX_UPLOAD_BYTES + 1)
     if not image_bytes:
@@ -642,6 +638,28 @@ async def food_analyze(
     mime = file.content_type or "image/jpeg"
     # Язык распознавания берём из профиля пользователя ("ru" по умолчанию).
     lang = user.language or "ru"
+
+    # Сначала — штрихкод: читается локально за миллисекунды. Нашёлся продукт —
+    # отдаём его КБЖУ на 100 г без ИИ и без траты бесплатного скана.
+    code = await run_in_threadpool(barcode.decode, image_bytes)
+    if code:
+        ratelimit.enforce_search(user.telegram_id)
+        found = await run_in_threadpool(barcode.lookup, db, code, lang)
+        if found:
+            analytics.track(user.telegram_id, "scan_barcode")
+            per = {k: float(found[k]) for k in ("calories", "proteins", "fats", "carbs")}
+            return AnalyzeOut(
+                kind="barcode", barcode=code, dish_name=found["name"],
+                calories=int(round(per["calories"])), proteins=per["proteins"],
+                fats=per["fats"], carbs=per["carbs"], note=found.get("brand") or "",
+                weight_grams=100, confidence="high", per_100g=per,
+            )
+
+    # Дальше — ИИ. Лимит проверяем здесь: бесплатный скан тратится только на
+    # распознавание, а не на найденный по штрихкоду продукт (402 при исчерпании).
+    subscription.assert_scan_available(db, user)
+    # Дополнительный анти-абьюз лимит частоты AI-вызовов.
+    ratelimit.enforce_ai(user.telegram_id)
     try:
         # Синхронный вызов OpenAI выносим в threadpool, чтобы не блокировать
         # event loop (иначе один скан морозит запросы всех пользователей).
@@ -669,6 +687,12 @@ async def food_analyze(
     subscription.record_scan(db, user)
     analytics.track(user.telegram_id, "scan_photo")
 
+    # На одном фото и штрихкод, и этикетка — сразу пополняем общий каталог:
+    # следующий, кто отсканирует этот товар, получит его без фото этикетки.
+    if code and result.get("kind") == "label" and result.get("per_100g"):
+        products.save_shared(db, code, result["dish_name"], result["per_100g"], source="label")
+        barcode.forget_missing(code)
+
     return AnalyzeOut(
         dish_name=result["dish_name"],
         calories=result["calories"],
@@ -682,6 +706,7 @@ async def food_analyze(
         kind=result.get("kind") or "dish",
         per_100g=result.get("per_100g"),
         package_grams=result.get("package_grams"),
+        barcode=code,
         # debug отдаём только в режиме отладки, чтобы не светить «сырой» ответ в проде.
         debug=result.get("_debug") if DEBUG_AI else None,
     )
@@ -1284,7 +1309,29 @@ def products_save(
     )
     if row is None:
         raise HTTPException(status_code=400, detail="Проверьте название и КБЖУ на 100 г")
+    # Этикетка сфотографирована после ненайденного штрихкода — товар попадает
+    # в общий каталог под этим кодом (только продукт и цифры, без владельца).
+    if source == "label" and products.clean_barcode(data.barcode):
+        products.save_shared(db, data.barcode, data.name, data.model_dump(),
+                             brand=data.brand or "", source="label")
+        barcode.forget_missing(products.clean_barcode(data.barcode))
     return FoodSearchItem(**products.to_item(row))
+
+
+@app.get("/food/barcode/{code}", response_model=BarcodeOut)
+def food_barcode(
+    code: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> BarcodeOut:
+    """Продукт по штрихкоду (живой сканер на Android читает код сам)."""
+    clean = products.clean_barcode(code)
+    if not clean:
+        raise HTTPException(status_code=400, detail="Неверный штрихкод")
+    ratelimit.enforce_search(user.telegram_id)
+    found = barcode.lookup(db, clean, user.language or "ru")
+    if found:
+        analytics.track(user.telegram_id, "scan_barcode")
+    return BarcodeOut(barcode=clean, found=bool(found),
+                      product=FoodSearchItem(**found) if found else None)
 
 
 @app.delete("/products/{product_id}")

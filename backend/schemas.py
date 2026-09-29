@@ -82,6 +82,10 @@ class AnalyzeOut(BaseModel):
     kind: str = "dish"
     per_100g: Optional[Dict[str, float]] = None
     package_grams: Optional[int] = None      # масса нетто упаковки, если видна
+    # Штрихкод, найденный на фото. kind="barcode" — продукт найден по нему
+    # (значения на 100 г, без ИИ); при kind="dish" код не нашёлся в базах —
+    # фронт предложит сфотографировать этикетку и запомнит код.
+    barcode: Optional[str] = None
     # Отладочные данные (сырой ответ модели и т.п.) — заполняются только
     # при включённом DEBUG_AI, иначе None и не мешают в проде.
     debug: Optional[Dict[str, Any]] = None
@@ -209,6 +213,14 @@ class ProductIn(BaseModel):
 
 class ProductListOut(BaseModel):
     items: List["FoodSearchItem"] = []
+
+
+class BarcodeOut(BaseModel):
+    """Поиск продукта по штрихкоду."""
+
+    barcode: str
+    found: bool = False
+    product: Optional["FoodSearchItem"] = None
 
 
 class FoodSearchOut(BaseModel):

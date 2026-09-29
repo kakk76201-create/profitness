@@ -35,7 +35,9 @@
  *      вторым затвором служила кнопка камеры в таббаре, и её повторный тап
  *      звал reset(), стирая кадр вместе со всеми правками полей. Кнопки в
  *      таббаре больше нет; сбрасывать снимок имеют право только явные
- *      «Снять заново» / «Отмена» на самом экране.
+ *      «Снять заново» / «Отмена» на самом экране. Автоснимок живого сканера
+ *      штрихкодов (watchBarcode) работает только на экране камеры, до
+ *      снимка, и сам ничего не сбрасывает — он лишь нажимает тот же затвор.
  *   2. ИСЧЕРПАННЫЙ ЛИМИТ (402) НЕ СТИРАЕТ КАДР. renderScanLimit сохраняет
  *      файл и превью (pending), а пейволл рисует поверх снимка. Кадр переживает
  *      уход на страницу подписки и возврат — после оплаты анализ продолжается
@@ -757,7 +759,11 @@
           '<p class="scan-cam-hint" id="scan-cam-hint">' +
             esc(
               mode === "live"
-                ? L("Наведите на блюдо и нажмите круглую кнопку", "Point at your dish and tap the round button")
+                ? (barcodeLiveSupported()
+                  ? L("Блюдо, этикетка КБЖУ или штрихкод. Штрихкод поймаю сам — просто поднесите",
+                      "A dish, a nutrition label or a barcode. I'll catch a barcode myself — just bring it close")
+                  : L("Блюдо, этикетка КБЖУ или штрихкод — наведите и нажмите круглую кнопку",
+                      "A dish, a nutrition label or a barcode — point and tap the round button"))
                 : L("Снимок можно сделать после доступа к камере", "You can take a photo once the camera is allowed")
             ) +
           "</p>" +
@@ -814,6 +820,50 @@
 
     // Подгружаем актуальный остаток сканирований (best-effort) — обновит счётчик.
     loadScansRemaining();
+  }
+
+  // Умеет ли браузер сам находить штрихкоды в видео (Chrome на Android —
+  // да; Safari на iPhone — нет, там код читает сервер по снимку).
+  function barcodeLiveSupported() {
+    return typeof window.BarcodeDetector === "function";
+  }
+
+  // Следит за видео и, увидев КРУПНЫЙ товарный штрихкод, снимает кадр сам.
+  // «Крупный» — шире четверти кадра: так сканер не срабатывает на упаковку,
+  // случайно попавшую в кадр рядом с тарелкой. Дальше — обычный путь снимка:
+  // сервер прочитает тот же код и найдёт продукт.
+  function watchBarcode(token) {
+    if (!barcodeLiveSupported()) return;
+    var detector;
+    try {
+      detector = new window.BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e"] });
+    } catch (e) {
+      return;
+    }
+    var busy = false;
+    var timer = setInterval(function () {
+      var v = cam.video;
+      if (token !== cam.token || !cam.live || !v) {
+        clearInterval(timer);
+        return;
+      }
+      if (busy || v.readyState < 2 || !v.videoWidth) return;
+      busy = true;
+      detector
+        .detect(v)
+        .then(function (codes) {
+          busy = false;
+          if (token !== cam.token || !cam.live || !codes || !codes.length) return;
+          var box = codes[0].boundingBox || {};
+          if ((box.width || 0) < v.videoWidth * 0.25) return;
+          clearInterval(timer);
+          haptic("success");
+          if (!captureFromVideo()) shutter();
+        })
+        .catch(function () {
+          busy = false;
+        });
+    }, 400);
   }
 
   // Спуск затвора: снимает кадр с живого видео. Единственный вызов — кнопка
@@ -903,6 +953,9 @@
         // Поток подключён — только теперь затвор имеет смысл.
         cam.live = true;
         camShutterReady();
+        // Где браузер умеет читать штрихкоды сам (Android), ловим код прямо
+        // из видео и снимаем кадр без нажатия.
+        watchBarcode(myToken);
         // play() может вернуть промис, который отклоняется в фоне — гасим.
         try {
           var p = videoEl.play();
@@ -1049,15 +1102,18 @@
     // Поле веса порции показываем всегда; если исходный вес неизвестен —
     // пропорциональный пересчёт не делаем, разрешая ручное редактирование значений.
     var hasBaseWeight = state.base && num(state.base.weight) > 0;
-    var isLabel = r.kind === "label" && r.per100;
+    var isLabel = (r.kind === "label" || r.kind === "barcode") && r.per100;
     var weightHintHtml = isLabel
       ? '<p class="scan-edit-hint scan-label-hint">' +
+          esc(r.kind === "barcode"
+            ? L("Найдено по штрихкоду " + (r.barcode || "") + ". ", "Found by barcode " + (r.barcode || "") + ". ")
+            : "") +
           esc(L(
-            "С упаковки, на 100 г: " + fmt1(r.per100.calories) + " ккал · Б " +
+            (r.kind === "barcode" ? "На 100 г: " : "С упаковки, на 100 г: ") + fmt1(r.per100.calories) + " ккал · Б " +
               fmt1(r.per100.proteins) + " · Ж " + fmt1(r.per100.fats) + " · У " +
               fmt1(r.per100.carbs) + ". Введите, сколько граммов съели — остальное посчитается. " +
               "Продукт сохранится в «Мои продукты».",
-            "From the label, per 100 g: " + fmt1(r.per100.calories) + " kcal · P " +
+            (r.kind === "barcode" ? "Per 100 g: " : "From the label, per 100 g: ") + fmt1(r.per100.calories) + " kcal · P " +
               fmt1(r.per100.proteins) + " · F " + fmt1(r.per100.fats) + " · C " +
               fmt1(r.per100.carbs) + ". Enter how many grams you ate — the rest is calculated. " +
               "The product will be saved to My products."
@@ -1367,6 +1423,31 @@
     if (carbEl) carbEl.addEventListener("input", function () { onMacroInput("carbs", carbEl); });
   }
 
+  // --- Штрихкод прочитан, но товара нет в базе ---
+  function renderBarcodeMissing(code) {
+    if (App && typeof App.scrollTop === "function") App.scrollTop();
+    viewEl.innerHTML =
+      '<section class="page page-scan">' +
+        headHtml(L("Штрихкод", "Barcode")) +
+        '<div class="card scan-barcode-miss">' +
+          '<p class="eyebrow">' + esc(code) + "</p>" +
+          "<h2>" + esc(L("Этого товара пока нет в базе", "This product isn't in the database yet")) + "</h2>" +
+          "<p>" + esc(L(
+            "Сфотографируйте таблицу КБЖУ на упаковке. Продукт сохранится в «Мои продукты» и в общий каталог — в следующий раз этот штрихкод найдётся сразу.",
+            "Take a photo of the nutrition table on the package. The product will be saved to My products and the shared catalog — next time this barcode will be found right away."
+          )) + "</p>" +
+        "</div>" +
+        '<button type="button" class="btn btn-cta btn-block" id="scan-barcode-label">' +
+          icon("camera", { size: 18 }) +
+          "<span>" + esc(L("Снять этикетку", "Photograph the label")) + "</span>" +
+        "</button>" +
+      "</section>";
+    viewEl.querySelector("#scan-barcode-label").addEventListener("click", function () {
+      haptic("light");
+      reset();
+    });
+  }
+
   // --- Экран ошибки (с возможностью повтора) ---
   // mode: "analyze" — повтор анализа того же файла; "upload" — вернуться к выбору.
   function renderError(message, mode) {
@@ -1649,9 +1730,23 @@
         // записал бы ровно 100 г.
         state.result.kind = "dish";
         state.result.per100 = null;
-        if (res && res.kind === "label" && res.per_100g) {
+        state.result.barcode = (res && res.barcode) || null;
+
+        // Штрихкод прочитан, но товара нет ни у нас, ни в открытой базе:
+        // просим снять таблицу КБЖУ и запоминаем код — продукт сохранится
+        // под ним, и следующий скан этого товара сработает сразу.
+        if (res && res.barcode && res.kind === "dish" && !(num(res.calories) > 0)) {
+          App.state.pendingBarcode = { code: res.barcode, at: Date.now() };
+          renderBarcodeMissing(res.barcode);
+          loadScansRemaining();
+          return;
+        }
+
+        // Этикетка (цифры с упаковки) или продукт по штрихкоду (из базы) —
+        // в обоих случаях есть КБЖУ на 100 г, и остаётся ввести граммы.
+        if (res && (res.kind === "label" || res.kind === "barcode") && res.per_100g) {
           var per = res.per_100g;
-          state.result.kind = "label";
+          state.result.kind = res.kind;
           state.result.per100 = {
             calories: num(per.calories), proteins: num(per.proteins),
             fats: num(per.fats), carbs: num(per.carbs)
@@ -1740,7 +1835,7 @@
     }
 
     var r = state.result || {};
-    var isLabel = r.kind === "label" && r.per100;
+    var isLabel = (r.kind === "label" || r.kind === "barcode") && r.per100;
     if (isLabel && !(num(e.weight) > 0)) {
       haptic("warning");
       toast(L("Введите, сколько граммов съели", "Enter how many grams you ate"));
@@ -1779,14 +1874,21 @@
         // человека) значений. Тихо: запись в дневник уже состоялась.
         if (isLabel && App.api.saveProduct && weightVal > 0) {
           var k = 100 / weightVal;
+          // Штрихкод: с этого фото или с предыдущего, не найденного (не
+          // старше 15 минут) — тогда товар попадёт и в общий каталог.
+          var pend = App.state && App.state.pendingBarcode;
+          var code = r.barcode ||
+            (pend && Date.now() - pend.at < 15 * 60 * 1000 ? pend.code : "");
           App.api.saveProduct({
             name: dishName,
+            barcode: code || null,
             calories: Math.round(entry.calories * k * 10) / 10,
             proteins: Math.round(entry.proteins * k * 10) / 10,
             fats: Math.round(entry.fats * k * 10) / 10,
             carbs: Math.round(entry.carbs * k * 10) / 10,
-            source: "label"
+            source: r.kind === "barcode" ? "barcode" : "label"
           }).catch(function () {});
+          if (App.state) App.state.pendingBarcode = null;
         }
         toast(
           L("Добавлено в рацион: ", "Added to diary: ") + mealLabel(state.mealType)

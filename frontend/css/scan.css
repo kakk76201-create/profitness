@@ -796,3 +796,28 @@
     gap: var(--s1);
   }
 }
+
+/* ---------- Штрихкод прочитан, товара нет в базе ---------- */
+.scan-barcode-miss {
+  padding: var(--s5) var(--s4);
+  margin-bottom: var(--s4);
+}
+
+.scan-barcode-miss .eyebrow {
+  margin: 0 0 var(--s2);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.scan-barcode-miss h2 {
+  margin: 0 0 var(--s3);
+  font: var(--fw-bold) var(--fs-h2) / var(--lh-heading) var(--font-display);
+  text-transform: uppercase;
+}
+
+.scan-barcode-miss p:last-child {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-body);
+  line-height: var(--lh-normal);
+}
