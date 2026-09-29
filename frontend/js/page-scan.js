@@ -255,6 +255,13 @@
     return isFinite(num) ? String(Math.round(num)) : "0";
   }
 
+  // Число с одним знаком после запятой (3,5 г углеводов с этикетки не
+  // должны превращаться в 4).
+  function fmt1(n) {
+    var v = Math.round(num(n) * 10) / 10;
+    return String(v).replace(".", App && App.lang === "en" ? "." : ",");
+  }
+
   // Безопасное приведение к числу (для значений из input/анализа).
   function num(v) {
     var n = Number(v);
@@ -1014,7 +1021,7 @@
     var conf = r.confidence;
     var confHtml = "";
     var confLabel = confidenceLabel(conf);
-    if (conf && confLabel) {
+    if (conf && confLabel && r.kind !== "label") {
       confHtml =
         '<div class="scan-edit-confidence scan-edit-confidence--' + esc(conf) + '">' +
           '<span class="scan-edit-confidence__label">' +
@@ -1042,7 +1049,21 @@
     // Поле веса порции показываем всегда; если исходный вес неизвестен —
     // пропорциональный пересчёт не делаем, разрешая ручное редактирование значений.
     var hasBaseWeight = state.base && num(state.base.weight) > 0;
-    var weightHintHtml = hasBaseWeight
+    var isLabel = r.kind === "label" && r.per100;
+    var weightHintHtml = isLabel
+      ? '<p class="scan-edit-hint scan-label-hint">' +
+          esc(L(
+            "С упаковки, на 100 г: " + fmt1(r.per100.calories) + " ккал · Б " +
+              fmt1(r.per100.proteins) + " · Ж " + fmt1(r.per100.fats) + " · У " +
+              fmt1(r.per100.carbs) + ". Введите, сколько граммов съели — остальное посчитается. " +
+              "Продукт сохранится в «Мои продукты».",
+            "From the label, per 100 g: " + fmt1(r.per100.calories) + " kcal · P " +
+              fmt1(r.per100.proteins) + " · F " + fmt1(r.per100.fats) + " · C " +
+              fmt1(r.per100.carbs) + ". Enter how many grams you ate — the rest is calculated. " +
+              "The product will be saved to My products."
+          )) +
+        "</p>"
+      : hasBaseWeight
       ? '<p class="scan-edit-hint">' +
           esc(L(
             "При изменении веса калории и БЖУ пересчитываются автоматически.",
@@ -1088,10 +1109,12 @@
                 'value="' + esc(e.dish_name == null ? "" : e.dish_name) + '" ' +
                 'placeholder="' + esc(L("Название блюда", "Dish name")) + '" maxlength="120">' +
             "</label>" +
-            // Вес порции (граммы).
+            // Вес порции (граммы). Для этикетки — «сколько съели».
             '<label class="field scan-edit-field scan-edit-field--weight">' +
               '<span class="field__label">' +
-                esc(L("Вес порции, г", "Serving weight, g")) +
+                esc(isLabel
+                  ? L("Сколько съели, г", "How much you ate, g")
+                  : L("Вес порции, г", "Serving weight, g")) +
               "</span>" +
               '<input type="number" inputmode="decimal" min="0" step="1" ' +
                 'class="field__input scan-edit-input scan-edit-input--num" id="scan-edit-weight" ' +
@@ -1159,6 +1182,14 @@
       "</section>";
 
     bindResultInputs(hasBaseWeight);
+
+    // Для этикетки граммы — единственное, что нужно ввести: сразу фокус.
+    if (isLabel) {
+      var wIn = viewEl.querySelector("#scan-edit-weight");
+      if (wIn) {
+        try { wIn.focus({ preventScroll: true }); } catch (e) { /* не критично */ }
+      }
+    }
 
     // Переключение выбранного приёма пищи.
     var mealsWrap = viewEl.querySelector("#scan-meals");
@@ -1612,6 +1643,34 @@
           carbs: round1(state.result.carbs),
         };
 
+        // ЭТИКЕТКА: цифры переписаны с упаковки на 100 г. Оценки порции нет —
+        // человек вводит, сколько граммов съел, и КБЖУ считаются от 100 г.
+        // Поля КБЖУ пустые, пока граммы не введены: иначе «Добавить» молча
+        // записал бы ровно 100 г.
+        state.result.kind = "dish";
+        state.result.per100 = null;
+        if (res && res.kind === "label" && res.per_100g) {
+          var per = res.per_100g;
+          state.result.kind = "label";
+          state.result.per100 = {
+            calories: num(per.calories), proteins: num(per.proteins),
+            fats: num(per.fats), carbs: num(per.carbs)
+          };
+          state.result.packageGrams = res.package_grams || null;
+          state.base = {
+            weight: 100,
+            calories: state.result.per100.calories,
+            proteins: state.result.per100.proteins,
+            fats: state.result.per100.fats,
+            carbs: state.result.per100.carbs,
+          };
+          state.edited.weight = "";
+          state.edited.calories = "";
+          state.edited.proteins = "";
+          state.edited.fats = "";
+          state.edited.carbs = "";
+        }
+
         render();
 
         // Успешный анализ потратил одно бесплатное сканирование — обновляем счётчик
@@ -1680,6 +1739,16 @@
       return;
     }
 
+    var r = state.result || {};
+    var isLabel = r.kind === "label" && r.per100;
+    if (isLabel && !(num(e.weight) > 0)) {
+      haptic("warning");
+      toast(L("Введите, сколько граммов съели", "Enter how many grams you ate"));
+      var wEl = viewEl && viewEl.querySelector("#scan-edit-weight");
+      if (wEl) wEl.focus();
+      return;
+    }
+
     // Формируем запись строго по форме DiaryEntryIn — из ОТРЕДАКТИРОВАННЫХ значений.
     // Дата цели: App.state.scanDate (из FAB дневника) либо сегодня (task 5).
     var entry = {
@@ -1706,6 +1775,19 @@
       .addDiary(entry)
       .then(function () {
         haptic("success");
+        // Этикетка — в «Мои продукты», на 100 г от итоговых (с правками
+        // человека) значений. Тихо: запись в дневник уже состоялась.
+        if (isLabel && App.api.saveProduct && weightVal > 0) {
+          var k = 100 / weightVal;
+          App.api.saveProduct({
+            name: dishName,
+            calories: Math.round(entry.calories * k * 10) / 10,
+            proteins: Math.round(entry.proteins * k * 10) / 10,
+            fats: Math.round(entry.fats * k * 10) / 10,
+            carbs: Math.round(entry.carbs * k * 10) / 10,
+            source: "label"
+          }).catch(function () {});
+        }
         toast(
           L("Добавлено в рацион: ", "Added to diary: ") + mealLabel(state.mealType)
         );

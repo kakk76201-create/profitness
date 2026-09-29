@@ -235,7 +235,19 @@ SYSTEM_PROMPT = (
     "или состав трудно определить.\n"
     "- НЕ отказывайся от оценки обычных блюд (картофель, мясо, каши, супы и т.п.).\n"
     "- Только если на фото СОВСЕМ нет еды (пустая тарелка, не еда), "
-    'верни dish_name="' + NO_FOOD_NAME + '", confidence="high" и нули.'
+    'верни dish_name="' + NO_FOOD_NAME + '", confidence="high" и нули.\n\n'
+    "ОСОБЫЙ СЛУЧАЙ — ЭТИКЕТКА. Если на фото упаковка с таблицей пищевой ценности "
+    "(«Пищевая ценность», «Энергетическая ценность», КБЖУ), НЕ оценивай на глаз, а "
+    "ПЕРЕПИШИ значения с этикетки и добавь поля:\n"
+    '  "kind" — "label";\n'
+    '  "per_100g" — {"calories": ккал, "proteins": г, "fats": г, "carbs": г} В ПЕРЕСЧЁТЕ '
+    "НА 100 г (или 100 мл). Если на упаковке указано на порцию — пересчитай на 100 г по "
+    "весу порции. Если энергия только в кДж — переведи в ккал (кДж / 4,184);\n"
+    '  "package_grams" — масса нетто упаковки в граммах, если видна, иначе null.\n'
+    "dish_name — название продукта с упаковки (бренд и продукт, если видно); "
+    "calories/proteins/fats/carbs — те же значения на 100 г, weight_grams = 100; "
+    'confidence="high", если цифры читаются уверенно, иначе "low".\n'
+    'Для обычной еды верни "kind": "dish".'
 )
 
 # Английский аналог SYSTEM_PROMPT: ТЕ ЖЕ ключи JSON, значения dish_name/note — на английском.
@@ -266,18 +278,30 @@ SYSTEM_PROMPT_EN = (
     "or the composition is hard to determine.\n"
     "- Do NOT refuse to estimate ordinary dishes (potatoes, meat, porridge, soups, etc.).\n"
     "- Only if there is NO food at all in the photo (empty plate, not food), "
-    'return dish_name="' + NO_FOOD_NAME_EN + '", confidence="high" and zeros.'
+    'return dish_name="' + NO_FOOD_NAME_EN + '", confidence="high" and zeros.\n\n'
+    "SPECIAL CASE — A LABEL. If the photo shows packaging with a nutrition facts table, "
+    "do NOT estimate by eye — COPY the values from the label and add the fields:\n"
+    '  "kind" — "label";\n'
+    '  "per_100g" — {"calories": kcal, "proteins": g, "fats": g, "carbs": g} PER 100 g '
+    "(or 100 ml). If the label is per serving, convert to 100 g using the serving weight. "
+    "If energy is only in kJ, convert to kcal (kJ / 4.184);\n"
+    '  "package_grams" — net weight of the package in grams if visible, otherwise null.\n'
+    "dish_name — the product name from the package (brand and product if visible); "
+    "calories/proteins/fats/carbs — the same per-100 g values, weight_grams = 100; "
+    'confidence="high" if the numbers are clearly readable, otherwise "low".\n'
+    'For ordinary food return "kind": "dish".'
 )
 
 # Пользовательский текст к vision-вызову (по языкам).
 VISION_USER_PROMPT = (
     "Определи блюдо на этом фото, оцени примерный вес порции, "
-    "калорийность и БЖУ. "
+    "калорийность и БЖУ. Если это этикетка с пищевой ценностью — перепиши "
+    "значения на 100 г. "
     "Верни результат строго в формате JSON по инструкции."
 )
 VISION_USER_PROMPT_EN = (
     "Identify the dish in this photo, estimate the approximate portion weight, "
-    "calories and macros. "
+    "calories and macros. If it is a nutrition label, copy the per-100 g values. "
     "Return the result strictly in JSON format following the instructions."
 )
 
@@ -562,7 +586,45 @@ def analyze_food_image(
         if not isinstance(note, str):
             note = ""
 
+        # Этикетка: значения на 100 г переписаны с упаковки. Принимаем только
+        # правдоподобные цифры — иначе это обычное блюдо.
+        kind = "dish"
+        per_100g = None
+        package_grams = None
+        raw_per = data.get("per_100g")
+        if data.get("kind") == "label" and isinstance(raw_per, dict):
+            per = {
+                "calories": _coerce_float(raw_per.get("calories")),
+                "proteins": _coerce_float(raw_per.get("proteins")),
+                "fats": _coerce_float(raw_per.get("fats")),
+                "carbs": _coerce_float(raw_per.get("carbs")),
+            }
+            macro_g = per["proteins"] + per["fats"] + per["carbs"]
+            if 0 < per["calories"] <= 950 and macro_g <= 105:
+                kind = "label"
+                per_100g = per
+                pg = _coerce_int(data.get("package_grams"))
+                package_grams = pg if 0 < pg <= 20000 else None
+
+        if kind == "label":
+            return {
+                "kind": "label",
+                "dish_name": dish_name.strip(),
+                "weight_grams": 100,
+                "calories": int(round(per_100g["calories"])),
+                "proteins": per_100g["proteins"],
+                "fats": per_100g["fats"],
+                "carbs": per_100g["carbs"],
+                "per_100g": per_100g,
+                "package_grams": package_grams,
+                "confidence": _coerce_confidence(data.get("confidence")),
+                "note": note.strip(),
+                "_debug": {"raw": raw, "finish_reason": finish_reason, "refusal": refusal,
+                           "model": MODEL, "attempts": attempt},
+            }
+
         return {
+            "kind": "dish",
             "dish_name": dish_name.strip(),
             # Примерный вес видимой порции (граммы); если модель не указала — 0.
             "weight_grams": _coerce_int(data.get("weight_grams")),

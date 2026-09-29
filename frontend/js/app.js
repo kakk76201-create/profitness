@@ -474,6 +474,20 @@
       return request("/food/search?q=" + encodeURIComponent(query));
     },
 
+    // «Мои продукты»: КБЖУ на 100 г с этикеток, по штрихкоду и из поиска.
+    getProducts: function () {
+      return request("/products");
+    },
+
+    // Сохранить продукт: {name, brand?, barcode?, calories, proteins, fats, carbs, source}.
+    saveProduct: function (product) {
+      return request("/products", { method: "POST", body: product });
+    },
+
+    deleteProduct: function (id) {
+      return request("/products/" + encodeURIComponent(id), { method: "DELETE" });
+    },
+
     // Расчёт КБЖУ блюда по названию/количеству/единице (НЕ премиум — базовый дневник).
     // Тело: {name, quantity:float|null, unit:str|null}.
     // Ответ: {dish_name, quantity, unit, calories, proteins, fats, carbs}.

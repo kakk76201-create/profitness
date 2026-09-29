@@ -450,6 +450,34 @@ class AppEvent(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class FoodProduct(Base):
+    """Продукт с КБЖУ на 100 г (см. backend/products.py).
+
+    telegram_id задан — личный продукт человека («Мои продукты»);
+    telegram_id = NULL — общий каталог по штрихкоду (без личных данных).
+    """
+
+    __tablename__ = "food_products"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(BigInteger, index=True, nullable=True)
+    barcode = Column(String, index=True, nullable=True)
+    name = Column(String)
+    # Название в нижнем регистре для поиска (SQLite не умеет LOWER для кириллицы).
+    name_key = Column(String, index=True)
+    brand = Column(String, nullable=True)
+    kcal_100 = Column(Float)
+    p_100 = Column(Float)
+    f_100 = Column(Float)
+    c_100 = Column(Float)
+    # Откуда цифры: label (этикетка) | off (Open Food Facts) | manual | search.
+    source = Column(String, nullable=True)
+    uses = Column(Integer, default=0)
+    last_used_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
 class BotMealDraft(Base):
     """Черновик приёма пищи в чате с ботом (см. backend/bot_food.py).
 

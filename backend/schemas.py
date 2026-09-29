@@ -77,6 +77,11 @@ class AnalyzeOut(BaseModel):
     # Оценка веса видимой порции в граммах и уровень уверенности модели.
     weight_grams: Optional[int] = None       # оценка веса порции, г
     confidence: Optional[str] = None         # "low" | "medium" | "high"
+    # "dish" — блюдо на тарелке (оценка на глаз); "label" — этикетка: значения
+    # переписаны с упаковки на 100 г, человеку остаётся ввести граммы.
+    kind: str = "dish"
+    per_100g: Optional[Dict[str, float]] = None
+    package_grams: Optional[int] = None      # масса нетто упаковки, если видна
     # Отладочные данные (сырой ответ модели и т.п.) — заполняются только
     # при включённом DEBUG_AI, иначе None и не мешают в проде.
     debug: Optional[Dict[str, Any]] = None
@@ -183,6 +188,27 @@ class FoodSearchItem(BaseModel):
     proteins: float = 0.0
     fats: float = 0.0
     carbs: float = 0.0
+    # Из личного списка «Мои продукты» (id — для удаления из списка).
+    id: Optional[int] = None
+    mine: bool = False
+    source: str = ""
+
+
+class ProductIn(BaseModel):
+    """Сохранить продукт в «Мои продукты»: КБЖУ на 100 г."""
+
+    name: str
+    brand: Optional[str] = None
+    barcode: Optional[str] = None
+    calories: float
+    proteins: float = 0.0
+    fats: float = 0.0
+    carbs: float = 0.0
+    source: Optional[str] = None          # label | barcode | search | manual
+
+
+class ProductListOut(BaseModel):
+    items: List["FoodSearchItem"] = []
 
 
 class FoodSearchOut(BaseModel):

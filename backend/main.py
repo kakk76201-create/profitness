@@ -88,6 +88,7 @@ from backend import (
     fitness,
     food_search,
     legal,
+    products,
     notifications,
     nutrition,
     ratelimit,
@@ -122,6 +123,7 @@ from backend.models import (
     AppEvent,
     BotMealDraft,
     Consent,
+    FoodProduct,
     CycleLog,
     DiaryEntry,
     FavoriteFood,
@@ -155,6 +157,8 @@ from backend.schemas import (
     CycleLogIn,
     ConsentIn,
     ConsentOut,
+    ProductIn,
+    ProductListOut,
     CycleStatusOut,
     DiaryDayOut,
     DiaryEntryIn,
@@ -675,6 +679,9 @@ async def food_analyze(
         # Новые поля оценки порции — берём из результата, если модель их вернула.
         weight_grams=result.get("weight_grams"),
         confidence=result.get("confidence"),
+        kind=result.get("kind") or "dish",
+        per_100g=result.get("per_100g"),
+        package_grams=result.get("package_grams"),
         # debug отдаём только в режиме отладки, чтобы не светить «сырой» ответ в проде.
         debug=result.get("_debug") if DEBUG_AI else None,
     )
@@ -1236,15 +1243,64 @@ async def food_search_route(
     # Защита от «поиска на каждую букву» со стороны одного пользователя.
     ratelimit.enforce_search(user.telegram_id)
 
+    # Сначала свои продукты (этикетки, штрихкоды) — они точнее любой базы.
+    with SessionLocal() as db:
+        mine = products.search_personal(db, user.telegram_id, query, 6)
+
     # Сетевой запрос — в пул потоков, чтобы не блокировать event loop.
     raw = await run_in_threadpool(
         food_search.search_products, query, user.language or "ru", 12
     )
 
-    return FoodSearchOut(
-        query=query,
-        items=[FoodSearchItem(**item) for item in raw],
+    seen = {(m["name"].casefold(), (m["brand"] or "").casefold()) for m in mine}
+    items = [FoodSearchItem(**m) for m in mine]
+    for item in raw:
+        if (item["name"].casefold(), (item.get("brand") or "").casefold()) in seen:
+            continue
+        items.append(FoodSearchItem(**item))
+    return FoodSearchOut(query=query, items=items)
+
+
+# --------------------------------------------------------------------------- #
+#  «Мои продукты»: КБЖУ на 100 г с этикеток, по штрихкоду, из базы
+# --------------------------------------------------------------------------- #
+@app.get("/products", response_model=ProductListOut)
+def products_list(
+    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> ProductListOut:
+    """Личный список продуктов, последние использованные — первыми."""
+    return ProductListOut(items=[FoodSearchItem(**i) for i in products.list_personal(db, user.telegram_id)])
+
+
+@app.post("/products", response_model=FoodSearchItem)
+def products_save(
+    data: ProductIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> FoodSearchItem:
+    """Сохранить продукт (или обновить сохранённый с тем же названием/штрихкодом)."""
+    source = data.source if data.source in ("label", "barcode", "search", "manual") else "manual"
+    row = products.upsert_personal(
+        db, user.telegram_id, data.name, data.model_dump(),
+        brand=data.brand or "", barcode=data.barcode, source=source,
     )
+    if row is None:
+        raise HTTPException(status_code=400, detail="Проверьте название и КБЖУ на 100 г")
+    return FoodSearchItem(**products.to_item(row))
+
+
+@app.delete("/products/{product_id}")
+def products_delete(
+    product_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> dict:
+    """Убрать продукт из своего списка (общий каталог не трогается)."""
+    n = (
+        db.query(FoodProduct)
+        .filter(FoodProduct.id == product_id, FoodProduct.telegram_id == user.telegram_id)
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    if not n:
+        raise HTTPException(status_code=404, detail="Продукт не найден")
+    return {"deleted": 1}
 
 
 @app.post("/food/recommend", response_model=RecommendOut, dependencies=[Depends(legal.require_ai_consent)])
@@ -4129,6 +4185,8 @@ def account_delete_data(
     for model in (
         AppEvent,
         BotMealDraft,
+        # Только личные продукты: у общего каталога telegram_id = NULL.
+        FoodProduct,
         DiaryEntry,
         Workout,
         Supplement,
@@ -4244,6 +4302,7 @@ _EXPORT_MODELS = (
     ("payments", Payment),
     ("diary", DiaryEntry),
     ("bot_meal_drafts", BotMealDraft),
+    ("my_products", FoodProduct),
     ("workouts", Workout),
     ("weight", WeightLog),
     ("supplements", Supplement),

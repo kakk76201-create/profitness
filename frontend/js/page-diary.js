@@ -1318,7 +1318,8 @@
       // то, что человек как раз пришёл поправить.
       (isEdit
         ? ""
-        : '<div id="diary-recent" class="yday"></div>' +
+        : '<div id="diary-products" class="yday"></div>' +
+          '<div id="diary-recent" class="yday"></div>' +
           '<div id="diary-yday" class="yday"></div>');
 
     var sheet = mountSheet(SHEET_FOOD, html);
@@ -1422,6 +1423,7 @@
 
       // Блоки быстрого повтора (только в режиме добавления).
       if (!isEdit) {
+        loadProducts(form, ctx);
         loadRecent(form, ctx);
         loadYesterday(form, ctx);
       }
@@ -1513,6 +1515,13 @@
           delete App.state.diaryByDate[state.date];
         }
         loadAndRender();
+        // Продукт из базы — в «Мои продукты» (тихо: ошибка сохранения не
+        // должна портить уже состоявшееся добавление).
+        // Только если название осталось тем же: иначе человек уже ввёл
+        // другое блюдо, и цифры продукта к нему не относятся.
+        if (!isEdit && ctx.product && ctx.product.name === name && App.api.saveProduct) {
+          App.api.saveProduct(ctx.product).catch(function () {});
+        }
       })
       .catch(function (err) {
         App.haptic && App.haptic("error");
@@ -1996,6 +2005,9 @@
       var brand = it.brand
         ? ' <span class="fsearch__brand">' + App.escapeHtml(it.brand) + "</span>"
         : "";
+      if (it.mine) {
+        brand += ' <span class="fsearch__mine">' + App.escapeHtml(pick("мой", "mine")) + "</span>";
+      }
       var macros =
         App.fmt(it.calories || 0) + " " + kcal + " " + per100 +
         " · " + pLabel + " " + App.fmt(it.proteins || 0) +
@@ -2053,6 +2065,15 @@
     ctx.manualOverride = false;
     ctx.perUnit = { cals: cals / 100, p: p / 100, f: f / 100, c: c / 100 };
     setMacroFields(form, cals, p, f, c);
+    // После добавления продукт попадёт в «Мои продукты» — в следующий раз
+    // он будет первым в поиске и в списке над «Недавними».
+    ctx.product = {
+      name: it.name || "",
+      brand: it.brand || "",
+      barcode: it.code || "",
+      calories: cals, proteins: p, fats: f, carbs: c,
+      source: it.mine ? (it.source || "manual") : "search"
+    };
 
     // Подсказки больше не нужны — прячем, чтобы не мешали.
     var box = document.getElementById("fsearch");
@@ -2228,6 +2249,90 @@
       .catch(function () {
         if (box) box.innerHTML = "";
       });
+  }
+
+  /**
+   * Загружает «Мои продукты» (КБЖУ на 100 г) над «Недавними».
+   * @param {HTMLFormElement} form
+   * @param {Object} ctx
+   */
+  function loadProducts(form, ctx) {
+    var box = document.getElementById("diary-products");
+    if (!box || !(App.api && App.api.getProducts)) return;
+    App.api
+      .getProducts()
+      .then(function (res) {
+        renderProducts(((res && res.items) || []).slice(0, 8), form, ctx);
+      })
+      .catch(function () {
+        box.innerHTML = "";
+      });
+  }
+
+  /**
+   * Рисует «Мои продукты». Тап — подставить КБЖУ на 100 г (дальше человек
+   * вводит граммы, и всё пересчитывается); корзина — убрать из списка.
+   */
+  function renderProducts(items, form, ctx) {
+    var box = document.getElementById("diary-products");
+    if (!box) return;
+    if (!items.length) {
+      box.innerHTML = "";
+      return;
+    }
+    var kcal = pick("ккал", "kcal");
+    var per100 = pick("на 100 г", "per 100 g");
+    var rows = "";
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i] || {};
+      var macros =
+        App.fmt(it.calories || 0) + " " + kcal + " " + per100 +
+        " · " + pick("Б", "P") + " " + App.fmt(it.proteins || 0) +
+        " · " + pick("Ж", "F") + " " + App.fmt(it.fats || 0) +
+        " · " + pick("У", "C") + " " + App.fmt(it.carbs || 0);
+      rows +=
+        '<div class="yday__item" data-idx="' + i + '">' +
+        '<button type="button" class="yday__body" data-idx="' + i + '">' +
+        '<span class="yday__name">' + App.escapeHtml(it.name || "") + "</span>" +
+        '<span class="yday__macros">' + App.escapeHtml(macros) + "</span>" +
+        "</button>" +
+        '<button type="button" class="yday__add yday__remove" data-idx="' + i + '" ' +
+        'aria-label="' + App.escapeHtml(pick("Убрать из моих продуктов", "Remove from my products")) + '">' +
+        icon("trash", { size: 18 }) + "</button>" +
+        "</div>";
+    }
+    box.innerHTML =
+      '<h3 class="yday__title">' + App.escapeHtml(pick("Мои продукты", "My products")) + "</h3>" +
+      '<div class="yday__list">' + rows + "</div>";
+
+    box.querySelector(".yday__list").addEventListener("click", function (ev) {
+      var rm = ev.target.closest(".yday__remove");
+      if (rm) {
+        var ri = parseInt(rm.getAttribute("data-idx"), 10);
+        var victim = items[ri];
+        if (!victim || victim.id == null) return;
+        App.haptic && App.haptic("light");
+        App.api
+          .deleteProduct(victim.id)
+          .then(function () {
+            items.splice(ri, 1);
+            renderProducts(items, form, ctx);
+          })
+          .catch(function (err) {
+            App.toast(err && err.message ? err.message : pick("Ошибка", "Error"));
+          });
+        return;
+      }
+      var body = ev.target.closest(".yday__body");
+      if (!body) return;
+      var idx = parseInt(body.getAttribute("data-idx"), 10);
+      if (isNaN(idx) || !items[idx]) return;
+      applyFoundFood(items[idx], form, ctx);
+      // Граммы — единственное, что осталось ввести.
+      if (form.quantity) {
+        try { form.quantity.focus(); form.quantity.select(); } catch (e) {}
+      }
+    });
   }
 
   /**

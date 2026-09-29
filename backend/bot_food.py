@@ -40,7 +40,7 @@ from datetime import datetime, timedelta
 
 from fastapi import HTTPException
 
-from backend import ai_service, analytics, config, legal, ratelimit, subscription
+from backend import ai_service, analytics, config, legal, products, ratelimit, subscription
 from backend.models import BotMealDraft, DiaryEntry, User
 
 logger = logging.getLogger("bot_food")
@@ -255,6 +255,13 @@ def _nice(x: float) -> float:
 def _qty_options(it: dict) -> list:
     unit = it.get("unit") or "serving"
     cur = float(it.get("qty") or 0)
+    if it.get("src") == "label":
+        # Продукт с упаковки: порции от половины сотни до целой пачки.
+        opts = {50.0, 100.0, 150.0, 200.0}
+        pack = float(it.get("pack_g") or 0)
+        if 200 < pack <= 1000:
+            opts = {50.0, 100.0, 200.0, pack}
+        return sorted(opts)
     if unit == "g":
         base = cur or 150
         opts = {_nice(base * 0.5), _nice(base), _nice(base * 1.5), _nice(base * 2)}
@@ -337,12 +344,26 @@ def _card(draft: BotMealDraft, lang: str):
         kind, idx = q
         it = items[idx]
         name = html.escape(it["name"])
-        if kind == "qty":
+        if kind == "qty" and it.get("src") == "label":
+            per = it.get("per100") or {}
+            text += "\n\n🏷 " + _t(
+                lang,
+                f"КБЖУ с упаковки, на 100 г: {_fmt_num(per.get('calories'))} ккал · "
+                f"Б {_fmt_num(per.get('proteins'))} · Ж {_fmt_num(per.get('fats'))} · "
+                f"У {_fmt_num(per.get('carbs'))}. Продукт сохранён в «Мои продукты».\n"
+                f"❓ Сколько граммов съели? Выберите или напишите число.",
+                f"Label values per 100 g: {_fmt_num(per.get('calories'))} kcal · "
+                f"P {_fmt_num(per.get('proteins'))} · F {_fmt_num(per.get('fats'))} · "
+                f"C {_fmt_num(per.get('carbs'))}. Saved to My products.\n"
+                f"❓ How many grams did you eat? Pick or type a number.",
+            )
+        elif kind == "qty":
             text += "\n\n❓ " + _t(
                 lang,
                 f"Сколько было: «{name}»? Выберите или напишите число.",
                 f"How much «{name}» was there? Pick or type a number.",
             )
+        if kind == "qty":
             row = []
             unit = it.get("unit") or "serving"
             for v in _qty_options(it):
@@ -774,9 +795,19 @@ def handle_photo(db, message: dict) -> None:
                           "I don't see food in the photo. Send a photo of the dish or type what you ate."))
         return
 
-    grams = float(res.get("weight_grams") or 0) or None
-    it = _item(name, grams, "g" if grams else "serving", res.get("calories"), res.get("proteins"),
-               res.get("fats"), res.get("carbs"), stated=False, src="photo")
+    per = res.get("per_100g") if res.get("kind") == "label" else None
+    if per:
+        # Этикетка: цифры переписаны с упаковки. Сохраняем продукт в личный
+        # список — в следующий раз он найдётся поиском по названию.
+        products.upsert_personal(db, user.telegram_id, name, per, source="label")
+        it = _item(name, 100, "g", per.get("calories"), per.get("proteins"), per.get("fats"),
+                   per.get("carbs"), stated=False, src="label", per100=per)
+        it["pack_g"] = res.get("package_grams")
+    else:
+        grams = float(res.get("weight_grams") or 0) or None
+        it = _item(name, grams, "g" if grams else "serving", res.get("calories"), res.get("proteins"),
+                   res.get("fats"), res.get("carbs"), stated=False, src="photo")
+    grams = it.get("qty")
     # Подпись к фото: «обед», «250 г» — учитываем, чтобы не переспрашивать.
     m = _GRAMS_RE.search(caption)
     if m and grams:

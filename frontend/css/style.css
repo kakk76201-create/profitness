@@ -6615,6 +6615,21 @@ select.onb-field__input {
   color: var(--muted);
 }
 
+/* Продукт из «Моих продуктов» — точнее базы, поэтому отмечен. */
+.fsearch__mine {
+  display: inline-block;
+  margin-left: var(--s1);
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-eyebrow);
+  vertical-align: 1px;
+}
+
 .fsearch__macros {
   font-size: 12px;
   color: var(--muted);
