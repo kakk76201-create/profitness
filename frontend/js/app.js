@@ -2501,6 +2501,34 @@
       .replace(/'/g, "&#39;");
   };
 
+  /**
+   * Калории по БЖУ (коэффициенты Этуотера: белки и углеводы — 4 ккал/г,
+   * жиры — 9 ккал/г). Так же считают производители на этикетках, поэтому
+   * цифры с упаковки сходятся с точностью до округления.
+   *
+   * Возвращает null, если ни одно из трёх полей не заполнено: тогда калории
+   * не трогаем — человек мог ввести их сам без БЖУ.
+   * @param {*} p белки, г
+   * @param {*} f жиры, г
+   * @param {*} c углеводы, г
+   * @returns {number|null}
+   */
+  App.kcalFromMacros = function (p, f, c) {
+    var vals = [p, f, c];
+    var any = false;
+    var sum = 0;
+    var k = [4, 9, 4];
+    for (var i = 0; i < 3; i++) {
+      var raw = vals[i];
+      if (raw === "" || raw == null) continue;
+      var v = Number(String(raw).replace(",", "."));
+      if (!isFinite(v) || v < 0) continue;
+      any = true;
+      sum += v * k[i];
+    }
+    return any ? Math.round(sum) : null;
+  };
+
   // Публикуем объект приложения в глобальной области.
   window.App = App;
 })();

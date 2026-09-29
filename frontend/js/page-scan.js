@@ -1304,11 +1304,40 @@
       });
     }
 
+    // Правки человека становятся новой базой пересчёта по весу: иначе смена
+    // веса после исправления БЖУ вернула бы исходную оценку модели.
+    function rebase() {
+      if (!hasBaseWeight || !state.base) return;
+      var w = num(state.edited.weight);
+      if (!(w > 0)) return;
+      state.base = {
+        weight: w,
+        calories: num(state.edited.calories),
+        proteins: num(state.edited.proteins),
+        fats: num(state.edited.fats),
+        carbs: num(state.edited.carbs)
+      };
+    }
+
+    // Б, Ж или У изменились — калории считаются из них сами.
+    function onMacroInput(key, el) {
+      syncField(key, el, false);
+      var kcal = App.kcalFromMacros(
+        protEl ? protEl.value : "", fatEl ? fatEl.value : "", carbEl ? carbEl.value : ""
+      );
+      if (kcal != null) {
+        state.edited.calories = kcal;
+        if (calEl) calEl.value = String(kcal);
+      }
+      rebase();
+      syncResultSummary();
+    }
+
     // Ручное редактирование калорий/БЖУ — синхронизируем в state.edited и на табло.
-    if (calEl) calEl.addEventListener("input", function () { syncField("calories", calEl, true); syncResultSummary(); });
-    if (protEl) protEl.addEventListener("input", function () { syncField("proteins", protEl, false); syncResultSummary(); });
-    if (fatEl) fatEl.addEventListener("input", function () { syncField("fats", fatEl, false); syncResultSummary(); });
-    if (carbEl) carbEl.addEventListener("input", function () { syncField("carbs", carbEl, false); syncResultSummary(); });
+    if (calEl) calEl.addEventListener("input", function () { syncField("calories", calEl, true); rebase(); syncResultSummary(); });
+    if (protEl) protEl.addEventListener("input", function () { onMacroInput("proteins", protEl); });
+    if (fatEl) fatEl.addEventListener("input", function () { onMacroInput("fats", fatEl); });
+    if (carbEl) carbEl.addEventListener("input", function () { onMacroInput("carbs", carbEl); });
   }
 
   // --- Экран ошибки (с возможностью повтора) ---
@@ -2389,6 +2418,19 @@
       }
       var v = num(el.value);
       voice.items[idx][field] = field === "calories" ? Math.round(v) : round1(v);
+
+      // Б, Ж или У изменились — пересчитываем калории этой строки.
+      if (field === "proteins" || field === "fats" || field === "carbs") {
+        var row = voice.items[idx];
+        var kcal = App.kcalFromMacros(row.proteins, row.fats, row.carbs);
+        if (kcal != null) {
+          row.calories = kcal;
+          var calInput = wrap.querySelector(
+            '[data-field="calories"][data-idx="' + idx + '"]'
+          );
+          if (calInput) calInput.value = String(kcal);
+        }
+      }
     });
 
     // Удаление строки блюда.

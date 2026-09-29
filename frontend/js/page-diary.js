@@ -1363,12 +1363,28 @@
 
     if (form) {
       // Ручная правка любого КБЖУ-поля отключает авто-пересчёт по количеству.
-      var macroFields = ["calories", "proteins", "fats", "carbs"];
+      if (form.calories) {
+        form.calories.addEventListener("input", function () {
+          ctx.manualOverride = true;
+        });
+      }
+      // Правка Б, Ж или У сразу пересчитывает калории: по БЖУ они
+      // определяются однозначно, и вбивать их второй раз руками незачем.
+      // Если потом поправить сами калории — останется введённое значение
+      // (до следующей правки БЖУ).
+      var macroFields = ["proteins", "fats", "carbs"];
       for (var mf = 0; mf < macroFields.length; mf++) {
         var el = form[macroFields[mf]];
         if (el) {
           el.addEventListener("input", function () {
             ctx.manualOverride = true;
+            var kcal = App.kcalFromMacros(
+              form.proteins.value, form.fats.value, form.carbs.value
+            );
+            if (kcal != null && form.calories) {
+              form.calories.value = kcal;
+              clearInvalid(form.calories);
+            }
           });
         }
       }
