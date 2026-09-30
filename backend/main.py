@@ -617,10 +617,19 @@ def update_profile(
 @app.post("/food/analyze", response_model=AnalyzeOut, dependencies=[Depends(legal.require_ai_consent)])
 async def food_analyze(
     file: UploadFile = File(...),
+    mode: str = Form("auto"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AnalyzeOut:
     """Принять фото, проанализировать его ИИ и вернуть КБЖУ блюда.
+
+    Режим выбирает человек переключателем на камере:
+      food    — блюдо на тарелке: только оценка ИИ, штрихкод и этикетку не ищем;
+      barcode — только штрихкод: без ИИ и без траты скана. Кода на фото нет —
+                422 no_barcode; код есть, товара нет — kind="barcode_missing";
+      label   — только таблица КБЖУ: ИИ переписывает значения на 100 г; таблицы
+                нет — 422 no_label, скан не списывается;
+      auto    — всё сразу (старые версии приложения и прямые вызовы).
 
     Для бесплатных пользователей действует дневной лимит сканирований:
     ПЕРЕД обращением к ИИ проверяем доступность скана (assert_scan_available
@@ -640,10 +649,24 @@ async def food_analyze(
     # Язык распознавания берём из профиля пользователя ("ru" по умолчанию).
     lang = user.language or "ru"
 
-    # Сначала — штрихкод: читается локально за миллисекунды. Нашёлся продукт —
-    # отдаём его КБЖУ на 100 г без ИИ и без траты бесплатного скана.
-    code = await run_in_threadpool(barcode.decode, image_bytes)
-    if code:
+    mode = (mode or "auto").strip().lower()
+    if mode not in ("auto", "food", "barcode", "label"):
+        mode = "auto"
+
+    # Штрихкод читается локально за миллисекунды. В режиме «Еда» его не ищем:
+    # человек снимает тарелку, и упаковка рядом не должна подменить блюдо.
+    code = None
+    if mode != "food":
+        code = await run_in_threadpool(barcode.decode, image_bytes)
+    if mode == "barcode" and not code:
+        raise HTTPException(status_code=422, detail={
+            "error": "no_barcode",
+            "message": "На снимке не нашёлся штрихкод. Поднесите камеру ближе, чтобы "
+                       "полоски были чёткими, и снимите ещё раз.",
+        })
+
+    # Нашёлся продукт — его КБЖУ на 100 г без ИИ и без траты бесплатного скана.
+    if code and mode in ("auto", "barcode"):
         ratelimit.enforce_search(user.telegram_id)
         found = await run_in_threadpool(barcode.lookup, db, code, lang)
         if found:
@@ -655,6 +678,13 @@ async def food_analyze(
                 fats=per["fats"], carbs=per["carbs"], note=found.get("brand") or "",
                 weight_grams=100, confidence="high", per_100g=per,
             )
+        # Сколько кодов не находится — главный вопрос, стоит ли подключать
+        # платную базу продуктов (см. /stats).
+        analytics.track(user.telegram_id, "barcode_miss")
+        if mode == "barcode":
+            # Код прочитан, товара нет: приложение предложит снять этикетку.
+            return AnalyzeOut(kind="barcode_missing", barcode=code, dish_name="",
+                              calories=0, proteins=0, fats=0, carbs=0, note="")
 
     # Дальше — ИИ. Лимит проверяем здесь: бесплатный скан тратится только на
     # распознавание, а не на найденный по штрихкоду продукт (402 при исчерпании).
@@ -664,7 +694,8 @@ async def food_analyze(
     try:
         # Синхронный вызов OpenAI выносим в threadpool, чтобы не блокировать
         # event loop (иначе один скан морозит запросы всех пользователей).
-        result = await run_in_threadpool(analyze_food_image, image_bytes, mime, lang)
+        ai_mode = {"food": "dish", "label": "label"}.get(mode, "auto")
+        result = await run_in_threadpool(analyze_food_image, image_bytes, mime, lang, ai_mode)
     except AIError as exc:
         # Сырой ответ модели всегда пишем в лог сервера (виден в логах Railway).
         logger.warning(
@@ -683,6 +714,15 @@ async def food_analyze(
         if DEBUG_AI:
             detail = str(exc)
         raise HTTPException(status_code=502, detail=detail)
+
+    # Режим «Этикетка», а таблицы на фото нет — не оцениваем на глаз и не
+    # списываем скан: человек просто переснимет.
+    if mode == "label" and result.get("kind") != "label":
+        raise HTTPException(status_code=422, detail={
+            "error": "no_label",
+            "message": "Не получилось прочитать таблицу КБЖУ. Снимите её крупно и ровно, "
+                       "чтобы цифры были чёткими.",
+        })
 
     # Скан успешно выполнен — фиксируем использование (для премиум ничего не делает).
     # Исключение — снимок штрихкода, которого нет в базе: это не распознавание

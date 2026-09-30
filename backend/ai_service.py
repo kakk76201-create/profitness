@@ -208,7 +208,7 @@ def _normalize_lang(lang: str | None) -> str:
 
 # Системный промпт: заставляем модель ВСЕГДА оценивать обычную еду,
 # а не отказываться. Отказ допустим только если еды на фото реально нет.
-SYSTEM_PROMPT = (
+SYSTEM_PROMPT_DISH = (
     "Ты — опытный нутрициолог. На фотографии — еда. "
     "Твоя задача — ВСЕГДА определить блюдо и оценить его пищевую ценность, "
     "даже если ты не уверен на 100%: дай наиболее вероятную оценку по тому, что видишь.\n\n"
@@ -235,7 +235,11 @@ SYSTEM_PROMPT = (
     "или состав трудно определить.\n"
     "- НЕ отказывайся от оценки обычных блюд (картофель, мясо, каши, супы и т.п.).\n"
     "- Только если на фото СОВСЕМ нет еды (пустая тарелка, не еда), "
-    'верни dish_name="' + NO_FOOD_NAME + '", confidence="high" и нули.\n\n'
+    'верни dish_name="' + NO_FOOD_NAME + '", confidence="high" и нули.'
+)
+
+# Блок «этикетка» для автоматического режима (бот: переключателя режимов нет).
+_LABEL_BLOCK = (
     "ОСОБЫЙ СЛУЧАЙ — ЭТИКЕТКА. Если на фото упаковка с таблицей пищевой ценности "
     "(«Пищевая ценность», «Энергетическая ценность», КБЖУ), НЕ оценивай на глаз, а "
     "ПЕРЕПИШИ значения с этикетки и добавь поля:\n"
@@ -249,9 +253,10 @@ SYSTEM_PROMPT = (
     'confidence="high", если цифры читаются уверенно, иначе "low".\n'
     'Для обычной еды верни "kind": "dish".'
 )
+SYSTEM_PROMPT = SYSTEM_PROMPT_DISH + "\n\n" + _LABEL_BLOCK
 
 # Английский аналог SYSTEM_PROMPT: ТЕ ЖЕ ключи JSON, значения dish_name/note — на английском.
-SYSTEM_PROMPT_EN = (
+SYSTEM_PROMPT_DISH_EN = (
     "You are an experienced nutritionist. The photo shows food. "
     "Your task is to ALWAYS identify the dish and estimate its nutritional value, "
     "even if you are not 100% sure: give the most likely estimate based on what you see.\n\n"
@@ -278,7 +283,10 @@ SYSTEM_PROMPT_EN = (
     "or the composition is hard to determine.\n"
     "- Do NOT refuse to estimate ordinary dishes (potatoes, meat, porridge, soups, etc.).\n"
     "- Only if there is NO food at all in the photo (empty plate, not food), "
-    'return dish_name="' + NO_FOOD_NAME_EN + '", confidence="high" and zeros.\n\n'
+    'return dish_name="' + NO_FOOD_NAME_EN + '", confidence="high" and zeros.'
+)
+
+_LABEL_BLOCK_EN = (
     "SPECIAL CASE — A LABEL. If the photo shows packaging with a nutrition facts table, "
     "do NOT estimate by eye — COPY the values from the label and add the fields:\n"
     '  "kind" — "label";\n'
@@ -290,6 +298,42 @@ SYSTEM_PROMPT_EN = (
     "calories/proteins/fats/carbs — the same per-100 g values, weight_grams = 100; "
     'confidence="high" if the numbers are clearly readable, otherwise "low".\n'
     'For ordinary food return "kind": "dish".'
+)
+SYSTEM_PROMPT_EN = SYSTEM_PROMPT_DISH_EN + "\n\n" + _LABEL_BLOCK_EN
+
+# Режим «Этикетка»: человек сам выбрал, что снимает таблицу КБЖУ. Ничего не
+# оцениваем на глаз — только переписываем; нет таблицы — честно говорим «нет».
+LABEL_SYSTEM_PROMPT = (
+    "Ты читаешь этикетки продуктов. На фото — упаковка с таблицей пищевой ценности. "
+    "ПЕРЕПИШИ значения с этикетки, ничего не оценивай на глаз.\n\n"
+    "Верни СТРОГО валидный JSON-объект (и НИЧЕГО кроме него) с полями:\n"
+    '  "kind" — "label", если таблица пищевой ценности видна и цифры читаются; '
+    '"none", если таблицы нет или цифры не разобрать;\n'
+    '  "dish_name" — название продукта с упаковки (бренд и продукт, если видно; иначе '
+    "короткое общее название, например «Йогурт»);\n"
+    '  "per_100g" — {"calories": ккал, "proteins": г, "fats": г, "carbs": г} В ПЕРЕСЧЁТЕ '
+    "НА 100 г (или 100 мл). Если указано на порцию — пересчитай на 100 г по весу порции. "
+    "Если энергия только в кДж — переведи в ккал (кДж / 4,184);\n"
+    '  "package_grams" — масса нетто упаковки в граммах, если видна, иначе null;\n'
+    '  "confidence" — "high", если цифры читаются уверенно, иначе "low";\n'
+    '  "note" — коротко на русском, если что-то не так (например, «часть цифр не видна»).\n\n'
+    "Не придумывай цифры: если калорийность не видна — kind = \"none\"."
+)
+LABEL_SYSTEM_PROMPT_EN = (
+    "You read food labels. The photo shows packaging with a nutrition facts table. "
+    "COPY the values from the label, do not estimate anything by eye.\n\n"
+    "Return STRICTLY a valid JSON object (and NOTHING else) with the fields:\n"
+    '  "kind" — "label" if the nutrition table is visible and the numbers are readable; '
+    '"none" if there is no table or the numbers cannot be read;\n'
+    '  "dish_name" — the product name from the package (brand and product if visible; '
+    'otherwise a short generic name, e.g. "Yogurt");\n'
+    '  "per_100g" — {"calories": kcal, "proteins": g, "fats": g, "carbs": g} PER 100 g '
+    "(or 100 ml). If the label is per serving, convert to 100 g using the serving weight. "
+    "If energy is only in kJ, convert to kcal (kJ / 4.184);\n"
+    '  "package_grams" — net weight of the package in grams if visible, otherwise null;\n'
+    '  "confidence" — "high" if the numbers are clearly readable, otherwise "low";\n'
+    '  "note" — short, in English, if something is wrong (e.g. "some numbers are not visible").\n\n'
+    'Do not invent numbers: if calories are not visible — kind = "none".'
 )
 
 # Пользовательский текст к vision-вызову (по языкам).
@@ -304,6 +348,23 @@ VISION_USER_PROMPT_EN = (
     "calories and macros. If it is a nutrition label, copy the per-100 g values. "
     "Return the result strictly in JSON format following the instructions."
 )
+VISION_USER_PROMPT_DISH = (
+    "Определи блюдо на этом фото, оцени примерный вес порции, калорийность и БЖУ. "
+    "Верни результат строго в формате JSON по инструкции."
+)
+VISION_USER_PROMPT_DISH_EN = (
+    "Identify the dish in this photo, estimate the approximate portion weight, "
+    "calories and macros. Return the result strictly in JSON format following the instructions."
+)
+LABEL_USER_PROMPT = "Перепиши пищевую ценность с этой этикетки на 100 г. Верни JSON по инструкции."
+LABEL_USER_PROMPT_EN = "Copy the nutrition facts from this label per 100 g. Return JSON following the instructions."
+
+# Промпты по режиму: (system RU, system EN, user RU, user EN).
+_VISION_PROMPTS = {
+    "auto": ("SYSTEM_PROMPT", "SYSTEM_PROMPT_EN", "VISION_USER_PROMPT", "VISION_USER_PROMPT_EN"),
+    "dish": ("SYSTEM_PROMPT_DISH", "SYSTEM_PROMPT_DISH_EN", "VISION_USER_PROMPT_DISH", "VISION_USER_PROMPT_DISH_EN"),
+    "label": ("LABEL_SYSTEM_PROMPT", "LABEL_SYSTEM_PROMPT_EN", "LABEL_USER_PROMPT", "LABEL_USER_PROMPT_EN"),
+}
 
 
 class AIError(RuntimeError):
@@ -466,20 +527,20 @@ def _extract_json(content: str):
     return None
 
 
-def _call_model(client: "OpenAI", data_url: str, lang: str = "ru"):
+def _call_model(client: "OpenAI", data_url: str, lang: str = "ru", mode: str = "auto"):
     """
     Один вызов модели (vision). Возвращает (content, finish_reason, refusal).
 
     В зависимости от lang выбираются русские или английские system/user-промпты;
     набор и порядок сообщений остаётся прежним.
     """
-    # Выбор промптов по языку (по умолчанию русский — обратная совместимость).
+    # Выбор промптов по режиму и языку (по умолчанию — авто и русский).
+    names = _VISION_PROMPTS.get(mode, _VISION_PROMPTS["auto"])
+    g = globals()
     if _normalize_lang(lang) == "en":
-        system_prompt = SYSTEM_PROMPT_EN
-        user_text = VISION_USER_PROMPT_EN
+        system_prompt, user_text = g[names[1]], g[names[3]]
     else:
-        system_prompt = SYSTEM_PROMPT
-        user_text = VISION_USER_PROMPT
+        system_prompt, user_text = g[names[0]], g[names[2]]
 
     response = client.chat.completions.create(
         model=VISION_MODEL,
@@ -510,6 +571,7 @@ def analyze_food_image(
     image_bytes: bytes,
     mime: str = "image/jpeg",
     lang: str = "ru",
+    mode: str = "auto",
 ) -> dict:
     """
     Анализирует фотографию еды и возвращает оценку калорийности и БЖУ.
@@ -553,7 +615,7 @@ def analyze_food_image(
     # 3. Несколько попыток: пустой/битый ответ модели — частая транзиентная проблема.
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
-            content, finish_reason, refusal = _call_model(client, data_url, lang=lang)
+            content, finish_reason, refusal = _call_model(client, data_url, lang=lang, mode=mode)
             raw = content or ""
             # Всегда логируем сырой ответ — он будет виден в логах Railway/uvicorn.
             logger.info(
@@ -592,7 +654,8 @@ def analyze_food_image(
         per_100g = None
         package_grams = None
         raw_per = data.get("per_100g")
-        if data.get("kind") == "label" and isinstance(raw_per, dict):
+        # В режиме «Еда» этикетку не ищем: человек сам сказал, что снимает блюдо.
+        if mode != "dish" and data.get("kind") == "label" and isinstance(raw_per, dict):
             per = {
                 "calories": _coerce_float(raw_per.get("calories")),
                 "proteins": _coerce_float(raw_per.get("proteins")),
@@ -619,6 +682,17 @@ def analyze_food_image(
                 "package_grams": package_grams,
                 "confidence": _coerce_confidence(data.get("confidence")),
                 "note": note.strip(),
+                "_debug": {"raw": raw, "finish_reason": finish_reason, "refusal": refusal,
+                           "model": MODEL, "attempts": attempt},
+            }
+
+        if mode == "label":
+            # Режим «Этикетка», а таблицы на фото нет или цифры нечитаемы:
+            # оценивать на глаз не будем — так и скажем человеку.
+            return {
+                "kind": "none", "dish_name": dish_name.strip(), "weight_grams": 0,
+                "calories": 0, "proteins": 0.0, "fats": 0.0, "carbs": 0.0,
+                "confidence": "low", "note": note.strip(),
                 "_debug": {"raw": raw, "finish_reason": finish_reason, "refusal": refusal,
                            "model": MODEL, "attempts": attempt},
             }

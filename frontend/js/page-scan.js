@@ -734,7 +734,7 @@
         headHtml(L("Снять еду", "Snap food")) +
         dateHintHtml +
         '<div class="card scan-cam-card">' +
-          '<div class="scan-cam-window">' + frameInner + "</div>" +
+          '<div class="scan-cam-window">' + frameInner + scanModesHtml() + "</div>" +
           // Счётчик бесплатных сканирований (заполняется асинхронно из state.scans).
           '<div id="scan-counter-slot">' + scanCounterHtml() + "</div>" +
           // Ряд управления камерой: галерея слева, спуск по центру, голос справа.
@@ -757,15 +757,7 @@
             "</button>" +
           "</div>" +
           '<p class="scan-cam-hint" id="scan-cam-hint">' +
-            esc(
-              mode === "live"
-                ? (barcodeLiveSupported()
-                  ? L("Блюдо, этикетка КБЖУ или штрихкод. Штрихкод поймаю сам — просто поднесите",
-                      "A dish, a nutrition label or a barcode. I'll catch a barcode myself — just bring it close")
-                  : L("Блюдо, этикетка КБЖУ или штрихкод — наведите и нажмите круглую кнопку",
-                      "A dish, a nutrition label or a barcode — point and tap the round button"))
-                : L("Снимок можно сделать после доступа к камере", "You can take a photo once the camera is allowed")
-            ) +
+            esc(scanModeHint(scanMode(), mode === "live")) +
           "</p>" +
           // Скрытый input для выбора файла из галереи/камеры системы.
           '<input type="file" id="scan-file" accept="image/*" capture="environment" hidden>' +
@@ -801,6 +793,8 @@
       });
     }
 
+    bindScanModes(mode === "live");
+
     // СПУСК ЗАТВОРА на самом экране — главная кнопка этой страницы.
     var shutterBtn = viewEl.querySelector("#scan-shutter");
     if (shutterBtn) {
@@ -822,15 +816,98 @@
     loadScansRemaining();
   }
 
+  // ===== РЕЖИМЫ СЪЁМКИ =====
+  // Что снимаем, выбирает человек переключателем внизу видоискателя: блюдо,
+  // штрихкод или таблицу КБЖУ на упаковке. Автоматически не угадываем — иначе
+  // упаковка рядом с тарелкой подменяла бы блюдо. Выбор живёт до конца сеанса
+  // (App.state.scanMode): вернулся к камере — режим тот же.
+  var SCAN_MODES = ["food", "barcode", "label"];
+
+  function scanMode() {
+    var m = App.state && App.state.scanMode;
+    return SCAN_MODES.indexOf(m) !== -1 ? m : "food";
+  }
+
+  function setScanMode(m) {
+    if (SCAN_MODES.indexOf(m) === -1) return;
+    if (App.state) App.state.scanMode = m;
+  }
+
+  function scanModeLabel(m) {
+    if (m === "barcode") return L("Штрихкод", "Barcode");
+    if (m === "label") return L("КБЖУ", "Label");
+    return L("Еда", "Food");
+  }
+
+  function scanModeHint(m, live) {
+    if (!live) {
+      return L("Снимок можно сделать после доступа к камере", "You can take a photo once the camera is allowed");
+    }
+    if (m === "barcode") {
+      return barcodeLiveSupported()
+        ? L("Поднесите штрихкод в рамку — сниму сам", "Bring the barcode into the frame — I'll snap it myself")
+        : L("Поместите штрихкод в рамку и нажмите круглую кнопку", "Put the barcode in the frame and tap the round button");
+    }
+    if (m === "label") {
+      return L("Таблица КБЖУ на упаковке — крупно и ровно, чтобы цифры читались",
+               "The nutrition table on the package — close and straight so the numbers are readable");
+    }
+    return L("Наведите на блюдо и нажмите круглую кнопку", "Point at your dish and tap the round button");
+  }
+
+  // Переключатель режимов и рамка-прицел поверх видео. Переключатель —
+  // полупрозрачный и прижат к низу кадра, чтобы не закрывать то, что снимают.
+  function scanModesHtml() {
+    var cur = scanMode();
+    var btns = SCAN_MODES.map(function (m) {
+      var on = m === cur;
+      return (
+        '<button type="button" class="scan-mode' + (on ? " is-active" : "") + '" ' +
+          'data-scan-mode="' + m + '" role="radio" aria-checked="' + (on ? "true" : "false") + '">' +
+          esc(scanModeLabel(m)) +
+        "</button>"
+      );
+    }).join("");
+    return (
+      '<span class="scan-aim scan-aim--' + cur + '" id="scan-aim" aria-hidden="true"></span>' +
+      '<div class="scan-modes" role="radiogroup" aria-label="' + esc(L("Что снимаем", "What to scan")) + '">' +
+        btns +
+      "</div>"
+    );
+  }
+
+  // Переключение режима без перерисовки экрана: видео продолжает идти.
+  function bindScanModes(live) {
+    var wrap = viewEl && viewEl.querySelector(".scan-modes");
+    if (!wrap) return;
+    wrap.addEventListener("click", function (ev) {
+      var btn = ev.target.closest("[data-scan-mode]");
+      if (!btn) return;
+      var m = btn.getAttribute("data-scan-mode");
+      if (m === scanMode()) return;
+      setScanMode(m);
+      haptic("selection");
+      var all = wrap.querySelectorAll("[data-scan-mode]");
+      for (var i = 0; i < all.length; i++) {
+        var on = all[i].getAttribute("data-scan-mode") === m;
+        all[i].classList.toggle("is-active", on);
+        all[i].setAttribute("aria-checked", on ? "true" : "false");
+      }
+      var aim = viewEl.querySelector("#scan-aim");
+      if (aim) aim.className = "scan-aim scan-aim--" + m;
+      var hint = viewEl.querySelector("#scan-cam-hint");
+      if (hint) hint.textContent = scanModeHint(m, live || cam.live);
+    });
+  }
+
   // Умеет ли браузер сам находить штрихкоды в видео (Chrome на Android —
   // да; Safari на iPhone — нет, там код читает сервер по снимку).
   function barcodeLiveSupported() {
     return typeof window.BarcodeDetector === "function";
   }
 
-  // Следит за видео и, увидев КРУПНЫЙ товарный штрихкод, снимает кадр сам.
-  // «Крупный» — шире четверти кадра: так сканер не срабатывает на упаковку,
-  // случайно попавшую в кадр рядом с тарелкой. Дальше — обычный путь снимка:
+  // Следит за видео и в режиме «Штрихкод», увидев КРУПНЫЙ товарный код
+  // (шире четверти кадра), снимает кадр сам. Дальше — обычный путь снимка:
   // сервер прочитает тот же код и найдёт продукт.
   function watchBarcode(token) {
     if (!barcodeLiveSupported()) return;
@@ -848,6 +925,9 @@
         return;
       }
       if (busy || v.readyState < 2 || !v.videoWidth) return;
+      // Сам снимаем только в режиме «Штрихкод»: в «Еде» упаковка рядом с
+      // тарелкой не должна нажимать затвор за человека.
+      if (scanMode() !== "barcode") return;
       busy = true;
       detector
         .detect(v)
@@ -1039,7 +1119,11 @@
           '<img class="scan-preview__img" src="' + esc(src) + '" alt="' +
             esc(L("Выбранное фото", "Selected photo")) + '">' +
           '<p class="scan-preview__status">' +
-            esc(L("Анализируем фото…", "Analyzing photo…")) +
+            esc(scanMode() === "barcode"
+            ? L("Ищем штрихкод…", "Looking for the barcode…")
+            : scanMode() === "label"
+              ? L("Читаем этикетку…", "Reading the label…")
+              : L("Анализируем фото…", "Analyzing photo…")) +
           "</p>" +
         "</div>" +
         '<button type="button" class="btn btn-ghost btn-block" id="scan-cancel">' +
@@ -1439,11 +1523,13 @@
         "</div>" +
         '<button type="button" class="btn btn-cta btn-block" id="scan-barcode-label">' +
           icon("camera", { size: 18 }) +
-          "<span>" + esc(L("Снять этикетку", "Photograph the label")) + "</span>" +
+          "<span>" + esc(L("Снять КБЖУ с упаковки", "Photograph the label")) + "</span>" +
         "</button>" +
       "</section>";
     viewEl.querySelector("#scan-barcode-label").addEventListener("click", function () {
       haptic("light");
+      // Следующий снимок — таблица КБЖУ: сразу переключаем режим.
+      setScanMode("label");
       reset();
     });
   }
@@ -1676,8 +1762,9 @@
 
     if (App && typeof App.showLoading === "function") App.showLoading();
 
+    var modeAtStart = scanMode();
     App.api
-      .analyzeFood(state.file)
+      .analyzeFood(state.file, modeAtStart)
       .then(function (res) {
         // Если за время запроса пользователь сбросил/сменил файл — игнорируем ответ.
         if (state.file !== fileAtStart) return;
@@ -1735,7 +1822,8 @@
         // Штрихкод прочитан, но товара нет ни у нас, ни в открытой базе:
         // просим снять таблицу КБЖУ и запоминаем код — продукт сохранится
         // под ним, и следующий скан этого товара сработает сразу.
-        if (res && res.barcode && res.kind === "dish" && !(num(res.calories) > 0)) {
+        if (res && res.barcode && (res.kind === "barcode_missing" ||
+            (res.kind === "dish" && !(num(res.calories) > 0)))) {
           App.state.pendingBarcode = { code: res.barcode, at: Date.now() };
           renderBarcodeMissing(res.barcode);
           loadScansRemaining();
@@ -1780,6 +1868,12 @@
           renderScanLimit();
           // Подтянем актуальный остаток (на случай, если paywall сменится).
           loadScansRemaining();
+          return;
+        }
+        // Штрихкода или таблицы КБЖУ на снимке нет — повтор того же файла
+        // бессмыслен, «Повторить» возвращает к камере в том же режиме.
+        if (err && (err.code === "no_barcode" || err.code === "no_label")) {
+          renderError(err.message, "upload");
           return;
         }
         var msg =

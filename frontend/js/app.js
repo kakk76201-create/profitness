@@ -344,10 +344,12 @@
       return request("/account/export", { method: "POST" });
     },
 
-    // Анализ фото еды. Принимает File, отправляет multipart/form-data.
-    analyzeFood: function (file) {
+    // Анализ фото. mode — режим, выбранный на камере: "food" (блюдо),
+    // "barcode" (штрихкод), "label" (КБЖУ с упаковки); без него — "auto".
+    analyzeFood: function (file, mode) {
       var form = new FormData();
       form.append("file", file);
+      form.append("mode", mode || "auto");
       return request("/food/analyze", {
         method: "POST",
         body: form,

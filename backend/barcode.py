@@ -163,6 +163,9 @@ def lookup(db, code: str, lang: str = "ru") -> dict | None:
         return None
     if not found:
         _remember_not_found(code)
+        # Код товара — не личные данные. Строка нужна, чтобы проверить на
+        # реальных промахах, закрывает ли их платная база (см. /stats).
+        logger.info("barcode MISS %s", code)
         return None
     row = products.save_shared(
         db, code, found["name"],

@@ -851,6 +851,8 @@ def handle_photo(db, message: dict) -> None:
             _add_items(db, message, lang, [it], _meal_from_words(caption), caption)
             return
 
+        analytics.track(user.telegram_id, "barcode_miss")
+
     if not _charge_scan(db, message, user, lang):
         return
     try:

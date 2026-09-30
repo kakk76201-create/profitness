@@ -56,6 +56,7 @@ SERVER_EVENTS = {
     "scan_photo",         # еда распознана по фото
     "scan_voice",         # еда распознана по голосу
     "scan_barcode",       # продукт найден по штрихкоду
+    "barcode_miss",       # штрихкод прочитан, но товара нет ни у нас, ни в Open Food Facts
     "food_text",          # КБЖУ посчитаны по тексту
     "trainer_program",    # тренер собрал программу
     "workout_done",       # тренировка завершена
@@ -165,6 +166,10 @@ def report(db, days: int = 7) -> str:
         f"• текстом: {_count(db, 'food_text', since)} / {_uniq(db, 'food_text', since)}",
         f"• программ тренера: {_count(db, 'trainer_program', since)}",
         f"• тренировок завершено: {_count(db, 'workout_done', since)} / {_uniq(db, 'workout_done', since)}",
+        # Доля ненайденных штрихкодов решает, нужна ли платная база продуктов.
+        f"• штрихкоды: найдено {_count(db, 'scan_barcode', since)}, не найдено "
+        f"{_count(db, 'barcode_miss', since)} "
+        f"({_pct(_count(db, 'barcode_miss', since), _count(db, 'scan_barcode', since) + _count(db, 'barcode_miss', since))} промахов)",
         f"• в чате с ботом: текст {_count(db, 'bot_text', since)}, фото {_count(db, 'bot_photo', since)}, "
         f"голос {_count(db, 'bot_voice', since)}; записано приёмов {_count(db, 'bot_meal_added', since)} "
         f"({_uniq(db, 'bot_meal_added', since)} чел.)",
