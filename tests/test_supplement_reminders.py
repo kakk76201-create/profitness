@@ -138,6 +138,40 @@ with SessionLocal() as db:
         notifications._process_supplement_reminder(db, full, "2026-09-18", datetime(2026, 9, 18, 8, 31))
     chk("напоминание с добавкой шлётся и называет её", len(sent) == 1 and "Креатин" in sent[0], sent)
 
+# ---------- 7.1. Время: в назначенный момент, а не «когда угодно позже» ----------
+# Случай из жизни: напоминание на 00:00, поставленное днём, пришло в 12:44 —
+# для полуночи «время уже наступило» весь день.
+with SessionLocal() as db:
+    midnight = M.SupplementReminder(telegram_id=1, label="", time="00:00", enabled=True)
+    db.add(midnight); db.commit(); db.refresh(midnight)
+    sup_id = db.query(M.Supplement).filter(M.Supplement.telegram_id == 1).first().id
+    db.add(M.SupplementReminderItem(reminder_id=midnight.id, supplement_id=sup_id))
+    db.commit()
+    sent.clear()
+    with patch.object(notifications, "send_telegram", lambda tid, text: sent.append(text) or True):
+        notifications._process_supplement_reminder(db, midnight, "2026-09-30", datetime(2026, 9, 30, 12, 44))
+    chk("00:00 не приходит в 12:44", sent == [], sent)
+    with patch.object(notifications, "send_telegram", lambda tid, text: sent.append(text) or True):
+        notifications._process_supplement_reminder(db, midnight, "2026-10-01", datetime(2026, 10, 1, 0, 0))
+    chk("00:00 приходит в полночь", len(sent) == 1, sent)
+    # Перезапуск сервера при деплое: опоздание до получаса ещё отправляется.
+    sent.clear()
+    late = M.SupplementReminder(telegram_id=1, label="", time="09:00", enabled=True)
+    db.add(late); db.commit(); db.refresh(late)
+    db.add(M.SupplementReminderItem(reminder_id=late.id, supplement_id=sup_id))
+    db.commit()
+    with patch.object(notifications, "send_telegram", lambda tid, text: sent.append(text) or True):
+        notifications._process_supplement_reminder(db, late, "2026-10-01", datetime(2026, 10, 1, 9, 25))
+    chk("опоздание 25 минут — отправлено", len(sent) == 1, sent)
+    sent.clear()
+    with patch.object(notifications, "send_telegram", lambda tid, text: sent.append(text) or True):
+        notifications._process_supplement_reminder(db, late, "2026-10-02", datetime(2026, 10, 2, 11, 0))
+    chk("опоздание 2 часа — не отправлено", sent == [], sent)
+chk("окно: до времени — нет", not notifications._time_due(datetime(2026, 1, 1, 7, 59), "08:00"))
+chk("окно: ровно — да", notifications._time_due(datetime(2026, 1, 1, 8, 0), "08:00"))
+chk("окно: +31 мин — нет", not notifications._time_due(datetime(2026, 1, 1, 8, 31), "08:00"))
+chk("мусор во времени — нет", not notifications._time_due(datetime(2026, 1, 1, 8, 0), "25:99"))
+
 # ---------- 8. ИИ-совет знает, что уже принимают ----------
 captured = {}
 

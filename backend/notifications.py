@@ -418,23 +418,53 @@ def _mark_sent(db, tid: int, kind: str, date: str) -> None:
 # --------------------------------------------------------------------------- #
 #  Вспомогательное: сравнение времени "HH:MM" с текущим
 # --------------------------------------------------------------------------- #
-def _time_reached(now: datetime, hhmm: str | None) -> bool:
-    """True, если текущее время (now) уже достигло заданного "HH:MM".
-
-    Сравниваем по минутам в пределах текущих суток. Некорректные/пустые
-    значения трактуем как «время ещё не наступило» (False).
-    """
+def _parse_hhmm(hhmm: str | None):
+    """"HH:MM" → минуты от начала суток; None — пусто или мусор."""
     if not hhmm:
-        return False
+        return None
     try:
         parts = str(hhmm).strip().split(":")
         hour = int(parts[0])
         minute = int(parts[1]) if len(parts) > 1 else 0
     except Exception:
+        return None
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return None
+    return hour * 60 + minute
+
+
+def _time_reached(now: datetime, hhmm: str | None) -> bool:
+    """True, если текущее время (now) уже достигло заданного "HH:MM".
+
+    «Когда угодно после» — для рассылок без точного времени (подписка после
+    12:00, недельный отчёт после вечерней сводки). Для напоминаний, которые
+    человек ставит на конкретное время, — _time_due.
+    """
+    target = _parse_hhmm(hhmm)
+    if target is None:
         return False
-    now_minutes = now.hour * 60 + now.minute
-    target_minutes = hour * 60 + minute
-    return now_minutes >= target_minutes
+    return now.hour * 60 + now.minute >= target
+
+
+# Насколько напоминание может опоздать и всё ещё быть отправленным: запас на
+# перезапуск сервера при деплое (планировщик в это время не работает).
+REMINDER_LATE_MIN = int(os.getenv("REMINDER_LATE_MIN", "30"))
+
+
+def _time_due(now: datetime, hhmm: str | None) -> bool:
+    """Пора ли слать напоминание «в HH:MM»: время наступило, но прошло не больше
+    REMINDER_LATE_MIN минут.
+
+    Раньше было «время уже наступило сегодня» — и напоминание на 00:00,
+    поставленное днём, приходило сразу (для полуночи «наступило» весь день),
+    а пропущенное из-за перезапуска сервера приходило через несколько часов.
+    Опоздавшее больше чем на полчаса напоминание бесполезно — ждём следующего дня.
+    """
+    target = _parse_hhmm(hhmm)
+    if target is None:
+        return False
+    late = now.hour * 60 + now.minute - target
+    return 0 <= late <= REMINDER_LATE_MIN
 
 
 def _parse_weekdays(raw: str | None) -> set:
@@ -518,7 +548,7 @@ def _process_meal_reminder(db, tid: int, today: str, now: datetime,
     Текст и метку приёма (label) берём на языке пользователя (lang). label_key —
     ключ локализованной метки приёма ("meal_label_breakfast" и т.п.).
     """
-    if not _time_reached(now, meal_time):
+    if not _time_due(now, meal_time):
         return
     if _was_sent(db, tid, kind, today):
         return
@@ -566,7 +596,7 @@ def _process_daily_summary(db, tid: int, today: str, now: datetime,
     """Вечерняя сводка по дню: съедено / цель / осталось (на языке пользователя)."""
     if not getattr(settings, "daily_summary_enabled", False):
         return
-    if not _time_reached(now, getattr(settings, "summary_time", None)):
+    if not _time_due(now, getattr(settings, "summary_time", None)):
         return
     if _was_sent(db, tid, "summary", today):
         return
@@ -634,7 +664,7 @@ def _process_training_reminder(db, reminder: "TrainingReminder",
     if now.weekday() not in weekdays:
         return
 
-    if not _time_reached(now, getattr(reminder, "time", None)):
+    if not _time_due(now, getattr(reminder, "time", None)):
         return
 
     kind = f"trainrem:{rid}"
@@ -679,7 +709,7 @@ def _process_supplement_reminder(db, reminder: "SupplementReminder",
         return
     if not getattr(reminder, "enabled", False):
         return
-    if not _time_reached(now, getattr(reminder, "time", None)):
+    if not _time_due(now, getattr(reminder, "time", None)):
         return
 
     kind = f"supprem:{rid}"
