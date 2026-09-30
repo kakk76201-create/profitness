@@ -59,8 +59,8 @@
       required: false,
       ru: "Согласен на обработку данных о здоровье",
       en: "I consent to processing of health data",
-      hintRu: "Травмы, ограничения, цикл, фото прогресса. Без этого не работают тренер, трекер цикла и фото.",
-      hintEn: "Injuries, limitations, cycle, progress photos. Without it the trainer, cycle tracker and photos are off.",
+      hintRu: "Травмы, ограничения, цикл. Без этого не работают тренер и трекер цикла.",
+      hintEn: "Injuries, limitations, cycle. Without it the trainer and cycle tracker are off.",
       doc: "consent"
     },
     {

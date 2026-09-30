@@ -110,7 +110,7 @@
       "Supplements: tracking, reminders and AI tips"
     ],
     ["Недельный отчёт о прогрессе", "Weekly progress report"],
-    ["Фото-прогресс и трекер цикла", "Photo progress and cycle tracker"]
+    ["Трекер цикла", "Cycle tracker"]
   ];
 
   // Три коротких обещания на тёмном блоке вверху экрана. Полный список

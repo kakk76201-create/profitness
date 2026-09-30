@@ -641,55 +641,6 @@
   font-size: 0;
 }
 
-/* ---------- Фото-прогресс ---------- */
-
-.prog-privacy {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-  font-size: var(--fs-xs);
-  color: var(--muted);
-}
-
-/* «До» — нижний слой шторки сравнения; «после» лежит поверх (z-index:1
-   в style.css) и обрезается слайдером. Явный слой избавляет от зависимости
-   от порядка узлов в разметке. */
-.prog-compare__before {
-  z-index: 0;
-}
-
-.prog-empty__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 52px;
-  height: 52px;
-  margin: 0 auto var(--s3);
-  border-radius: var(--radius-pill);
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 0;
-}
-
-/* Удаление фото: 44px вместо прежних 26×26. Кнопка лежит поверх
-   миниатюры, и на такой мишени промах был почти гарантирован.
-   Подложка — плотная поверхность из палитры, а не полупрозрачная заливка:
-   тёмная плёнка поверх фото не описана ни одним токеном, а на светлом
-   снимке белый крестик на ней всё равно терялся. */
-.prog-item__del {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  top: 0;
-  right: 0;
-  width: var(--tap-min);
-  height: var(--tap-min);
-  border-radius: 0 var(--radius-sm) 0 var(--radius);
-  background: var(--surface);
-  color: var(--danger);
-  font-size: 0;
-}
-
 /* ============================================================
    ЭКРАН ПОДПИСКИ (sub-*)
    Сверху — тёмный блок с фотографией и тремя обещаниями, ниже — тарифы

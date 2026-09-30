@@ -1,5 +1,5 @@
-"""Проход по безопасности: заголовки и CSP, фото прогресса в БД (+перенос
-старых файлов с диска, +чужое фото 404), общий потолок ИИ с алертом,
+"""Проход по безопасности: заголовки и CSP, фото-прогресс убран (маршрутов нет,
+остатки чистит только владелец командой /purgephotos), общий потолок ИИ с алертом,
 предохранитель ALLOW_INSECURE_AUTH в проде, commit профиля только при изменении."""
 import base64, hashlib, io, os, pathlib, re, subprocess, sys, tempfile
 from unittest import mock
@@ -9,7 +9,6 @@ tmp = tempfile.mkdtemp()
 os.environ["DATABASE_URL"] = "sqlite:///" + os.path.join(tmp, "sec.db").replace("\\", "/")
 os.environ["ALLOW_INSECURE_AUTH"] = "1"; os.environ["ENABLE_SCHEDULER"] = "0"; os.environ["OWNER_ID"] = "1"
 os.environ["OPENAI_API_KEY"] = "dummy"
-os.environ["PROGRESS_PHOTOS_DIR"] = os.path.join(tmp, "photos")
 os.environ.pop("RAILWAY_ENVIRONMENT", None); os.environ.pop("RAILWAY_PROJECT_ID", None)
 
 from PIL import Image
@@ -52,45 +51,32 @@ for b in bodies:
     hsh = "'sha256-" + base64.b64encode(hashlib.sha256(b.encode("utf-8")).digest()).decode() + "'"
     chk("хеш инлайн-скрипта в CSP", hsh in script_src, hsh)
 
-# ---------- 2. Фото прогресса хранится в БД ----------
-buf = io.BytesIO(); Image.new("RGB", (2400, 1200), (200, 90, 10)).save(buf, "PNG")
-r = c.post("/progress/upload", files={"file": ("a.png", buf.getvalue(), "image/png")}, data={"weight": "80"})
-chk("upload 200", r.status_code == 200, r.text[:200])
-pid = r.json()["id"]
-with SessionLocal() as db:
-    row = db.get(M.ProgressPhoto, pid)
-    chk("снимок в БД, не на диске", row.image_data is not None and row.photo_path is None)
-    chk("mime jpeg", row.image_mime == "image/jpeg")
-    stored = bytes(row.image_data)
-im2 = Image.open(io.BytesIO(stored))
-chk("пережат до 1600", max(im2.size) <= 1600, im2.size)
-chk("EXIF стёрт", not im2.info.get("exif"))
-r = c.get(f"/progress/{pid}/image")
-chk("выдача 200 jpeg", r.status_code == 200 and r.headers["content-type"].startswith("image/jpeg"), r.status_code)
-chk("private no-store", "no-store" in r.headers.get("cache-control", ""))
-chk("байты совпадают", r.content == stored)
-r = c.post("/progress/upload", files={"file": ("a.png", b"not an image", "image/png")})
-chk("мусор вместо картинки → 400", r.status_code == 400, r.status_code)
-chk("удаление", c.delete(f"/progress/{pid}").status_code == 200)
-
-# ---------- 3. Старый файл с диска переносится в БД при первой выдаче ----------
-pdir = pathlib.Path(os.environ["PROGRESS_PHOTOS_DIR"]); pdir.mkdir(parents=True, exist_ok=True)
-legacy = pdir / "1_legacy.jpg"; Image.new("RGB", (50, 50), (1, 2, 3)).save(legacy, "JPEG")
-with SessionLocal() as db:
-    ph = M.ProgressPhoto(telegram_id=1, photo_path="1_legacy.jpg", date="2026-01-01")
-    db.add(ph); db.commit(); lid = ph.id
-r = c.get(f"/progress/{lid}/image")
-chk("старый файл отдан", r.status_code == 200 and r.content == legacy.read_bytes(), r.status_code)
-with SessionLocal() as db:
-    row = db.get(M.ProgressPhoto, lid)
-    chk("старый файл перенесён в БД", row.image_data is not None and row.image_mime == "image/jpeg")
-legacy.unlink()
-chk("после потери диска отдаётся из БД", c.get(f"/progress/{lid}/image").status_code == 200)
+# ---------- 2. Фото-прогресс убран: маршрутов нет, остатки чистит владелец ----------
+buf = io.BytesIO(); Image.new("RGB", (200, 100), (200, 90, 10)).save(buf, "PNG")
+r = c.post("/progress/upload", files={"file": ("a.png", buf.getvalue(), "image/png")})
+chk("загрузки фото прогресса больше нет", r.status_code in (404, 405), r.status_code)
+chk("списка фото прогресса больше нет", c.get("/progress/list").status_code in (404, 405))
 with SessionLocal() as db:
     db.add(M.User(telegram_id=2, username="x")); db.commit()
-    ph = M.ProgressPhoto(telegram_id=2, image_data=b"xx", image_mime="image/jpeg", date="2026-01-01")
-    db.add(ph); db.commit(); oid = ph.id
-chk("чужое фото → 404", c.get(f"/progress/{oid}/image").status_code == 404)
+    db.add(M.ProgressPhoto(telegram_id=2, image_data=b"xx", image_mime="image/jpeg", date="2026-01-01"))
+    db.add(M.ProgressPhoto(telegram_id=1, image_data=b"yy", image_mime="image/jpeg", date="2026-01-01"))
+    db.commit()
+chk("выдачи чужого/своего фото нет", c.get("/progress/1/image").status_code in (404, 405))
+
+from backend import telegram_bot
+said = []
+with mock.patch.object(telegram_bot, "_bot_api", lambda m, p: said.append(p)):
+    with SessionLocal() as db:
+        telegram_bot.handle_update(db, {"message": {"message_id": 1, "from": {"id": 2}, "chat": {"id": 2},
+                                                    "text": "/purgephotos confirm"}})
+        chk("/purgephotos не владельцу — молчание", not said and db.query(M.ProgressPhoto).count() == 2, said)
+        telegram_bot.handle_update(db, {"message": {"message_id": 2, "from": {"id": 1}, "chat": {"id": 1},
+                                                    "text": "/purgephotos"}})
+        chk("без confirm — только счётчик", "2" in said[-1]["text"] and db.query(M.ProgressPhoto).count() == 2,
+            said[-1:])
+        telegram_bot.handle_update(db, {"message": {"message_id": 3, "from": {"id": 1}, "chat": {"id": 1},
+                                                    "text": "/purgephotos confirm"}})
+        chk("с confirm — удалено", db.query(M.ProgressPhoto).count() == 0, said[-1:])
 
 # ---------- 4. Общий потолок ИИ ----------
 ratelimit.AI_GLOBAL_PER_DAY = 2; ratelimit.AI_GLOBAL_PER_MIN = 100
@@ -139,5 +125,5 @@ with SessionLocal() as db:
 
 if fails:
     print("FAIL:\n  " + "\n  ".join(fails)); sys.exit(1)
-print("OK: заголовки и CSP по хешам; фото прогресса в БД (пережатие, без EXIF, перенос с диска,\n"
-      "    чужое 404); общий потолок ИИ с одним алертом; предохранитель прода; commit профиля по изменению")
+print("OK: заголовки и CSP по хешам; фото-прогресс убран (маршрутов нет,\n"
+      "    /purgephotos только владельцу); общий потолок ИИ с одним алертом; предохранитель прода; commit профиля по изменению")

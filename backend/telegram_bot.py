@@ -531,6 +531,41 @@ def _handle_stats_command(db, message: dict, text: str) -> None:
     _bot_api("sendMessage", {"chat_id": chat_id, "text": body})
 
 
+def _handle_purge_photos_command(db, message: dict, text: str) -> None:
+    """/purgephotos [confirm] — удалить все оставшиеся фото прогресса.
+
+    Функцию фото-прогресса убрали, а уже загруженные снимки тела — данные о
+    здоровье, которые больше ни для чего не нужны (152-ФЗ требует удалять
+    такие данные, когда цель обработки отпала). Удаление необратимо, поэтому
+    без «confirm» команда только показывает, сколько снимков осталось.
+    Только владелец (по OWNER_ID).
+    """
+    try:
+        from_id = int(message.get("from", {}).get("id"))
+    except Exception:  # noqa: BLE001
+        return
+    if not OWNER_ID or from_id != OWNER_ID:
+        return
+    chat_id = message.get("chat", {}).get("id")
+    if chat_id is None:
+        return
+    from backend.models import ProgressPhoto
+
+    total = db.query(ProgressPhoto).count()
+    people = db.query(func.count(func.distinct(ProgressPhoto.telegram_id))).scalar() or 0
+    if "confirm" not in text.lower().split():
+        _bot_api("sendMessage", {"chat_id": chat_id, "text": (
+            f"Фото прогресса в базе: {total} у {people} чел.\n"
+            "Удалить все безвозвратно: /purgephotos confirm"
+            if total else "Фото прогресса в базе нет — удалять нечего."
+        )})
+        return
+    deleted = db.query(ProgressPhoto).delete(synchronize_session=False)
+    db.commit()
+    logger.info("purgephotos: владелец удалил %s фото прогресса", deleted)
+    _bot_api("sendMessage", {"chat_id": chat_id, "text": f"Удалено фото прогресса: {deleted}."})
+
+
 def _handle_users_command(db, message: dict) -> None:
     """/users — показать владельцу последних пользователей из базы."""
     try:
@@ -1055,6 +1090,9 @@ def handle_update(db, update: dict) -> None:
                 return
             if stripped.startswith("/stats"):
                 _handle_stats_command(db, message, stripped)
+                return
+            if stripped.startswith("/purgephotos"):
+                _handle_purge_photos_command(db, message, stripped)
                 return
 
             # Приветствие по /start.

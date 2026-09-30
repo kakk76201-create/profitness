@@ -287,39 +287,6 @@
   }
 
   /**
-   * Обёртка над fetch для ПРИВАТНЫХ бинарных ответов (например, фото прогресса).
-   * Всегда добавляет заголовок авторизации Telegram и возвращает Blob. Так
-   * приватные картинки грузятся авторизованно (в <img> напрямую заголовок не
-   * подставить), а не через публичную статику.
-   *
-   * @param {string} path путь запроса
-   * @returns {Promise<Blob>} бинарное тело ответа
-   */
-  function requestBlob(path) {
-    var headers = {};
-    headers[INIT_HEADER] = initData();
-    return fetch(path, { method: "GET", headers: headers })
-      .then(function (res) {
-        if (!res.ok) {
-          var err = new Error(
-            App.pick("Не удалось загрузить изображение", "Failed to load image")
-          );
-          err.status = res.status;
-          throw err;
-        }
-        return res.blob();
-      })
-      .catch(function (err) {
-        if (err instanceof TypeError) {
-          throw new Error(
-            App.pick("Нет соединения с сервером.", "No connection to the server.")
-          );
-        }
-        throw err;
-      });
-  }
-
-  /**
    * Публичный API-клиент. Каждый метод возвращает Promise и
    * бросает Error(message) при неудаче.
    */
@@ -796,39 +763,6 @@
     // Сбросить (удалить) все данные цикла пользователя.
     resetCycle: function () {
       return request("/cycle", { method: "DELETE" });
-    },
-
-    // --- Фото-прогресс (Этап 7, ПРЕМИУМ, приватно) ---
-    // Загрузить фото прогресса (multipart). date/weight — необязательны.
-    // Ответ: {id, date, weight, image_url, created_at}.
-    uploadProgress: function (file, date, weight) {
-      var form = new FormData();
-      form.append("file", file);
-      if (date) form.append("date", date);
-      if (weight !== undefined && weight !== null && weight !== "") {
-        form.append("weight", weight);
-      }
-      return request("/progress/upload", { method: "POST", body: form, isForm: true });
-    },
-
-    // Список фото прогресса (по возрастанию даты). Ответ: {items:[...]}.
-    getProgressList: function () {
-      return request("/progress/list");
-    },
-
-    // Загрузить приватное изображение как blob и вернуть object URL для <img>.
-    // Вызывающий обязан освободить URL через URL.revokeObjectURL по завершении.
-    getProgressImageUrl: function (id) {
-      return requestBlob("/progress/" + encodeURIComponent(id) + "/image").then(
-        function (blob) {
-          return URL.createObjectURL(blob);
-        }
-      );
-    },
-
-    // Удалить фото прогресса по id.
-    deleteProgress: function (id) {
-      return request("/progress/" + encodeURIComponent(id), { method: "DELETE" });
     },
 
     /* -------------------------------------------------------------------
