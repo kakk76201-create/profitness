@@ -644,6 +644,28 @@
    * Экран «Программа не создана»: тот же тёмный блок с фото, что и
    * тренировка дня, — раздел не должен выглядеть пустым ещё до старта.
    */
+  /**
+   * «Своя тренировка» — не по программе: человек сам выбирает упражнения.
+   * Показывается, пока не идёт другая тренировка.
+   */
+  function freeWorkoutHtml() {
+    return (
+      '<section class="card tr-free">' +
+      '<span class="eyebrow">' + esc(pick("Своя тренировка", "Your own workout")) + "</span>" +
+      '<p class="tr-free__text">' +
+      esc(pick(
+        "Не по программе: выберите упражнения сами. Подходы, веса и рекорды сохранятся так же, а калории попадут в дневник.",
+        "Off-program: pick exercises yourself. Sets, weights and records are saved the same way, and calories go to the diary."
+      )) +
+      "</p>" +
+      '<button type="button" class="btn btn--ghost btn-block" id="trFree">' +
+      icon("plus", { size: 18 }) +
+      "<span>" + esc(pick("Начать свою", "Start my own")) + "</span>" +
+      "</button>" +
+      "</section>"
+    );
+  }
+
   function emptyProgramHtml() {
     return heroHtml({
       img: "empty-program.jpg",
@@ -683,6 +705,7 @@
     body.innerHTML =
       todayCardHtml(ov) +
       dayListHtml(ov) +
+      (ov.active_session_id ? "" : freeWorkoutHtml()) +
       reviewBannerHtml(ov) +
       '<section class="card">' +
       '<span class="eyebrow">' + esc(pick("Эта неделя", "This week")) + "</span>" +
@@ -700,7 +723,9 @@
   function renderEmpty() {
     var body = byId("trBody");
     if (!body) return;
-    body.innerHTML = emptyProgramHtml();
+    // Программы нет — но свою тренировку можно провести и без неё.
+    body.innerHTML = emptyProgramHtml() + freeWorkoutHtml();
+    bindFree();
     var gen = byId("trGenerate");
     if (gen) {
       gen.addEventListener("click", function () {
@@ -759,7 +784,31 @@
   /**
    * Обработчики экрана «Сегодня».
    */
+  /** Кнопка «Начать свою тренировку». */
+  function bindFree() {
+    var free = byId("trFree");
+    if (!free) return;
+    free.addEventListener("click", function () {
+      if (state.starting) return;
+      state.starting = true;
+      free.disabled = true;
+      App.haptic("medium");
+      T.startFreeSession()
+        .then(function (session) {
+          if (!T.openSession(session)) loadOverview();
+        })
+        .catch(function (err) {
+          App.toast(T.errMessage(err, pick("Не удалось начать тренировку", "Failed to start the workout")));
+        })
+        .finally(function () {
+          state.starting = false;
+          free.disabled = false;
+        });
+    });
+  }
+
   function bindToday(ov) {
+    bindFree();
     var start = byId("trStart");
     if (start) {
       start.addEventListener("click", function () {

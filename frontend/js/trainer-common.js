@@ -1419,8 +1419,21 @@
    * @returns {Promise<object>} TrainerSessionOut
    */
   function startSession(programDayId) {
+    return startWith({ program_day_id: programDayId || null, date: App.todayStr() });
+  }
+
+  /**
+   * Своя тренировка: пустая сессия без программы, упражнения человек
+   * добавляет сам из библиотеки.
+   * @returns {Promise<object>} TrainerSessionOut
+   */
+  function startFreeSession() {
+    return startWith({ free: true, date: App.todayStr() });
+  }
+
+  function startWith(payload) {
     return App.api
-      .trainerStartSession({ program_day_id: programDayId || null, date: App.todayStr() })
+      .trainerStartSession(payload)
       .catch(function (err) {
         if (err && err.status === 409) {
           return App.api.trainerActiveSession().then(function (s) {
@@ -1505,6 +1518,7 @@
     isPro: isPro,
     openProgram: openProgram,
     startSession: startSession,
+    startFreeSession: startFreeSession,
     openSession: openSession,
     cache: cache
   };

@@ -563,12 +563,22 @@
   function bodyHtml() {
     var main = exercisesOf("main");
     var html = blockHtml("warmup");
+    // Своя тренировка (без дня программы) начинается пустой — это не
+    // ошибка, а приглашение выбрать упражнения.
+    var own = !(state.session && state.session.program_day_id);
     if (!main.length) {
       html +=
         '<section class="card wk-empty">' +
-        '<p class="wk-empty__title">' + esc(pick("Упражнений нет", "No exercises")) + "</p>" +
+        '<p class="wk-empty__title">' +
+        esc(own
+          ? pick("Добавьте первое упражнение", "Add your first exercise")
+          : pick("Упражнений нет", "No exercises")) +
+        "</p>" +
         '<p class="wk-empty__text">' +
-        esc(pick("В этой тренировке нет упражнений — завершите её и соберите программу заново.",
+        esc(own
+          ? pick("Выберите упражнения из библиотеки — подходы, веса и рекорды сохранятся так же, как в тренировке по программе.",
+                 "Pick exercises from the library — sets, weights and records are saved the same way as in a program workout.")
+          : pick("В этой тренировке нет упражнений — завершите её и соберите программу заново.",
                  "This workout has no exercises — finish it and rebuild your program.")) +
         "</p></section>";
     }

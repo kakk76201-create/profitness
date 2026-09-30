@@ -410,10 +410,16 @@ class TrainerSessionOut(BaseModel):
 
 
 class TrainerSessionStartIn(BaseModel):
-    """Старт сессии: день программы (или None для внеплановой) и локальная дата клиента."""
+    """Старт сессии: день программы (или None — ближайший плановый) и локальная дата.
+
+    free=True — своя тренировка: пустая сессия без программы, упражнения человек
+    добавляет сам из библиотеки. title — её название (по умолчанию «Своя тренировка»).
+    """
 
     program_day_id: Optional[int] = None
     date: str
+    free: bool = False
+    title: Optional[str] = None
 
 
 class TrainerSetIn(BaseModel):

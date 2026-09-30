@@ -1636,6 +1636,25 @@ def trainer_session_start(
         )
 
     date_value = today_str(data.date)
+
+    # Своя тренировка: без программы и без плана — пустая сессия, упражнения
+    # человек добавляет сам. Подходы, рекорды, прогрессия весов и запись
+    # в дневник работают так же, как в тренировке по программе.
+    if data.free:
+        title = " ".join(str(data.title or "").split())[:60] or (
+            "My workout" if is_en(user_lang(user)) else "Своя тренировка"
+        )
+        session = M.TrainerSession(
+            telegram_id=tid, program_id=None, program_day_id=None, date=date_value,
+            status="in_progress", title=title, session_type="strength",
+            started_at=datetime.utcnow(),
+        )
+        db.add(session)
+        db.commit()
+        db.refresh(session)
+        logger.info("trainer/session/start: tid=%s своя тренировка #%s", tid, session.id)
+        return session_out(db, session)
+
     program = get_active_program(db, tid)
     day = _resolve_start_day(db, tid, program, data.program_day_id, date_value)
     if program is None or day.program_id != program.id:

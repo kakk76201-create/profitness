@@ -454,7 +454,9 @@ def session_duration_min(elapsed_min, planned_min=None, requested=None) -> int:
     if wanted is not None and wanted > 0:
         return _clamp(wanted, 1, 600)
     planned = _to_int(planned_min, 0) or 0
-    upper = max(int(round(planned * 1.5)), 30)
+    # Без плана (своя тренировка) потолок — 4 часа: иначе часовая тренировка
+    # записывалась бы как 30 минут. Потолок нужен против брошенных сессий.
+    upper = max(int(round(planned * 1.5)), 30) if planned else 240
     return _clamp(_to_int(elapsed_min, 0) or 0, 10, upper)
 
 
