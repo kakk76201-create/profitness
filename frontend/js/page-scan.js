@@ -1158,7 +1158,7 @@
     var conf = r.confidence;
     var confHtml = "";
     var confLabel = confidenceLabel(conf);
-    if (conf && confLabel && r.kind !== "label") {
+    if (conf && confLabel && r.kind !== "label" && r.kind !== "barcode") {
       confHtml =
         '<div class="scan-edit-confidence scan-edit-confidence--' + esc(conf) + '">' +
           '<span class="scan-edit-confidence__label">' +
@@ -1193,14 +1193,10 @@
             ? L("Найдено по штрихкоду " + (r.barcode || "") + ". ", "Found by barcode " + (r.barcode || "") + ". ")
             : "") +
           esc(L(
-            (r.kind === "barcode" ? "На 100 г: " : "С упаковки, на 100 г: ") + fmt1(r.per100.calories) + " ккал · Б " +
-              fmt1(r.per100.proteins) + " · Ж " + fmt1(r.per100.fats) + " · У " +
-              fmt1(r.per100.carbs) + ". Введите, сколько граммов съели — остальное посчитается. " +
-              "Продукт сохранится в «Мои продукты».",
-            (r.kind === "barcode" ? "Per 100 g: " : "From the label, per 100 g: ") + fmt1(r.per100.calories) + " kcal · P " +
-              fmt1(r.per100.proteins) + " · F " + fmt1(r.per100.fats) + " · C " +
-              fmt1(r.per100.carbs) + ". Enter how many grams you ate — the rest is calculated. " +
-              "The product will be saved to My products."
+            (r.kind === "barcode" ? "" : "Цифры с упаковки. ") +
+              "Не впишете вес — добавим 100 г. Продукт сохранится в «Мои продукты».",
+            (r.kind === "barcode" ? "" : "Numbers from the label. ") +
+              "Leave the weight empty and we'll add 100 g. The product will be saved to My products."
           )) +
         "</p>"
       : hasBaseWeight
@@ -1216,6 +1212,20 @@
             "Serving weight not detected — edit the values manually."
           )) +
         "</p>";
+
+    // Вес порции (граммы). Для этикетки/штрихкода — «сколько съели»: пустое
+    // поле с серым «100» и подсветкой — сразу видно, что вписать.
+    var weightFieldHtml =
+      '<label class="field scan-edit-field scan-edit-field--weight' + (isLabel ? " scan-edit-field--accent" : "") + '">' +
+        '<span class="field__label">' +
+          esc(isLabel
+            ? L("Сколько съели, г", "How much you ate, g")
+            : L("Вес порции, г", "Serving weight, g")) +
+        "</span>" +
+        '<input type="number" inputmode="decimal" min="0" step="1" ' +
+          'class="field__input scan-edit-input scan-edit-input--num" id="scan-edit-weight" ' +
+          'value="' + esc(e.weight == null ? "" : e.weight) + '" placeholder="' + (isLabel ? "100" : "0") + '">' +
+      "</label>";
 
     viewEl.innerHTML =
       '<section class="page page-scan">' +
@@ -1240,6 +1250,8 @@
             esc(L("Поправить значения", "Adjust the values")) +
           "</span>" +
           '<form class="scan-edit-form" id="scan-edit-form" autocomplete="off">' +
+            // Этикетка/штрихкод: главное, что осталось, — вес. Он первым.
+            (isLabel ? weightFieldHtml + weightHintHtml : "") +
             // Название блюда.
             '<label class="field scan-edit-field scan-edit-field--name">' +
               '<span class="field__label">' +
@@ -1249,18 +1261,7 @@
                 'value="' + esc(e.dish_name == null ? "" : e.dish_name) + '" ' +
                 'placeholder="' + esc(L("Название блюда", "Dish name")) + '" maxlength="120">' +
             "</label>" +
-            // Вес порции (граммы). Для этикетки — «сколько съели».
-            '<label class="field scan-edit-field scan-edit-field--weight">' +
-              '<span class="field__label">' +
-                esc(isLabel
-                  ? L("Сколько съели, г", "How much you ate, g")
-                  : L("Вес порции, г", "Serving weight, g")) +
-              "</span>" +
-              '<input type="number" inputmode="decimal" min="0" step="1" ' +
-                'class="field__input scan-edit-input scan-edit-input--num" id="scan-edit-weight" ' +
-                'value="' + esc(e.weight == null ? "" : e.weight) + '" placeholder="0">' +
-            "</label>" +
-            weightHintHtml +
+            (isLabel ? "" : weightFieldHtml + weightHintHtml) +
             // Калории.
             '<label class="field scan-edit-field scan-edit-field--calories">' +
               '<span class="field__label">' +
@@ -1323,9 +1324,16 @@
 
     bindResultInputs(hasBaseWeight);
 
-    // Для этикетки граммы — единственное, что нужно ввести: сразу фокус.
+    // Для этикетки граммы — единственное, что нужно ввести: прокручиваем к
+    // табло (под ним сразу поле веса) и ставим фокус. На iPhone клавиатура
+    // сама не откроется — браузер разрешает это только по нажатию, — но поле
+    // подсвечено и стоит прямо под цифрами.
     if (isLabel) {
       var wIn = viewEl.querySelector("#scan-edit-weight");
+      var sumEl = viewEl.querySelector(".scan-sum");
+      setTimeout(function () {
+        try { if (sumEl) sumEl.scrollIntoView({ block: "start", behavior: "smooth" }); } catch (e) { /* не критично */ }
+      }, 50);
       if (wIn) {
         try { wIn.focus({ preventScroll: true }); } catch (e) { /* не критично */ }
       }
@@ -1361,6 +1369,29 @@
 
   // Привязка обработчиков к редактируемым полям результата.
   // hasBaseWeight: есть ли исходный (ненулевой) вес для пропорционального пересчёта.
+  // Карточка «на 100 г»: этикетка (цифры с упаковки) или продукт по штрихкоду.
+  // Вес в ней необязателен: пусто — значит 100 г, как подсказывает поле.
+  function isPer100Result() {
+    var r = state.result || {};
+    return (r.kind === "label" || r.kind === "barcode") && !!r.per100;
+  }
+
+  // Вес, от которого считаются значения: введённый, а в карточке «на 100 г»
+  // при пустом поле — 100.
+  function effectiveWeight() {
+    var w = num(state.edited && state.edited.weight);
+    if (w > 0) return w;
+    return isPer100Result() ? 100 : 0;
+  }
+
+  // Подпись под названием в карточке «на 100 г»: на сколько граммов цифры.
+  function perCaption() {
+    var typed = num(state.edited && state.edited.weight) > 0;
+    return typed
+      ? L("на " + fmt(effectiveWeight()) + " г", "for " + fmt(effectiveWeight()) + " g")
+      : L("на 100 г — впишите ниже, сколько съели", "per 100 g — enter below how much you ate");
+  }
+
   // Табло результата над формой правки: название блюда и четыре числа.
   function resultSummaryHtml(e) {
     var name = e.dish_name == null || e.dish_name === ""
@@ -1369,6 +1400,9 @@
     return (
       '<div class="scan-sum">' +
         '<h2 class="scan-sum__name" id="scan-sum-name">' + esc(name) + "</h2>" +
+        (isPer100Result()
+          ? '<p class="scan-sum__per" id="scan-sum-per">' + esc(perCaption()) + "</p>"
+          : "") +
         '<div class="scan-sum__grid">' +
           summaryStatHtml("kcal", L("ккал", "kcal"), e.calories) +
           summaryStatHtml("p", L("Белки", "Protein"), e.proteins) +
@@ -1409,6 +1443,8 @@
       var el = viewEl.querySelector("#scan-sum-" + key);
       if (el) el.textContent = summaryValue(map[key]);
     }
+    var perEl = viewEl.querySelector("#scan-sum-per");
+    if (perEl) perEl.textContent = perCaption();
   }
 
   function bindResultInputs(hasBaseWeight) {
@@ -1452,9 +1488,13 @@
           return;
         }
         var baseW = num(state.base.weight);
-        var newW = num(weightEl.value);
+        // В карточке «на 100 г» стёртый вес возвращает значения на 100 г.
+        var newW = effectiveWeight();
         // При пустом/нулевом весе пересчёт не делаем — ждём осмысленное значение.
-        if (weightEl.value === "" || newW <= 0 || baseW <= 0) return;
+        if (newW <= 0 || baseW <= 0) {
+          syncResultSummary();
+          return;
+        }
 
         var k = newW / baseW;
         state.edited.calories = Math.round(num(state.base.calories) * k);
@@ -1475,7 +1515,7 @@
     // веса после исправления БЖУ вернула бы исходную оценку модели.
     function rebase() {
       if (!hasBaseWeight || !state.base) return;
-      var w = num(state.edited.weight);
+      var w = effectiveWeight();
       if (!(w > 0)) return;
       state.base = {
         weight: w,
@@ -1847,11 +1887,14 @@
             fats: state.result.per100.fats,
             carbs: state.result.per100.carbs,
           };
+          // Поля сразу заполнены значениями на 100 г: пустые поля и прочерки
+          // выглядели так, будто скан не сработал. Вес пустой — в нём серым
+          // «100», человек вписывает своё, и всё пересчитывается.
           state.edited.weight = "";
-          state.edited.calories = "";
-          state.edited.proteins = "";
-          state.edited.fats = "";
-          state.edited.carbs = "";
+          state.edited.calories = Math.round(state.result.per100.calories);
+          state.edited.proteins = round1(state.result.per100.proteins);
+          state.edited.fats = round1(state.result.per100.fats);
+          state.edited.carbs = round1(state.result.per100.carbs);
         }
 
         render();
@@ -1929,14 +1972,7 @@
     }
 
     var r = state.result || {};
-    var isLabel = (r.kind === "label" || r.kind === "barcode") && r.per100;
-    if (isLabel && !(num(e.weight) > 0)) {
-      haptic("warning");
-      toast(L("Введите, сколько граммов съели", "Enter how many grams you ate"));
-      var wEl = viewEl && viewEl.querySelector("#scan-edit-weight");
-      if (wEl) wEl.focus();
-      return;
-    }
+    var isLabel = isPer100Result();
 
     // Формируем запись строго по форме DiaryEntryIn — из ОТРЕДАКТИРОВАННЫХ значений.
     // Дата цели: App.state.scanDate (из FAB дневника) либо сегодня (task 5).
@@ -1952,7 +1988,7 @@
 
     // Количество/единица: фото-поток измеряет порцию в граммах. Если вес порции
     // известен (отредактированный или оценённый ИИ) — прокидываем его как g.
-    var weightVal = num(e.weight);
+    var weightVal = effectiveWeight();
     if (weightVal > 0) {
       entry.quantity = weightVal;
       entry.unit = "g";

@@ -890,3 +890,23 @@
   width: 78%;
   height: 58%;
 }
+
+/* ---------- Карточка «на 100 г» (этикетка, штрихкод) ----------
+   Под названием — на сколько граммов цифры; поле «Сколько съели» стоит
+   первым и подсвечено, чтобы сразу было видно, что вписать. */
+.scan-sum__per {
+  margin: calc(-1 * var(--s2)) 0 var(--s3);
+  color: var(--accent-text);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+.scan-edit-field--accent .field__input {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.scan-edit-field--accent .field__input::placeholder {
+  color: var(--muted);
+  opacity: 0.6;
+}
