@@ -654,11 +654,21 @@
     // Тело: {tariff:"monthly"|"quarterly"|"yearly"|"lifetime"}.
     // Ответ: {payment_id, confirmation_url} — страницу подтверждения открываем
     // во внешнем браузере; доступ активирует вебхук, а не фронт.
-    createYookassaPayment: function (tariff, email) {
+    createYookassaPayment: function (tariff, email, autopay) {
       var body = { tariff: tariff };
       if (email) body.email = email;
+      // Согласие на автопродление — только если человек сам отметил галочку.
+      if (autopay) body.autopay = true;
       return request("/payment/yookassa/create", { method: "POST", body: body });
     },
+    // Привязанные карты (автопродление) и отвязка.
+    getPaymentMethods: function () {
+      return request("/payment/methods");
+    },
+    revokePaymentMethod: function (id) {
+      return request("/payment/methods/" + encodeURIComponent(id), { method: "DELETE" });
+    },
+
     // Событие аналитики (просмотр экрана воронки). Ошибки глушим: аналитика
     // не должна мешать работе приложения.
     trackEvent: function (name) {
@@ -1476,9 +1486,9 @@
     }
   }
 
-  function payCardYookassa(tariff, email) {
+  function payCardYookassa(tariff, email, autopay) {
     return App.api
-      .createYookassaPayment(tariff, email)
+      .createYookassaPayment(tariff, email, autopay)
       .then(function (res) {
         var url = res && res.confirmation_url;
         if (!url) {
@@ -1525,7 +1535,7 @@
    * @param {string} tariff "monthly" | "quarterly" | "yearly" | "lifetime"
    * @returns {Promise}
    */
-  App.payCard = function (tariff, email) {
+  App.payCard = function (tariff, email, autopay) {
     var provider =
       (App.subscription && App.subscription.card_provider) || "none";
 
@@ -1533,7 +1543,7 @@
       return payCardCloudPayments(tariff);
     }
     if (provider === "yookassa") {
-      return payCardYookassa(tariff, email);
+      return payCardYookassa(tariff, email, autopay);
     }
 
     // Приём карт ещё не подключён: цену и кнопку показываем (витрина с ценой

@@ -689,6 +689,17 @@ class SubscriptionStatusOut(BaseModel):
     # Реквизиты продавца для страницы оплаты (см. config.legal_info):
     # seller / inn / contact / offer_url / privacy_url; незаданные — None.
     legal: Dict[str, Optional[str]] = {}
+    # Автопродление: предлагать ли галочку при оплате и привязанная карта
+    # (title, last4, autopay_amount, next_charge_at …) — для экрана подписки.
+    autopay_available: bool = False
+    autopay_card: Optional[Dict[str, Any]] = None
+
+
+class PaymentMethodsOut(BaseModel):
+    """Привязанные карты (автопродление) для профиля."""
+
+    autopay_available: bool = False
+    methods: List[Dict[str, Any]] = []
 
 
 class ScansRemainingOut(BaseModel):
@@ -708,6 +719,9 @@ class YookassaCreateIn(BaseModel):
 
     tariff: str                                  # "monthly" | "quarterly" | "yearly" | "lifetime"
     email: Optional[str] = None                  # e-mail для чека (когда включён YOOKASSA_RECEIPT)
+    # Отдельное согласие на автопродление (галочка на странице оплаты,
+    # по умолчанию выключена). Учитывается, только если включён YOOKASSA_AUTOPAY.
+    autopay: bool = False
 
 
 class YookassaStatusOut(BaseModel):
@@ -730,6 +744,9 @@ class YookassaCreateOut(BaseModel):
 
     payment_id: str                              # идентификатор платежа в ЮKassa
     confirmation_url: str                        # страница оплаты (redirect)
+    # Попросили ли ЮKassa сохранить карту (False — согласия не было или магазину
+    # автоплатежи ещё не подключены).
+    autopay: bool = False
 
 
 # --------------------------------------------------------------------------- #

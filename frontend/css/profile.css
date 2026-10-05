@@ -1699,3 +1699,60 @@
   font-size: var(--fs-sm);
   line-height: var(--lh-normal);
 }
+
+/* ---------- Оплата: привязанные карты ---------- */
+.acc-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  padding: var(--s3) 0;
+  border-top: 1px solid var(--border);
+}
+
+.acc-card:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.acc-card__info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.acc-card__title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  color: var(--text);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+}
+
+.acc-card__meta,
+.acc-cards__empty,
+.acc-cards__note {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+}
+
+.acc-cards__empty {
+  margin: 0;
+}
+
+.acc-cards__note {
+  margin: var(--s2) 0 0;
+}
+
+.acc-card__unbind {
+  color: var(--danger);
+}
+
+/* Экран подписки: строка про автопродление под датой окончания. */
+.sub-status__autopay {
+  margin-top: var(--s1);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+}

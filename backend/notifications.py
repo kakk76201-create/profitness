@@ -1387,6 +1387,19 @@ def start_scheduler():
             coalesce=True,
         )
         # Раз в сутки — чистка старых событий аналитики (срок хранения ограничен).
+        # Автопродление подписок: предупреждения и списания (без флага
+        # YOOKASSA_AUTOPAY задача ничего не делает).
+        from backend import autopay as _autopay
+
+        scheduler.add_job(
+            _autopay.run_job,
+            trigger="interval",
+            minutes=30,
+            id="autopay",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
         scheduler.add_job(
             _purge_analytics,
             trigger="interval",

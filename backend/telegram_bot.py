@@ -566,6 +566,36 @@ def _handle_purge_photos_command(db, message: dict, text: str) -> None:
     _bot_api("sendMessage", {"chat_id": chat_id, "text": f"Удалено фото прогресса: {deleted}."})
 
 
+def _handle_autopay_test_command(db, message: dict) -> None:
+    """/autopaytest — списать тестовую сумму с сохранённой карты владельца.
+
+    Тот же путь, что у настоящего продления (журнал, ключ идемпотентности,
+    разбор ответа): так автоплатежи проверяются на боевых ключах за 3 ₽.
+    Только владелец (по OWNER_ID).
+    """
+    try:
+        from_id = int(message.get("from", {}).get("id"))
+    except Exception:  # noqa: BLE001
+        return
+    if not OWNER_ID or from_id != OWNER_ID:
+        return
+    from backend import autopay
+
+    chat_id = message.get("chat", {}).get("id") or from_id
+    if not autopay.enabled():
+        _bot_api("sendMessage", {"chat_id": chat_id, "text": "Автопродление выключено (YOOKASSA_AUTOPAY)."})
+        return
+    user = db.query(User).filter(User.telegram_id == from_id).first()
+    res = autopay.test_charge(db, user) if user else "no_user"
+    if res == "no_card":
+        _bot_api("sendMessage", {"chat_id": chat_id, "text": (
+            "Сохранённой карты нет. Оплатите тестовый тариф с галочкой «Продлевать автоматически», "
+            "потом повторите /autopaytest."
+        )})
+    elif res not in ("succeeded", "canceled"):
+        _bot_api("sendMessage", {"chat_id": chat_id, "text": f"Тестовое автосписание: {res}."})
+
+
 def _handle_users_command(db, message: dict) -> None:
     """/users — показать владельцу последних пользователей из базы."""
     try:
@@ -1090,6 +1120,9 @@ def handle_update(db, update: dict) -> None:
                 return
             if stripped.startswith("/stats"):
                 _handle_stats_command(db, message, stripped)
+                return
+            if stripped.startswith("/autopaytest"):
+                _handle_autopay_test_command(db, message)
                 return
             if stripped.startswith("/purgephotos"):
                 _handle_purge_photos_command(db, message, stripped)

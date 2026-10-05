@@ -295,6 +295,8 @@ uvicorn backend.main:app --reload
 | `CLOUDPAYMENTS_PUBLIC_ID` / `CLOUDPAYMENTS_API_SECRET` | Ключи CloudPayments (секрет проверяет подпись вебхука) |
 | `YOOKASSA_SHOP_ID` / `YOOKASSA_SECRET_KEY` | Ключи ЮKassa (API v3); пока пусты — приём карт через ЮKassa выключен |
 | `YOOKASSA_WEBHOOK_SECRET` | Секрет в адресе вебхука ЮKassa (уведомления не подписаны); в проде обязателен |
+| `YOOKASSA_AUTOPAY`     | `1` — автопродление подписки (сохранённая карта, списание продления). По умолчанию выключено: включать после того, как ЮKassa подключит автоплатежи |
+| `AUTOPAY_CHARGE_BEFORE_HOURS` / `AUTOPAY_NOTICE_BEFORE_HOURS` / `AUTOPAY_MAX_ATTEMPTS` | За сколько часов до конца подписки списывать (24), за сколько до списания предупреждать (24), попыток за период (3) |
 | `YOOKASSA_RETURN_URL`  | Куда вернуть плательщика после оплаты (по умолчанию `MINI_APP_URL`) |
 | `LEGAL_SELLER` / `LEGAL_INN` / `SUPPORT_CONTACT` | Реквизиты продавца: подставляются в документы и показываются на странице оплаты. Без них документы выходят с красной плашкой |
 | `LEGAL_VERSION` / `LEGAL_DATE` | Редакция документов и её дата. Смена `LEGAL_VERSION` заставляет **всех** согласиться заново |

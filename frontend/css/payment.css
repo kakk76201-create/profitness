@@ -459,3 +459,38 @@
     padding: var(--s3);
   }
 }
+
+/* ---------- Автопродление: отдельная галочка согласия ----------
+   Не связана с кнопкой «Оплатить» и по умолчанию выключена: согласие на
+   списания без участия человека должно быть явным. Текст — сумма, период
+   и где отключить. */
+.pay-autopay {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s3);
+  margin: var(--s3) 0;
+  padding: var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  cursor: pointer;
+}
+
+.pay-autopay input {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: 1px 0 0;
+  accent-color: var(--accent);
+}
+
+.pay-autopay__text {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+}
+
+.pay-autopay__text b {
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+}

@@ -512,6 +512,27 @@
   }
 
   /**
+   * Строка про автопродление под статусом: с какой карты, когда и сколько.
+   * Отключение — в профиле («Оплата» → «Отвязать карту»).
+   */
+  function autopayLine() {
+    var card = (App.subscription && App.subscription.autopay_card) || null;
+    if (!card || !card.next_charge_at) return "";
+    var d = new Date(card.next_charge_at);
+    var when = isNaN(d.getTime()) ? "" : formatUntil(card.next_charge_at);
+    return (
+      '<div class="sub-status__autopay">' +
+      esc(pick(
+        "Автопродление: " + (when ? when + " — " : "") + App.fmt(card.autopay_amount || 0) + " ₽ с карты " + card.title +
+          ". Отключить — «Профиль» → «Оплата».",
+        "Auto-renewal: " + (when ? when + " — " : "") + App.fmt(card.autopay_amount || 0) + " RUB from " + card.title +
+          ". Turn off — Profile → Payment."
+      )) +
+      "</div>"
+    );
+  }
+
+  /**
    * Отрисовывает карточку текущего статуса подписки.
    */
   function renderStatus() {
@@ -549,6 +570,7 @@
         esc(pick("Подписка активна", "Subscription active")) +
         "</div>" +
         untilLine +
+        autopayLine() +
         "</div>" +
         "</div>";
     } else {

@@ -211,6 +211,22 @@ YOOKASSA_RECEIPT = os.getenv("YOOKASSA_RECEIPT", "").strip() == "1"
 # 4 — 20 %; коды ЮKassa. Система налогообложения (tax_system_code) нужна
 # только если в кассе их несколько; пусто — не передаём.
 YOOKASSA_VAT_CODE = int(os.getenv("YOOKASSA_VAT_CODE", "1") or 1)
+
+# Автопродление подписки (рекуррентные платежи ЮKassa). ВЫКЛЮЧЕНО по умолчанию:
+# сохранять карты и списывать без участия человека магазину разрешает сама
+# ЮKassa (подключает менеджер). Пока флаг не включён, приложение не предлагает
+# автопродление, не сохраняет карты и ничего не списывает. Включать — после
+# того как ЮKassa подтвердит автоплатежи: YOOKASSA_AUTOPAY=1.
+YOOKASSA_AUTOPAY = os.getenv("YOOKASSA_AUTOPAY", "").strip() == "1"
+# За сколько часов до окончания подписки списывать продление (продление
+# прибавляется к текущему сроку, так что ранний платёж дней не съедает) и за
+# сколько часов до списания предупреждать в боте.
+AUTOPAY_CHARGE_BEFORE_HOURS = int(os.getenv("AUTOPAY_CHARGE_BEFORE_HOURS", "24") or 24)
+AUTOPAY_NOTICE_BEFORE_HOURS = int(os.getenv("AUTOPAY_NOTICE_BEFORE_HOURS", "24") or 24)
+# Сколько раз пробуем списать за один период при временных отказах (раз в сутки).
+AUTOPAY_MAX_ATTEMPTS = int(os.getenv("AUTOPAY_MAX_ATTEMPTS", "3") or 3)
+# Тарифы, которые продлеваются автоматически (вечный и тестовый — нет).
+AUTOPAY_TARIFFS = ("monthly", "quarterly", "yearly")
 YOOKASSA_TAX_SYSTEM_CODE = int(os.getenv("YOOKASSA_TAX_SYSTEM_CODE", "0") or 0) or None
 
 

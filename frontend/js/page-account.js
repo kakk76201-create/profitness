@@ -352,6 +352,9 @@
       case "adapt":
         renderAdaptive();
         break;
+      case "cards":
+        renderCards();
+        break;
       case "report":
         renderReport();
         break;
@@ -890,6 +893,18 @@
           // Строки «Добавки» здесь больше нет: добавки — вкладка таббара.
       ) +
 
+      // ---- ОПЛАТА ----
+      // Привязанные карты и отказ от автопродления. Раздел есть всегда, даже
+      // без карт: отказ от списаний должен быть под рукой (376-ФЗ).
+      groupHtml(
+        L("Оплата", "Payment"),
+        sectionHtml({
+          key: "cards",
+          icon: "card",
+          title: L("Карты и автопродление", "Cards and auto-renewal")
+        })
+      ) +
+
       // ---- НАСТРОЙКИ ----
       groupHtml(
         L("Настройки", "Settings"),
@@ -939,6 +954,128 @@
       }
     }
     if (window.confirm(message)) cb();
+  }
+
+  /* =====================================================================
+   *  ОПЛАТА: КАРТЫ И АВТОПРОДЛЕНИЕ
+   *  Привязанная карта, что и когда с неё спишется, и «Отвязать карту» —
+   *  одно нажатие и подтверждение. Отвязка сразу останавливает списания.
+   * ===================================================================== */
+
+  function cardsDate(iso) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    var months = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля",
+      "августа", "сентября", "октября", "ноября", "декабря"];
+    return App.lang === "en"
+      ? d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+      : d.getDate() + " " + months[d.getMonth()];
+  }
+
+  function cardsTariff(key) {
+    var ru = { monthly: "месяц", quarterly: "3 месяца", yearly: "год", test: "тест" };
+    var en = { monthly: "month", quarterly: "3 months", yearly: "year", test: "test" };
+    return (App.lang === "en" ? en : ru)[key] || key || "";
+  }
+
+  function renderCards() {
+    var body = secBody("cards");
+    if (!body) return;
+    body.innerHTML = '<div class="skeleton skeleton-line"></div>';
+    App.api
+      .getPaymentMethods()
+      .then(function (res) {
+        renderCardsView((res && res.methods) || [], !!(res && res.autopay_available));
+      })
+      .catch(function (err) {
+        var box = secBody("cards");
+        if (box) {
+          box.innerHTML =
+            '<p class="acc-cards__empty">' +
+            esc(err && err.message ? err.message : L("Не удалось загрузить карты", "Failed to load cards")) +
+            "</p>";
+        }
+      });
+  }
+
+  function renderCardsView(methods, available) {
+    var body = secBody("cards");
+    if (!body) return;
+    if (!methods.length) {
+      body.innerHTML =
+        '<p class="acc-cards__empty">' +
+        esc(available
+          ? L("Привязанных карт нет. Автопродление включается при оплате подписки — отдельной галочкой; без неё карта не сохраняется.",
+              "No linked cards. Auto-renewal is turned on at checkout with a separate checkbox; without it the card is not saved.")
+          : L("Привязанных карт нет. Подписка оплачивается разово и сама не продлевается.",
+              "No linked cards. The subscription is paid once and does not renew by itself.")) +
+        "</p>";
+      return;
+    }
+    var html = "";
+    for (var i = 0; i < methods.length; i++) {
+      var m = methods[i];
+      var lines = [];
+      if (m.autopay_amount && m.autopay_tariff) {
+        lines.push(
+          L("Автопродление: ", "Auto-renewal: ") + cardsTariff(m.autopay_tariff) + " · " +
+          App.fmt(m.autopay_amount) + " ₽"
+        );
+      }
+      if (m.next_charge_at) {
+        lines.push(L("Следующее списание — ", "Next charge — ") + cardsDate(m.next_charge_at));
+      }
+      if (m.expiry) lines.push(L("Срок карты до ", "Card valid until ") + m.expiry);
+      html +=
+        '<div class="acc-card" data-card-id="' + esc(m.id) + '">' +
+        '<div class="acc-card__info">' +
+        '<span class="acc-card__title">' + icon("card", { size: 18 }) + "<span>" + esc(m.title) + "</span></span>" +
+        lines.map(function (t) { return '<span class="acc-card__meta">' + esc(t) + "</span>"; }).join("") +
+        "</div>" +
+        '<button type="button" class="btn btn--ghost btn-block acc-card__unbind" data-unbind="' + esc(m.id) + '">' +
+        esc(L("Отвязать карту", "Unlink card")) +
+        "</button>" +
+        "</div>";
+    }
+    html +=
+      '<p class="acc-cards__note">' +
+      esc(L(
+        "Данные карты хранит ЮKassa, у нас — только последние цифры для показа. После отвязки списаний не будет; доступ сохранится до конца оплаченного срока.",
+        "Card data is stored by YooKassa; we keep only the last digits to show here. After unlinking there will be no charges; access stays until the end of the paid period."
+      )) +
+      "</p>";
+    body.innerHTML = html;
+    var btns = body.querySelectorAll("[data-unbind]");
+    for (var b = 0; b < btns.length; b++) {
+      btns[b].addEventListener("click", function () {
+        onUnbindCard(this);
+      });
+    }
+  }
+
+  function onUnbindCard(btn) {
+    var id = btn.getAttribute("data-unbind");
+    confirmDanger(
+      L("Отвязать карту? Автопродление выключится, списаний с неё больше не будет.",
+        "Unlink the card? Auto-renewal turns off and there will be no more charges from it."),
+      function () {
+        btn.disabled = true;
+        App.api
+          .revokePaymentMethod(id)
+          .then(function (res) {
+            App.haptic("success");
+            App.toast(L("Карта отвязана — списаний больше не будет", "Card unlinked — no more charges"));
+            renderCardsView((res && res.methods) || [], !!(res && res.autopay_available));
+            if (App.refreshSubscription) App.refreshSubscription();
+          })
+          .catch(function (err) {
+            btn.disabled = false;
+            App.haptic("error");
+            App.toast(err && err.message ? err.message : L("Ошибка", "Error"));
+          });
+      }
+    );
   }
 
   /** Открыть документ браузером Telegram (или обычной вкладкой вне него). */

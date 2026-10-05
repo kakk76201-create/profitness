@@ -168,7 +168,8 @@ def build_receipt(tariff: str, amount, email: str) -> dict:
     return receipt
 
 
-def create_payment(tariff: str, telegram_id: int, lang: str = "ru", email: str | None = None) -> dict:
+def create_payment(tariff: str, telegram_id: int, lang: str = "ru", email: str | None = None,
+                   save_method: bool = False) -> dict:
     """Создать платёж в ЮKassa и вернуть {"id", "confirmation_url"}.
 
     Сумма берётся из прайса на СЕРВЕРЕ (config.rub_price_for) — клиент её не
@@ -215,24 +216,49 @@ def create_payment(tariff: str, telegram_id: int, lang: str = "ru", email: str |
             raise RuntimeError("Для чека нужен e-mail плательщика")
         payload["receipt"] = build_receipt(tariff, amount, email)
 
+    # Автопродление: человек отдельно согласился сохранить карту. Метка в
+    # metadata говорит вебхуку, что сохранённый способ — по согласию.
+    autopay_saved = bool(save_method)
+    if save_method:
+        payload["save_payment_method"] = True
+        payload["metadata"]["autopay"] = "1"
+
+    base_key = idempotence_key(telegram_id, tariff)
     headers = {
         # Ключ идемпотентности: повторные нажатия в пятиминутном окне отдают
         # один ключ, и ЮKassa возвращает уже созданный платёж.
-        "Idempotence-Key": idempotence_key(telegram_id, tariff),
+        "Idempotence-Key": base_key + (":save" if save_method else ""),
         "Content-Type": "application/json",
     }
 
-    try:
-        resp = httpx.post(
-            f"{API_BASE}/payments",
-            json=payload,
-            headers=headers,
-            auth=_auth(),
-            timeout=TIMEOUT,
-        )
-    except Exception as exc:  # noqa: BLE001 — сетевой сбой
-        logger.warning("create_payment: сбой связи с ЮKassa: %s", exc)
-        raise RuntimeError("Платёжный сервис недоступен")
+    def _post(body, hdrs):
+        try:
+            return httpx.post(
+                f"{API_BASE}/payments",
+                json=body,
+                headers=hdrs,
+                auth=_auth(),
+                timeout=TIMEOUT,
+            )
+        except Exception as exc:  # noqa: BLE001 — сетевой сбой
+            logger.warning("create_payment: сбой связи с ЮKassa: %s", exc)
+            raise RuntimeError("Платёжный сервис недоступен")
+
+    resp = _post(payload, headers)
+
+    # Магазину ещё не разрешили сохранять карты («Forbidden to save payment
+    # method», 403) — платёж не должен сломаться: создаём его без сохранения,
+    # а приложение скажет, что автопродление пока недоступно.
+    if save_method and resp.status_code in (400, 403):
+        body_text = (getattr(resp, "text", "") or "")
+        logger.warning("create_payment: ЮKassa не сохранила способ оплаты (%s): %s",
+                       resp.status_code, body_text[:300])
+        if "save" in body_text.lower() or resp.status_code == 403:
+            payload.pop("save_payment_method", None)
+            payload["metadata"].pop("autopay", None)
+            headers["Idempotence-Key"] = base_key
+            autopay_saved = False
+            resp = _post(payload, headers)
 
     if resp.status_code not in (200, 201):
         # Тело ошибки логируем усечённым: там нет секрета, но и раздувать логи
@@ -264,10 +290,111 @@ def create_payment(tariff: str, telegram_id: int, lang: str = "ru", email: str |
         raise RuntimeError("Платёжный сервис не вернул ссылку на оплату")
 
     logger.info(
-        "create_payment: создан платёж %s (tariff=%s tid=%s)",
-        payment_id, tariff, telegram_id,
+        "create_payment: создан платёж %s (tariff=%s tid=%s, автопродление=%s)",
+        payment_id, tariff, telegram_id, autopay_saved,
     )
-    return {"id": str(payment_id), "confirmation_url": str(url)}
+    return {"id": str(payment_id), "confirmation_url": str(url), "autopay": autopay_saved}
+
+
+# --------------------------------------------------------------------------- #
+#  Автоплатежи: списание с сохранённого способа оплаты
+# --------------------------------------------------------------------------- #
+# Отказы, после которых списывать с этого способа бессмысленно: человек отозвал
+# разрешение, карта истекла или заблокирована. Остальные (нет денег, банк не
+# ответил) — временные, пробуем ещё раз через сутки.
+PERMANENT_DECLINES = {
+    "permission_revoked", "card_expired", "payment_method_restricted",
+    "fraud_suspected", "country_forbidden", "invalid_card_number", "invalid_csc",
+    "3d_secure_failed",
+}
+
+
+def charge_saved(method_id: str, telegram_id: int, tariff: str, amount: float,
+                 period_key: str, idem_key: str, email: str | None = None) -> dict:
+    """Списать продление с сохранённого способа оплаты. Возвращает объект платежа.
+
+    Без confirmation: подтверждения человека не нужно — он дал его, сохраняя
+    карту. Сумма — та, на которую человек согласился (её же кладём в
+    metadata.price, по ней сверяет вебхук). Ключ идемпотентности задаёт
+    вызывающий код и хранит его в журнале ДО запроса (см. autopay.py).
+    Ошибка связи или отказ API -> RuntimeError.
+    """
+    if not is_enabled():
+        raise RuntimeError("ЮKassa не настроена")
+    if httpx is None:
+        raise RuntimeError("httpx не установлен")
+    payload = {
+        "amount": {"value": _format_amount(amount), "currency": "RUB"},
+        "capture": True,
+        "payment_method_id": str(method_id),
+        "description": build_description(tariff, telegram_id)[:128],
+        "metadata": {
+            "telegram_id": str(int(telegram_id)),
+            "tariff": tariff,
+            "price": _format_amount(amount),
+            "renewal": "1",
+            "period_key": period_key,
+        },
+    }
+    if config.YOOKASSA_RECEIPT:
+        if not email:
+            raise RuntimeError("Для чека нужен e-mail плательщика")
+        payload["receipt"] = build_receipt(tariff, amount, email)
+    try:
+        resp = httpx.post(
+            f"{API_BASE}/payments",
+            json=payload,
+            headers={"Idempotence-Key": idem_key, "Content-Type": "application/json"},
+            auth=_auth(),
+            timeout=TIMEOUT,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("charge_saved: сбой связи с ЮKassa: %s", exc)
+        raise RuntimeError("Платёжный сервис недоступен")
+    if resp.status_code not in (200, 201):
+        logger.warning("charge_saved: ЮKassa ответила %s: %s",
+                       resp.status_code, (getattr(resp, "text", "") or "")[:300])
+        raise RuntimeError(f"Платёжный сервис отклонил списание ({resp.status_code})")
+    try:
+        data = resp.json()
+    except Exception:  # noqa: BLE001
+        raise RuntimeError("Платёжный сервис вернул неожиданный ответ")
+    if not isinstance(data, dict) or not data.get("id"):
+        raise RuntimeError("Платёжный сервис вернул неожиданный ответ")
+    return data
+
+
+def saved_method(payment) -> dict | None:
+    """Сохранённый способ оплаты из проверенного платежа (или None)."""
+    pm = payment.get("payment_method") if isinstance(payment, dict) else None
+    if not isinstance(pm, dict) or pm.get("saved") is not True or not pm.get("id"):
+        return None
+    card = pm.get("card") if isinstance(pm.get("card"), dict) else {}
+    return {
+        "method_id": str(pm["id"])[:64],
+        "method_type": str(pm.get("type") or "")[:32] or None,
+        "title": str(pm.get("title") or "")[:64] or None,
+        "card_type": str(card.get("card_type") or "")[:32] or None,
+        "first6": str(card.get("first6") or "")[:6] or None,
+        "last4": str(card.get("last4") or "")[:4] or None,
+        "expiry_month": str(card.get("expiry_month") or "")[:2] or None,
+        "expiry_year": str(card.get("expiry_year") or "")[:4] or None,
+    }
+
+
+def cancellation_reason(payment) -> str | None:
+    det = payment.get("cancellation_details") if isinstance(payment, dict) else None
+    return str(det.get("reason")) if isinstance(det, dict) and det.get("reason") else None
+
+
+def is_renewal(payment) -> bool:
+    meta = payment.get("metadata") if isinstance(payment, dict) else None
+    return isinstance(meta, dict) and meta.get("renewal") == "1"
+
+
+def wants_autopay(payment) -> bool:
+    meta = payment.get("metadata") if isinstance(payment, dict) else None
+    return isinstance(meta, dict) and meta.get("autopay") == "1"
 
 
 def fetch_payment(payment_id: str) -> dict:

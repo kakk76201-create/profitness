@@ -451,6 +451,74 @@ class AppEvent(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class PaymentMethod(Base):
+    """Сохранённый способ оплаты для автопродления (см. backend/autopay.py).
+
+    Данных карты здесь нет: их хранит ЮKassa, у нас — только её идентификатор
+    способа оплаты и маска для показа человеку (первые 6 и последние 4 цифры,
+    тип, срок). active=False — карта отвязана (человек отказался, 376-ФЗ) или
+    больше не годится: списывать с неё нельзя ни при каких условиях.
+    """
+
+    __tablename__ = "payment_methods"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(BigInteger, index=True)
+    provider = Column(String, default="yookassa")
+    # Идентификатор способа оплаты в ЮKassa (payment_method.id).
+    method_id = Column(String, index=True)
+    # bank_card | sbp | yoo_money … — карта не единственный вид.
+    method_type = Column(String, nullable=True)
+    title = Column(String, nullable=True)
+    card_type = Column(String, nullable=True)
+    first6 = Column(String, nullable=True)
+    last4 = Column(String, nullable=True)
+    expiry_month = Column(String, nullable=True)
+    expiry_year = Column(String, nullable=True)
+    active = Column(Boolean, default=True, index=True)
+    # Что и за сколько продлеваем — ровно то, на что человек согласился.
+    autopay_tariff = Column(String, nullable=True)
+    autopay_amount = Column(Float, nullable=True)
+    # Доказательство согласия: когда и на какую редакцию документов.
+    consented_at = Column(DateTime, nullable=True)
+    consent_version = Column(String, nullable=True)
+    # С какого платежа сохранена карта.
+    source_payment_id = Column(String, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+    # user — отвязал сам; replaced — привязана новая; permission_revoked,
+    # card_expired … — отказ банка/ЮKassa; account_deleted.
+    revoke_reason = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AutopayCharge(Base):
+    """Журнал автосписаний: одна строка на попытку продления периода.
+
+    Строка пишется и коммитится ДО обращения к ЮKassa. Если процесс упадёт
+    между запросом и записью ответа, повтор пойдёт с тем же ключом
+    идемпотентности — ЮKassa вернёт уже созданный платёж, второго списания нет.
+    """
+
+    __tablename__ = "autopay_charges"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(BigInteger, index=True)
+    method_id = Column(Integer, nullable=True)        # -> payment_methods.id
+    # Какой срок продлеваем: дата окончания подписки "YYYY-MM-DD" на момент списания.
+    period_key = Column(String, index=True)
+    attempt = Column(Integer, default=1)
+    idempotence_key = Column(String)
+    payment_id = Column(String, nullable=True, index=True)
+    # pending — запрос ушёл/уходит; succeeded; canceled; error — сбой связи.
+    status = Column(String, default="pending")
+    reason = Column(String, nullable=True)
+    amount = Column(Float, nullable=True)
+    tariff = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
 class FoodProduct(Base):
     """Продукт с КБЖУ на 100 г (см. backend/products.py).
 

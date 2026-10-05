@@ -81,6 +81,7 @@ from sqlalchemy.orm import Session
 from backend import (
     ai_service,
     adaptive,
+    autopay,
     analytics,
     cloudpayments,
     config,
@@ -122,6 +123,7 @@ from backend.auth import get_current_user
 from backend.database import SessionLocal, get_db, init_db
 from backend.models import (
     AppEvent,
+    AutopayCharge,
     BotMealDraft,
     Consent,
     FoodProduct,
@@ -131,6 +133,7 @@ from backend.models import (
     MealTemplate,
     NotificationLog,
     Payment,
+    PaymentMethod,
     ProgressPhoto,
     NotificationSettings,
     Supplement,
@@ -159,6 +162,7 @@ from backend.schemas import (
     ConsentIn,
     ConsentOut,
     BarcodeOut,
+    PaymentMethodsOut,
     ProductIn,
     ProductListOut,
     CycleStatusOut,
@@ -2372,7 +2376,20 @@ def _subscription_status_out(user: User) -> SubscriptionStatusOut:
             if config.test_payment_enabled() and user.telegram_id == config.OWNER_ID
             else None
         ),
+        autopay_available=autopay.enabled(),
+        autopay_card=_autopay_card(user),
     )
+
+
+def _autopay_card(user: User):
+    """Привязанная карта для экрана подписки (или None)."""
+    try:
+        with SessionLocal() as db:
+            cards = autopay.methods_out(db, user)
+        return cards[0] if cards else None
+    except Exception as exc:  # noqa: BLE001 — статус подписки важнее
+        logger.warning("subscription/status: карты не прочитаны: %s", exc)
+        return None
 
 
 @app.post("/subscription/trial", response_model=SubscriptionStatusOut)
@@ -2820,9 +2837,16 @@ def yookassa_create(
         if email != (user.email or ""):
             user.email = email
             db.commit()
+    # Сохранить карту для автопродления — только по отдельному согласию, только
+    # для продлеваемых тарифов (тестовый — чтобы владелец проверил привязку) и
+    # только когда автоплатежи включены.
+    save_method = bool(data.autopay) and autopay.enabled() and (
+        data.tariff in config.AUTOPAY_TARIFFS or data.tariff == config.TEST_TARIFF
+    )
     try:
         created = yookassa.create_payment(
-            data.tariff, user.telegram_id, getattr(user, "language", "ru") or "ru", email=email
+            data.tariff, user.telegram_id, getattr(user, "language", "ru") or "ru", email=email,
+            save_method=save_method,
         )
     except RuntimeError as exc:
         logger.warning("payment/yookassa/create: %s", exc)
@@ -2833,8 +2857,36 @@ def yookassa_create(
     if data.tariff != config.TEST_TARIFF:
         analytics.track(user.telegram_id, "payment_create")
     return YookassaCreateOut(
-        payment_id=created["id"], confirmation_url=created["confirmation_url"]
+        payment_id=created["id"], confirmation_url=created["confirmation_url"],
+        autopay=bool(created.get("autopay")),
     )
+
+
+# --------------------------------------------------------------------------- #
+#  Привязанные карты (автопродление): показать и отвязать
+# --------------------------------------------------------------------------- #
+@app.get("/payment/methods", response_model=PaymentMethodsOut)
+def payment_methods_list(
+    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> PaymentMethodsOut:
+    """Карты, с которых продлевается подписка, и когда следующее списание."""
+    return PaymentMethodsOut(autopay_available=autopay.enabled(),
+                             methods=autopay.methods_out(db, user))
+
+
+@app.delete("/payment/methods/{method_id}", response_model=PaymentMethodsOut)
+def payment_methods_revoke(
+    method_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> PaymentMethodsOut:
+    """Отвязать карту: списаний с неё больше не будет — сразу (376-ФЗ).
+
+    Работает и когда автоплатежи выключены флагом: отказаться можно всегда.
+    """
+    if not autopay.revoke(db, user.telegram_id, method_id, reason="user"):
+        raise HTTPException(status_code=404, detail="Карта не найдена")
+    analytics.track(user.telegram_id, "card_unbind")
+    return PaymentMethodsOut(autopay_available=autopay.enabled(),
+                             methods=autopay.methods_out(db, user))
 
 
 # Уведомления ЮKassa не подписаны, поэтому адрес вебхука содержит секрет:
@@ -2969,6 +3021,11 @@ def _yookassa_settle(db: Session, payment: dict, payment_id: str, source: str) -
     activation_failed. Логи и алерты владельцу — здесь же.
     """
     tag = f"yookassa/{source}"
+    # Списание продления с сохранённой карты: свой журнал и свои правила
+    # (временный отказ — повтор, окончательный — отвязка карты).
+    if yookassa.is_renewal(payment):
+        res = autopay.apply_result(db, payment)
+        return {"succeeded": "activated", "canceled": "not_paid"}.get(res, "not_paid")
     if not yookassa.is_success(payment):
         logger.info(
             "%s: платёж %s не оплачен (status=%s paid=%s) — доступ не выдан",
@@ -3038,6 +3095,7 @@ def _yookassa_settle(db: Session, payment: dict, payment_id: str, source: str) -
             logger.error("%s: не записали тестовый платёж %s: %s", tag, payment_id, exc)
             return "activation_failed"
         logger.info("%s: тестовый платёж %s записан (tid=%s)", tag, payment_id, telegram_id)
+        _save_autopay_card(db, payment, real_id, tag)
         return "activated"
     try:
         payment_providers.activate_premium(
@@ -3055,7 +3113,22 @@ def _yookassa_settle(db: Session, payment: dict, payment_id: str, source: str) -
         )
         return "activation_failed"
     logger.info("%s: премиум активирован tid=%s тариф=%s платёж=%s", tag, telegram_id, tariff, payment_id)
+    _save_autopay_card(db, payment, real_id, tag)
     return "activated"
+
+
+def _save_autopay_card(db: Session, payment: dict, payment_id: str, tag: str) -> None:
+    """Человек согласился на автопродление и ЮKassa сохранила карту — запомнить.
+
+    Сбой здесь не должен отменять уже выданный доступ — только лог.
+    """
+    if not autopay.enabled():
+        return
+    try:
+        autopay.save_from_payment(db, payment, payment_id)
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        logger.error("%s: не сохранили карту для автопродления (%s): %s", tag, payment_id, exc)
 
 
 @app.get("/payment/yookassa/status/{payment_id}", response_model=YookassaStatusOut)
@@ -4017,6 +4090,10 @@ def account_delete_data(
     # 3. Все таблицы, привязанные к telegram_id пользователя.
     for model in (
         AppEvent,
+        # Сохранённые карты — удаляем: иначе удалённый аккаунт продолжали бы
+        # продлевать за деньги.
+        PaymentMethod,
+        AutopayCharge,
         BotMealDraft,
         # Только личные продукты: у общего каталога telegram_id = NULL.
         FoodProduct,
@@ -4135,6 +4212,7 @@ _EXPORT_MODELS = (
     ("payments", Payment),
     ("diary", DiaryEntry),
     ("bot_meal_drafts", BotMealDraft),
+    ("payment_methods", PaymentMethod),
     ("my_products", FoodProduct),
     ("workouts", Workout),
     ("weight", WeightLog),

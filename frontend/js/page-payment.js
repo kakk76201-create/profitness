@@ -162,6 +162,9 @@
    * Текущий статус подписки с безопасными значениями по умолчанию
    * (fail-safe: без данных считаем пользователя free, оплату — неподключённой).
    */
+  // Тарифы, которые продлеваются автоматически (вечный и тестовый — нет).
+  var AUTOPAY_TARIFFS = ["monthly", "quarterly", "yearly"];
+
   function sub() {
     var s = (window.App && App.subscription) || {};
     var legal = s.legal || {};
@@ -188,6 +191,8 @@
       // Чек по 54-ФЗ: нужен ли e-mail и что уже сохранено в профиле.
       receipt_email_required: !!s.receipt_email_required,
       email: s.email || "",
+      autopay_available: !!s.autopay_available,
+      autopay_card: s.autopay_card || null,
       legal: {
         seller: legal.seller || null,
         inn: legal.inn || null,
@@ -503,10 +508,12 @@
       econHtml +
       '<div class="pay-plan__once">' +
       esc(
-        pick(
-          "Разовый платёж, без автопродления",
-          "One-time payment, no auto-renewal"
-        )
+        // Когда автопродление доступно, оно включается только галочкой ниже —
+        // «без автопродления» тогда противоречило бы ей.
+        s.autopay_available && AUTOPAY_TARIFFS.indexOf(key) !== -1
+          ? pick("Разовый платёж. Автопродление — только если отметите ниже",
+                 "One-time payment. Auto-renewal only if you tick it below")
+          : pick("Разовый платёж, без автопродления", "One-time payment, no auto-renewal")
       ) +
       "</div>" +
       noteHtml +
@@ -658,6 +665,36 @@
         '">' +
         "</label>";
     }
+    // Автопродление — ОТДЕЛЬНАЯ галочка, по умолчанию выключена и не
+    // связана с принятием оферты: согласие на списания без участия человека
+    // должно быть явным. В тексте — сумма, период и где отключить.
+    var autopayHtml = "";
+    if (s.autopay_available && key === "test") {
+      // Тестовый тариф владельца: сохранить карту, чтобы проверить
+      // автосписание командой /autopaytest в боте.
+      autopayHtml =
+        '<label class="pay-autopay">' +
+        '<input type="checkbox" id="payAutopay"' + (state.autopay ? " checked" : "") + ">" +
+        '<span class="pay-autopay__text">' +
+        esc(pick("Сохранить карту для проверки автосписания (/autopaytest в боте)",
+                 "Save the card to test auto-charges (/autopaytest in the bot)")) +
+        "</span></label>";
+    } else if (s.autopay_available && AUTOPAY_TARIFFS.indexOf(key) !== -1) {
+      var days = tariffDays(s, key);
+      autopayHtml =
+        '<label class="pay-autopay">' +
+        '<input type="checkbox" id="payAutopay"' + (state.autopay ? " checked" : "") + ">" +
+        '<span class="pay-autopay__text">' +
+        '<b>' + esc(pick("Продлевать автоматически", "Renew automatically")) + "</b>" +
+        esc(pick(
+          " — " + shown + " каждые " + days + " " + daysWordRu(days) + " с этой карты, пока не отключите. " +
+            "Напомним за сутки до списания. Отключить — «Профиль» → «Оплата» → «Отвязать карту».",
+          " — " + shown + " every " + days + " days from this card until you turn it off. " +
+            "We'll remind you a day before each charge. Turn off: Profile → Payment → Unlink card."
+        )) +
+        "</span>" +
+        "</label>";
+    }
     return (
       '<section class="card pay-total">' +
       '<div class="pay-total__row">' +
@@ -669,6 +706,7 @@
       "</span>" +
       "</div>" +
       emailHtml +
+      autopayHtml +
       offerHtml +
       '<button type="button" class="btn btn--cta btn-block pay-submit" id="paySubmit">' +
       esc(pick("Оплатить ", "Pay ")) +
@@ -881,6 +919,15 @@
       submit.addEventListener("click", onSubmit);
     }
 
+    // Галочка автопродления переживает перерисовку при смене тарифа.
+    var autopayBox = box.querySelector("#payAutopay");
+    if (autopayBox) {
+      autopayBox.addEventListener("change", function () {
+        state.autopay = !!autopayBox.checked;
+        haptic("selection");
+      });
+    }
+
     var returns = box.querySelectorAll(".pay-return");
     for (var i = 0; i < returns.length; i++) {
       returns[i].addEventListener("click", onReturn);
@@ -993,7 +1040,9 @@
     if (btn) btn.disabled = true;
     App.showLoading();
 
-    Promise.resolve(App.payCard(key, email))
+    var autopayEl = state.viewEl && state.viewEl.querySelector("#payAutopay");
+    state.autopay = !!(autopayEl && autopayEl.checked);
+    Promise.resolve(App.payCard(key, email, state.autopay))
       .then(function () {
         renderBody();
       })
