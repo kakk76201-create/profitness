@@ -368,6 +368,9 @@ def run_migrations():
         ("image_mime", "TEXT", None),   # image/jpeg | image/heic | ...
     ])
 
+    # --- Таблица food_products: вес порции (продукт можно записать порциями). ---
+    _migrate_table("food_products", [("serving_g", "REAL", None)])
+
     # --- Таблица payments: идентификатор списания для идемпотентности оплат. ---
     _migrate_table("payments", [("charge_id", "TEXT", None)])
     # UNIQUE-индекс по charge_id (NULL-значения не конфликтуют в SQLite/PostgreSQL).

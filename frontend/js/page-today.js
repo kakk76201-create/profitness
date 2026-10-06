@@ -230,8 +230,9 @@
       '<span class="td-quick__label">' + esc(pick("Снять еду", "Snap food")) + "</span>" +
       "</button>" +
       '<button type="button" class="td-quick__btn" id="tdQuickManual">' +
-      '<span class="td-quick__icon">' + icon("edit", { size: 22 }) + "</span>" +
-      '<span class="td-quick__label">' + esc(pick("Вручную", "Manual")) + "</span>" +
+      // Ведёт в лист «Добавить еду»: поиск, история, свои продукты и рецепты.
+      '<span class="td-quick__icon">' + icon("search", { size: 22 }) + "</span>" +
+      '<span class="td-quick__label">' + esc(pick("Найти еду", "Find food")) + "</span>" +
       "</button>" +
       // «Что съесть?» — вопрос именно этого экрана: здесь видно, сколько
       // осталось до нормы. Раньше пункт жил только в листе «+» в Питании,

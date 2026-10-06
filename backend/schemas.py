@@ -183,7 +183,12 @@ class HistoryOut(BaseModel):
 
 
 class FoodSearchItem(BaseModel):
-    """Найденный продукт с КБЖУ на 100 г / 100 мл."""
+    """Найденный продукт с КБЖУ на 100 г / 100 мл.
+
+    kind: product (мой продукт) | recipe (мой рецепт) | off (база продуктов) |
+    history (ели раньше). У history КБЖУ — не на 100 г, а на порцию
+    quantity/unit, какой она была в последний раз.
+    """
 
     code: str = ""
     name: str
@@ -196,6 +201,11 @@ class FoodSearchItem(BaseModel):
     id: Optional[int] = None
     mine: bool = False
     source: str = ""
+    kind: str = ""
+    # Вес порции, г: продукт можно записать порциями.
+    serving_g: Optional[float] = None
+    quantity: Optional[float] = None
+    unit: Optional[str] = None
 
 
 class ProductIn(BaseModel):
@@ -209,6 +219,59 @@ class ProductIn(BaseModel):
     fats: float = 0.0
     carbs: float = 0.0
     source: Optional[str] = None          # label | barcode | search | manual
+    serving_g: Optional[float] = None     # вес порции/штуки, г (необязательно)
+
+
+class HistoryItem(BaseModel):
+    """Блюдо из истории дневника: последняя порция и её КБЖУ."""
+
+    dish_name: str
+    quantity: Optional[float] = None
+    unit: Optional[str] = None
+    calories: int = 0
+    proteins: float = 0.0
+    fats: float = 0.0
+    carbs: float = 0.0
+    meal_type: Optional[str] = None
+    count: int = 1
+    last_date: Optional[str] = None
+
+
+class HistoryOut(BaseModel):
+    recent: List[HistoryItem] = []
+    frequent: List[HistoryItem] = []
+
+
+class RecipeIngredient(BaseModel):
+    """Ингредиент рецепта: граммы и КБЖУ на 100 г."""
+
+    name: str
+    grams: float
+    calories: float
+    proteins: float = 0.0
+    fats: float = 0.0
+    carbs: float = 0.0
+
+
+class RecipeIn(BaseModel):
+    name: str
+    ingredients: List[RecipeIngredient] = []
+    cooked_weight_g: Optional[float] = None   # вес готового блюда; нет — сумма ингредиентов
+    servings: int = 1
+
+
+class RecipeOut(BaseModel):
+    id: int
+    name: str
+    ingredients: List[RecipeIngredient] = []
+    cooked_weight_g: Optional[float] = None
+    servings: int = 1
+    # Посчитанное блюдо (КБЖУ на 100 г, serving_g) — как в «Моих продуктах».
+    product: Optional["FoodSearchItem"] = None
+
+
+class RecipeListOut(BaseModel):
+    items: List[RecipeOut] = []
 
 
 class ProductListOut(BaseModel):

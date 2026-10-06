@@ -88,9 +88,11 @@ from backend import (
     cycle,
     fitness,
     barcode,
+    food_history,
     food_search,
     legal,
     products,
+    recipes,
     notifications,
     nutrition,
     ratelimit,
@@ -135,6 +137,7 @@ from backend.models import (
     Payment,
     PaymentMethod,
     ProgressPhoto,
+    Recipe,
     NotificationSettings,
     Supplement,
     SupplementReminder,
@@ -165,6 +168,11 @@ from backend.schemas import (
     PaymentMethodsOut,
     ProductIn,
     ProductListOut,
+    HistoryItem,
+    HistoryOut,
+    RecipeIn,
+    RecipeListOut,
+    RecipeOut,
     CycleStatusOut,
     DiaryDayOut,
     DiaryEntryIn,
@@ -1296,6 +1304,27 @@ def food_recent(
     return RecentFoodsOut(items=items)
 
 
+@app.get("/food/history", response_model=HistoryOut)
+def food_history_route(
+    date: str | None = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> HistoryOut:
+    """История съеденного: «Недавние» и «Частые» (за 90 дней) с порциями.
+
+    Базовый дневник — без премиума. Считается по самим записям дневника, а не
+    по FavoriteFood: там нет количества и единицы.
+    """
+    try:
+        ref = date_cls.fromisoformat(date) if date else None
+    except (TypeError, ValueError):
+        ref = None
+    return HistoryOut(
+        recent=[HistoryItem(**i) for i in food_history.recent(db, user.telegram_id)],
+        frequent=[HistoryItem(**i) for i in food_history.frequent(db, user.telegram_id, ref)],
+    )
+
+
 @app.get("/food/search", response_model=FoodSearchOut)
 async def food_search_route(
     q: str = "",
@@ -1315,9 +1344,14 @@ async def food_search_route(
     # Защита от «поиска на каждую букву» со стороны одного пользователя.
     ratelimit.enforce_search(user.telegram_id)
 
-    # Сначала свои продукты (этикетки, штрихкоды) — они точнее любой базы.
+    # Сначала свои продукты и рецепты (этикетки, штрихкоды, домашние блюда) —
+    # они точнее любой базы; за ними — что человек уже ел (с прошлой порцией).
     with SessionLocal() as db:
         mine = products.search_personal(db, user.telegram_id, query, 6)
+        eaten = food_history.search(
+            db, user.telegram_id, query, 4,
+            exclude={products._key(m["name"]) for m in mine},
+        )
 
     # Сетевой запрос — в пул потоков, чтобы не блокировать event loop.
     raw = await run_in_threadpool(
@@ -1326,6 +1360,13 @@ async def food_search_route(
 
     seen = {(m["name"].casefold(), (m["brand"] or "").casefold()) for m in mine}
     items = [FoodSearchItem(**m) for m in mine]
+    for h in eaten:
+        seen.add((h["dish_name"].casefold(), ""))
+        items.append(FoodSearchItem(
+            name=h["dish_name"], calories=h["calories"], proteins=h["proteins"],
+            fats=h["fats"], carbs=h["carbs"], kind="history",
+            quantity=h["quantity"], unit=h["unit"],
+        ))
     for item in raw:
         if (item["name"].casefold(), (item.get("brand") or "").casefold()) in seen:
             continue
@@ -1340,8 +1381,10 @@ async def food_search_route(
 def products_list(
     user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ) -> ProductListOut:
-    """Личный список продуктов, последние использованные — первыми."""
-    return ProductListOut(items=[FoodSearchItem(**i) for i in products.list_personal(db, user.telegram_id)])
+    """Личный список продуктов и рецептов, последние использованные — первыми."""
+    return ProductListOut(items=[
+        FoodSearchItem(**i) for i in products.list_personal(db, user.telegram_id, 100)
+    ])
 
 
 @app.post("/products", response_model=FoodSearchItem)
@@ -1353,6 +1396,7 @@ def products_save(
     row = products.upsert_personal(
         db, user.telegram_id, data.name, data.model_dump(),
         brand=data.brand or "", barcode=data.barcode, source=source,
+        serving_g=data.serving_g,
     )
     if row is None:
         raise HTTPException(status_code=400, detail="Проверьте название и КБЖУ на 100 г")
@@ -1363,6 +1407,93 @@ def products_save(
                              brand=data.brand or "", source="label")
         barcode.forget_missing(products.clean_barcode(data.barcode))
     return FoodSearchItem(**products.to_item(row))
+
+
+@app.put("/products/{product_id}", response_model=FoodSearchItem)
+def products_update(
+    product_id: int, data: ProductIn,
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> FoodSearchItem:
+    """Поправить свой продукт: название, КБЖУ на 100 г, вес порции."""
+    row = products.get_personal(db, user.telegram_id, product_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Продукт не найден")
+    if row.source == products.RECIPE:
+        # Цифры рецепта считаются из ингредиентов — их правит редактор рецепта.
+        raise HTTPException(status_code=400, detail="Рецепт правится в редакторе рецепта")
+    row = products.update_personal(
+        db, row, data.name, data.model_dump(),
+        brand=data.brand or "", serving_g=data.serving_g,
+    )
+    if row is None:
+        raise HTTPException(status_code=400, detail="Проверьте название и КБЖУ на 100 г")
+    return FoodSearchItem(**products.to_item(row))
+
+
+@app.post("/products/{product_id}/used")
+def products_used(
+    product_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> dict:
+    """Свой продукт или рецепт снова записан — поднять его в списке и поиске."""
+    if not products.touch(db, user.telegram_id, product_id):
+        raise HTTPException(status_code=404, detail="Продукт не найден")
+    return {"ok": True}
+
+
+# --------------------------------------------------------------------------- #
+#  Свои рецепты: блюдо из ингредиентов с граммами (backend/recipes.py)
+# --------------------------------------------------------------------------- #
+@app.get("/recipes", response_model=RecipeListOut)
+def recipes_list(
+    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> RecipeListOut:
+    """Свои рецепты: недавно съеденные — первыми. Базовый дневник — бесплатно."""
+    return RecipeListOut(items=[RecipeOut(**r) for r in recipes.list_out(db, user.telegram_id)])
+
+
+def _recipe_save(db: Session, tid: int, data: RecipeIn, row: Recipe | None) -> RecipeOut:
+    try:
+        row, product = recipes.save(
+            db, tid, data.name, [i.model_dump() for i in data.ingredients],
+            data.cooked_weight_g, data.servings, row,
+        )
+    except recipes.RecipeError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
+    return RecipeOut(**recipes.to_out(row, product))
+
+
+@app.post("/recipes", response_model=RecipeOut)
+def recipes_create(
+    data: RecipeIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> RecipeOut:
+    """Новый рецепт: КБЖУ на 100 г и на порцию считает сервер."""
+    out = _recipe_save(db, user.telegram_id, data, None)
+    analytics.track(user.telegram_id, "recipe_create")
+    return out
+
+
+@app.put("/recipes/{recipe_id}", response_model=RecipeOut)
+def recipes_update(
+    recipe_id: int, data: RecipeIn,
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> RecipeOut:
+    row = recipes.get(db, user.telegram_id, recipe_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Рецепт не найден")
+    return _recipe_save(db, user.telegram_id, data, row)
+
+
+@app.delete("/recipes/{recipe_id}")
+def recipes_delete(
+    recipe_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> dict:
+    """Удалить рецепт (записи дневника с ним остаются как есть)."""
+    row = recipes.get(db, user.telegram_id, recipe_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Рецепт не найден")
+    recipes.delete(db, user.telegram_id, row)
+    return {"deleted": 1}
 
 
 @app.get("/food/barcode/{code}", response_model=BarcodeOut)
@@ -1385,12 +1516,17 @@ def food_barcode(
 def products_delete(
     product_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ) -> dict:
-    """Убрать продукт из своего списка (общий каталог не трогается)."""
+    """Убрать продукт из своего списка (общий каталог не трогается).
+
+    Продукт-рецепт уходит вместе с рецептом: без продукта его не записать.
+    """
     n = (
         db.query(FoodProduct)
         .filter(FoodProduct.id == product_id, FoodProduct.telegram_id == user.telegram_id)
         .delete(synchronize_session=False)
     )
+    if n:
+        recipes.forget_product(db, user.telegram_id, product_id)
     db.commit()
     if not n:
         raise HTTPException(status_code=404, detail="Продукт не найден")
@@ -4109,6 +4245,7 @@ def account_delete_data(
         MealTemplate,
         CycleLog,
         ProgressPhoto,
+    Recipe,
         # AI-тренер: все таблицы с telegram_id. TrainerExercise — глобальная
         # библиотека, она не персональная и не удаляется.
         TrainerProfile,
@@ -4214,6 +4351,7 @@ _EXPORT_MODELS = (
     ("bot_meal_drafts", BotMealDraft),
     ("payment_methods", PaymentMethod),
     ("my_products", FoodProduct),
+    ("recipes", Recipe),
     ("workouts", Workout),
     ("weight", WeightLog),
     ("supplements", Supplement),

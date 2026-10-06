@@ -879,7 +879,12 @@
    * Показывает скелетон на время загрузки, ошибку — при сбое.
    */
   function loadAndRender() {
-    if (state.loading) return; // защита от двойных запросов
+    // Защита от двойных запросов. Но если день поменялся, пока шла загрузка
+    // (несколько «+» подряд в листе блюда), — перечитать ещё раз после неё.
+    if (state.loading) {
+      state.reloadAgain = true;
+      return;
+    }
     state.loading = true;
 
     var content = document.getElementById("diary-content");
@@ -911,6 +916,10 @@
       .then(function () {
         // finally-аналог: снимаем флаг загрузки в любом случае.
         state.loading = false;
+        if (state.reloadAgain) {
+          state.reloadAgain = false;
+          loadAndRender();
+        }
       });
   }
 
@@ -986,7 +995,10 @@
   var SHEET_FOOD = "diary-food-sheet";      // добавление/правка блюда
   var SHEET_ACTIVITY = "diary-activity-sheet"; // ручной ввод тренировки
   var SHEET_CONFIRM = "diary-confirm-sheet";   // подтверждение удаления
-  var SHEET_IDS = [SHEET_ACTIONS, SHEET_FOOD, SHEET_ACTIVITY, SHEET_CONFIRM];
+  var SHEET_PRODUCT = "diary-product-sheet";   // свой продукт (поверх блюда)
+  var SHEET_RECIPE = "diary-recipe-sheet";     // свой рецепт (поверх блюда)
+  var SHEET_IDS = [SHEET_ACTIONS, SHEET_FOOD, SHEET_ACTIVITY, SHEET_PRODUCT,
+    SHEET_RECIPE, SHEET_CONFIRM];
 
   /**
    * Создаёт и показывает нижний лист с заданной разметкой панели.
@@ -1233,6 +1245,12 @@
 
   /**
    * Открывает нижний лист блюда.
+   *
+   * Добавление устроено как в FatSecret: сначала то, что человек уже ест, —
+   * поиск и вкладки «Недавние · Частые · Вчера · Мои · Рецепты». Форма с
+   * количеством и КБЖУ раскрывается, когда блюдо выбрано (или человек решил
+   * ввести своё). «+» в списке записывает сразу и лист не закрывает — так
+   * можно отметить несколько блюд подряд. Правка записи — сразу форма.
    * @param {Object|null} entry DiaryEntryOut для правки, либо null — добавление
    * @param {string} [presetMeal] приём пищи по умолчанию (для добавления)
    */
@@ -1255,23 +1273,40 @@
 
     var title = isEdit
       ? pick("Редактировать запись", "Edit entry")
-      : pick("Добавить блюдо", "Add a dish");
+      : pick("Добавить еду", "Add food");
     var submitLabel = isEdit
       ? pick("Сохранить", "Save")
       : pick("Добавить в рацион", "Add to diary");
 
     var html =
+      '<div class="fsheet__head">' +
       '<h2 class="diary-sheet__title">' + App.escapeHtml(title) + "</h2>" +
+      '<button type="button" class="fsheet__close" aria-label="' +
+      App.escapeHtml(pick("Закрыть", "Close")) + '">' + icon("close", { size: 22 }) + "</button>" +
+      "</div>" +
+      // Приём пищи — сверху: «+» в списках записывает именно в него.
+      '<div class="diary-manual__meal fsheet__meal">' +
+      mealChipsHtml(meal, "food-meal") +
+      "</div>" +
       '<form class="diary-manual__form" id="diary-food-form" novalidate>' +
-      // Название блюда.
-      '<label class="field">' +
-      '<span class="field__label">' + App.escapeHtml(pick("Название блюда", "Dish name")) + "</span>" +
+      // Название блюда — оно же поиск.
+      '<label class="field fsheet__name">' +
+      '<span class="field__label">' +
+      App.escapeHtml(isEdit ? pick("Название блюда", "Dish name") : pick("Что съели", "What did you eat")) +
+      "</span>" +
       '<input class="field__input" type="text" name="dish_name" autocomplete="off" ' +
-      'placeholder="' + App.escapeHtml(pick("Например, овсянка с бананом", "e.g. oatmeal with banana")) +
+      'placeholder="' + App.escapeHtml(isEdit
+        ? pick("Например, овсянка с бананом", "e.g. oatmeal with banana")
+        : pick("Найти продукт, блюдо или рецепт", "Find a food, dish or recipe")) +
       '" maxlength="120" value="' + App.escapeHtml(e.dish_name || "") + '" required>' +
       "</label>" +
-      // Подсказки из базы продуктов: появляются по мере ввода названия.
+      // Подсказки: свои продукты и рецепты, съеденное раньше, база продуктов.
       '<div id="fsearch" class="fsearch"></div>' +
+      '<div class="fsheet__details"' + (isEdit ? "" : " hidden") + ">" +
+      (isEdit
+        ? ""
+        : '<button type="button" class="fsheet__back">' + icon("chevron", { size: 18 }) +
+          App.escapeHtml(pick("К списку", "Back to list")) + "</button>") +
       // Количество + единица.
       '<div class="manual-qty-row">' +
       '<label class="field manual-qty-field">' +
@@ -1286,6 +1321,8 @@
       unitOptionsHtml(curUnit) + "</select>" +
       "</label>" +
       "</div>" +
+      // «1 порция = 125 г» — у рецептов и продуктов с весом порции.
+      '<p class="manual-unit-hint" hidden></p>' +
       // Кнопка расчёта КБЖУ + подсказка загрузки.
       '<button type="button" class="btn btn--ghost btn-block manual-calc">' +
       icon("sparkle", { size: 18 }) +
@@ -1304,42 +1341,63 @@
       macroFieldHtml("fats", pick("Жиры, г", "Fat, g"), isEdit ? e.fats : null) +
       macroFieldHtml("carbs", pick("Углеводы, г", "Carbs, g"), isEdit ? e.carbs : null) +
       "</div>" +
-      // Селектор приёма пищи.
-      '<div class="diary-manual__meal">' +
-      '<span class="field__label">' + App.escapeHtml(pick("Приём пищи", "Meal")) + "</span>" +
-      mealChipsHtml(meal, "food-meal") +
-      "</div>" +
+      // Запомнить своё блюдо: КБЖУ пересчитаются на 100 г.
+      '<label class="fsheet__keep" hidden>' +
+      '<input type="checkbox" name="keep">' +
+      '<span>' + App.escapeHtml(pick("Запомнить в «Мои продукты»", "Save to My foods")) +
+      '<small>' + App.escapeHtml(pick(
+        "КБЖУ пересчитаем на 100 г — в следующий раз хватит граммов",
+        "We’ll convert it to per 100 g — next time just enter grams"
+      )) + "</small></span>" +
+      "</label>" +
       '<button class="btn btn--cta btn-block diary-manual__submit" type="submit">' +
       App.escapeHtml(submitLabel) + "</button>" +
       '<button type="button" class="btn btn--ghost btn-block diary-manual__cancel">' +
       App.escapeHtml(pick("Отмена", "Cancel")) + "</button>" +
+      "</div>" +
       "</form>" +
-      // Быстрый повтор нужен только при добавлении: в правке он бы затирал
-      // то, что человек как раз пришёл поправить.
-      (isEdit
-        ? ""
-        : '<div id="diary-products" class="yday"></div>' +
-          '<div id="diary-recent" class="yday"></div>' +
-          '<div id="diary-yday" class="yday"></div>');
+      // Библиотека: история, свои продукты и рецепты (только при добавлении).
+      (isEdit ? "" : '<div id="flib" class="flib"></div>');
 
     var sheet = mountSheet(SHEET_FOOD, html);
     if (!sheet) return;
+    sheet.setAttribute("data-mode", isEdit ? "details" : "browse");
 
     // Контекст формы: выбранный приём пищи, база пересчёта КБЖУ по количеству
     // и флаг ручного переопределения макросов пользователем.
     var ctx = {
+      isEdit: isEdit,
       manualMeal: meal,
       // База «на единицу количества»: {cals, p, f, c} либо null (нет расчёта).
       perUnit: null,
+      // Базы пересчёта по единицам: {g, ml, serving, pcs} → {cals, p, f, c}.
+      bases: null,
+      // Вес порции, г (рецепт или продукт с порцией) — для «1 порция = …».
+      servingG: null,
       // При правке значения уже выставлены человеком/сервером — пересчитывать
       // их по количеству нельзя, иначе правка количества затрёт КБЖУ.
-      manualOverride: isEdit
+      manualOverride: isEdit,
+      // Продукт из базы: после записи попадёт в «Мои продукты».
+      product: null,
+      // Свой продукт/рецепт: после записи поднимется в списке.
+      productId: null,
+      productName: "",
+      // Вкладки библиотеки и их данные (грузятся при первом открытии вкладки).
+      lib: { tab: savedLibTab(), data: {}, done: {} }
     };
 
     var form = sheet.querySelector("#diary-food-form");
 
+    var closeBtn = sheet.querySelector(".fsheet__close");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", function () {
+        App.haptic && App.haptic("light");
+        closeSheetById(SHEET_FOOD);
+      });
+    }
+
     // Переключение приёма пищи.
-    var mealsWrap = sheet.querySelector(".diary-manual__meal .meal-chips");
+    var mealsWrap = sheet.querySelector(".fsheet__meal .meal-chips");
     if (mealsWrap) {
       mealsWrap.addEventListener("click", function (ev) {
         var btn = ev.target.closest(".meal-chip");
@@ -1358,81 +1416,161 @@
       });
     }
 
-    if (form) {
-      // Ручная правка любого КБЖУ-поля отключает авто-пересчёт по количеству.
-      if (form.calories) {
-        form.calories.addEventListener("input", function () {
-          ctx.manualOverride = true;
-        });
-      }
-      // Правка Б, Ж или У сразу пересчитывает калории: по БЖУ они
-      // определяются однозначно, и вбивать их второй раз руками незачем.
-      // Если потом поправить сами калории — останется введённое значение
-      // (до следующей правки БЖУ).
-      var macroFields = ["proteins", "fats", "carbs"];
-      for (var mf = 0; mf < macroFields.length; mf++) {
-        var el = form[macroFields[mf]];
-        if (el) {
-          el.addEventListener("input", function () {
-            ctx.manualOverride = true;
-            var kcal = App.kcalFromMacros(
-              form.proteins.value, form.fats.value, form.carbs.value
-            );
-            if (kcal != null && form.calories) {
-              form.calories.value = kcal;
-              clearInvalid(form.calories);
-            }
-          });
-        }
-      }
+    if (!form) return;
 
-      // Живой пересчёт КБЖУ при изменении количества (если есть база расчёта
-      // и человек не правил значения сам).
-      var qtyInput = form.quantity;
-      if (qtyInput) {
-        qtyInput.addEventListener("input", function () {
-          rescaleMacros(form, ctx);
-        });
-      }
-
-      var calcBtn = sheet.querySelector(".manual-calc");
-      if (calcBtn) {
-        calcBtn.addEventListener("click", function () {
-          calcManualMacros(form, ctx, calcBtn);
-        });
-      }
-
-      var cancelBtn = sheet.querySelector(".diary-manual__cancel");
-      if (cancelBtn) {
-        cancelBtn.addEventListener("click", function () {
-          App.haptic && App.haptic("light");
-          closeSheetById(SHEET_FOOD);
-        });
-      }
-
-      form.addEventListener("submit", function (ev) {
-        ev.preventDefault();
-        submitFoodSheet(form, ctx, isEdit ? e.id : null);
+    // Ручная правка любого КБЖУ-поля отключает авто-пересчёт по количеству.
+    if (form.calories) {
+      form.calories.addEventListener("input", function () {
+        ctx.manualOverride = true;
       });
-
-      // Подсветка ошибки снимается при первом же вводе.
-      bindLiveValidation(form);
-
-      // Поиск блюд в базе продуктов по мере ввода названия.
-      bindFoodSearch(form, ctx);
-
-      // Блоки быстрого повтора (только в режиме добавления).
-      if (!isEdit) {
-        loadProducts(form, ctx);
-        loadRecent(form, ctx);
-        loadYesterday(form, ctx);
-      }
-
-      // Фокус в название сразу: чаще всего человек пришёл именно печатать.
-      if (!isEdit && form.dish_name) {
-        try { form.dish_name.focus({ preventScroll: true }); } catch (err) {}
+    }
+    // Правка Б, Ж или У сразу пересчитывает калории: по БЖУ они
+    // определяются однозначно, и вбивать их второй раз руками незачем.
+    // Если потом поправить сами калории — останется введённое значение
+    // (до следующей правки БЖУ).
+    var macroFields = ["proteins", "fats", "carbs"];
+    for (var mf = 0; mf < macroFields.length; mf++) {
+      var el = form[macroFields[mf]];
+      if (el) {
+        el.addEventListener("input", function () {
+          ctx.manualOverride = true;
+          var kcal = App.kcalFromMacros(
+            form.proteins.value, form.fats.value, form.carbs.value
+          );
+          if (kcal != null && form.calories) {
+            form.calories.value = kcal;
+            clearInvalid(form.calories);
+          }
+        });
       }
     }
+
+    // Живой пересчёт КБЖУ при изменении количества (если есть база расчёта
+    // и человек не правил значения сам).
+    if (form.quantity) {
+      form.quantity.addEventListener("input", function () {
+        rescaleMacros(form, ctx);
+        updateKeep(form, ctx);
+      });
+    }
+    if (form.unit) {
+      form.unit.addEventListener("change", function () {
+        onUnitChange(form, ctx);
+        updateKeep(form, ctx);
+      });
+    }
+    form.dish_name.addEventListener("input", function () {
+      updateKeep(form, ctx);
+    });
+
+    var calcBtn = sheet.querySelector(".manual-calc");
+    if (calcBtn) {
+      calcBtn.addEventListener("click", function () {
+        calcManualMacros(form, ctx, calcBtn);
+      });
+    }
+
+    var cancelBtn = sheet.querySelector(".diary-manual__cancel");
+    if (cancelBtn) {
+      cancelBtn.addEventListener("click", function () {
+        App.haptic && App.haptic("light");
+        closeSheetById(SHEET_FOOD);
+      });
+    }
+
+    var backBtn = sheet.querySelector(".fsheet__back");
+    if (backBtn) {
+      backBtn.addEventListener("click", function () {
+        App.haptic && App.haptic("light");
+        setFoodMode("browse");
+      });
+    }
+
+    form.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      // В режиме списка Enter в поиске — это «ввести своё блюдо».
+      if (!isEdit && foodMode() === "browse") {
+        if ((form.dish_name.value || "").trim()) showManualDetails(form, ctx);
+        return;
+      }
+      submitFoodSheet(form, ctx, isEdit ? e.id : null);
+    });
+
+    // Подсветка ошибки снимается при первом же вводе.
+    bindLiveValidation(form);
+
+    // Поиск по своим продуктам, истории и базе по мере ввода названия.
+    bindFoodSearch(form, ctx);
+
+    if (isEdit) {
+      updateKeep(form, ctx);
+    } else {
+      renderLibrary(form, ctx);
+    }
+  }
+
+  /**
+   * Текущий режим листа блюда: browse (списки) | details (форма).
+   * @returns {string}
+   */
+  function foodMode() {
+    var sheet = document.getElementById(SHEET_FOOD);
+    return (sheet && sheet.getAttribute("data-mode")) || "details";
+  }
+
+  /**
+   * Переключает лист блюда между списками и формой.
+   * @param {string} mode browse | details
+   */
+  function setFoodMode(mode) {
+    var sheet = document.getElementById(SHEET_FOOD);
+    if (!sheet) return;
+    sheet.setAttribute("data-mode", mode);
+    var details = sheet.querySelector(".fsheet__details");
+    var lib = sheet.querySelector("#flib");
+    if (details) details.hidden = mode !== "details";
+    if (lib) lib.hidden = mode === "details";
+    if (mode === "browse") {
+      var box = document.getElementById("fsearch");
+      if (box) box.innerHTML = "";
+    }
+    scrollSheetToTop(SHEET_FOOD);
+  }
+
+  /**
+   * Своё блюдо, которого нет в списках: форма с пустыми КБЖУ — дальше
+   * «Рассчитать КБЖУ» или ввести цифры самому.
+   */
+  function showManualDetails(form, ctx) {
+    ctx.perUnit = null;
+    ctx.bases = null;
+    ctx.servingG = null;
+    ctx.product = null;
+    ctx.productId = null;
+    ctx.manualOverride = false;
+    setFoodMode("details");
+    updateUnitHint(form, ctx);
+    updateKeep(form, ctx);
+    if (form.quantity) {
+      try { form.quantity.focus({ preventScroll: true }); } catch (err) {}
+    }
+  }
+
+  /**
+   * Показывает «Запомнить в Мои продукты», когда это имеет смысл: блюдо
+   * своё (не из списка), а количество в граммах — тогда КБЖУ на 100 г
+   * считаются однозначно.
+   */
+  function updateKeep(form, ctx) {
+    var keep = form.querySelector(".fsheet__keep");
+    if (!keep) return;
+    var qty = Number(form.quantity && form.quantity.value);
+    var unit = form.unit ? form.unit.value : "";
+    var name = (form.dish_name.value || "").trim();
+    var fromList = ctx.productId != null || !!ctx.product;
+    var show = !fromList && !!name && (unit === "g" || unit === "ml") && isFinite(qty) && qty > 0;
+    keep.hidden = !show;
+    if (!show && form.keep) form.keep.checked = false;
   }
 
   /**
@@ -1482,6 +1620,17 @@
       quantity: quantity,
       unit: unit
     };
+    // «Запомнить»: КБЖУ на 100 г из введённой порции в граммах.
+    var keep = form.keep && form.keep.checked &&
+      !form.querySelector(".fsheet__keep").hidden && quantity > 0;
+    var keepProduct = keep ? {
+      name: name,
+      calories: Math.round(payload.calories * 100 / quantity),
+      proteins: round1(payload.proteins * 100 / quantity),
+      fats: round1(payload.fats * 100 / quantity),
+      carbs: round1(payload.carbs * 100 / quantity),
+      source: "manual"
+    } : null;
 
     var submitBtn = form.querySelector(".diary-manual__submit");
     var isEdit = entryId != null;
@@ -1515,12 +1664,25 @@
           delete App.state.diaryByDate[state.date];
         }
         loadAndRender();
-        // Продукт из базы — в «Мои продукты» (тихо: ошибка сохранения не
-        // должна портить уже состоявшееся добавление).
-        // Только если название осталось тем же: иначе человек уже ввёл
-        // другое блюдо, и цифры продукта к нему не относятся.
-        if (!isEdit && ctx.product && ctx.product.name === name && App.api.saveProduct) {
+        // Дальше — тихие действия: их ошибка не должна портить уже
+        // состоявшееся добавление. Только если название осталось тем же:
+        // иначе человек ввёл другое блюдо, и цифры продукта к нему не относятся.
+        if (ctx.productId != null && ctx.productName === name && App.api.productUsed) {
+          // Свой продукт или рецепт — выше в списке и в поиске.
+          App.api.productUsed(ctx.productId).catch(function () {});
+        } else if (!isEdit && ctx.product && ctx.product.name === name && App.api.saveProduct) {
+          // Продукт из базы — в «Мои продукты».
           App.api.saveProduct(ctx.product).catch(function () {});
+        }
+        if (keepProduct && App.api.saveProduct) {
+          App.api.saveProduct(keepProduct)
+            .then(function () {
+              App.toast(pick("Сохранено в «Мои продукты»", "Saved to My foods"));
+            })
+            .catch(function (err) {
+              App.toast((err && err.message) ||
+                pick("Не удалось сохранить продукт", "Couldn’t save the food"));
+            });
         }
       })
       .catch(function (err) {
@@ -1683,8 +1845,8 @@
       // но пункт остаётся тапабельным (уводит в paywall на экране определения).
       sheetItemHtml("voice", "mic", pick("Голосом", "By voice"),
         pick("Продиктовать, что съели", "Say what you ate"), locked) +
-      sheetItemHtml("manual", "edit", pick("Вручную", "Manual"),
-        pick("Название и КБЖУ", "Name and macros"), false) +
+      sheetItemHtml("manual", "search", pick("Найти или ввести", "Search or enter"),
+        pick("История, свои продукты и рецепты", "History, my foods and recipes"), false) +
       // Расход калорий — часть баланса дня, поэтому активность живёт здесь же.
       sheetItemHtml("activity", "run", pick("Активность", "Activity"),
         pick("Тренировка и сожжённые калории", "Workout and burned calories"), locked) +
@@ -1925,7 +2087,7 @@
   var FSEARCH_MIN_CHARS = 3;
 
   /**
-   * Навешивает поиск по базе продуктов на поле названия блюда.
+   * Навешивает поиск на поле названия блюда.
    * @param {HTMLFormElement} form
    * @param {Object} ctx контекст формы листа
    */
@@ -1943,8 +2105,13 @@
 
       if (timer) clearTimeout(timer);
 
+      // Пока идёт поиск, списки библиотеки не мешают подсказкам.
+      var lib = document.getElementById("flib");
+      if (lib && foodMode() === "browse") lib.hidden = q.length >= FSEARCH_MIN_CHARS;
+
       if (q.length < FSEARCH_MIN_CHARS) {
-        renderFoodSearch([], form, ctx);
+        seq++;
+        renderFoodSearch([], form, ctx, "");
         lastQuery = "";
         return;
       }
@@ -1958,12 +2125,12 @@
           .searchFood(q)
           .then(function (res) {
             if (mySeq !== seq) return; // пришёл устаревший ответ
-            renderFoodSearch((res && res.items) || [], form, ctx);
+            renderFoodSearch((res && res.items) || [], form, ctx, q);
           })
           .catch(function () {
             if (mySeq !== seq) return;
-            // Поиск вспомогательный: при сбое просто убираем подсказки.
-            renderFoodSearch([], form, ctx);
+            // Поиск вспомогательный: при сбое оставляем только «ввести вручную».
+            renderFoodSearch([], form, ctx, q);
           });
       }, FSEARCH_DEBOUNCE_MS);
     });
@@ -1979,76 +2146,202 @@
   }
 
   /**
-   * Рисует найденные продукты. Пустой список — область скрывается.
+   * Строка «Б 10 · Ж 8 · У 50».
+   */
+  function macrosLine(p, f, c) {
+    // Неразрывные пробелы: строка переносится между парами, а не внутри «Ж 13».
+    return pick("Б", "P") + " " + App.fmt(p || 0) +
+      " · " + pick("Ж", "F") + " " + App.fmt(f || 0) +
+      " · " + pick("У", "C") + " " + App.fmt(c || 0);
+  }
+
+  /**
+   * «250 г», «2 шт», «1 порция» — порция записи из истории.
+   */
+  function portionLabel(qty, unit) {
+    if (qty == null || !isFinite(Number(qty))) return "";
+    var u = unitLabel(unit);
+    return App.fmt(Number(qty)) + (u ? " " + u : "");
+  }
+
+  /**
+   * Бейдж источника подсказки: свой рецепт, свой продукт, ели раньше.
+   */
+  function kindBadge(it) {
+    var label = it.kind === "recipe" ? pick("рецепт", "recipe")
+      : it.kind === "history" ? pick("ели", "eaten")
+      : (it.kind === "product" || it.mine) ? pick("мой", "mine")
+      : "";
+    return label ? ' <span class="fsearch__mine">' + App.escapeHtml(label) + "</span>" : "";
+  }
+
+  /**
+   * Рисует найденное: свои продукты и рецепты, съеденное раньше (с прошлой
+   * порцией), база продуктов. При добавлении внизу — «Ввести своё блюдо».
    * @param {Array} items результаты поиска
    * @param {HTMLFormElement} form
    * @param {Object} ctx
+   * @param {string} query текст запроса ("" — подсказки убрать)
    */
-  function renderFoodSearch(items, form, ctx) {
+  function renderFoodSearch(items, form, ctx, query) {
     var box = document.getElementById("fsearch");
     if (!box) return;
 
-    if (!items || !items.length) {
+    var browsing = !ctx.isEdit && foodMode() === "browse";
+    if (!query || (!items.length && !browsing)) {
       box.innerHTML = "";
       return;
     }
 
     var kcal = pick("ккал", "kcal");
     var per100 = pick("на 100 г", "per 100 g");
-    var pLabel = pick("Б", "P");
-    var fLabel = pick("Ж", "F");
-    var cLabel = pick("У", "C");
+    var fromBase = false;
 
     var rows = "";
     for (var i = 0; i < items.length; i++) {
       var it = items[i] || {};
+      if (it.kind === "off" || (!it.kind && !it.mine)) fromBase = true;
       var brand = it.brand
         ? ' <span class="fsearch__brand">' + App.escapeHtml(it.brand) + "</span>"
         : "";
-      if (it.mine) {
-        brand += ' <span class="fsearch__mine">' + App.escapeHtml(pick("мой", "mine")) + "</span>";
+      var head = it.kind === "history"
+        ? (portionLabel(it.quantity, it.unit) ? portionLabel(it.quantity, it.unit) + " · " : "") +
+          App.fmt(it.calories || 0) + " " + kcal
+        : App.fmt(it.calories || 0) + " " + kcal + " " + per100;
+      if (it.serving_g) {
+        head += " · " + pick("порция ", "serving ") + App.fmt(it.serving_g) + " " + pick("г", "g");
       }
-      var macros =
-        App.fmt(it.calories || 0) + " " + kcal + " " + per100 +
-        " · " + pLabel + " " + App.fmt(it.proteins || 0) +
-        " · " + fLabel + " " + App.fmt(it.fats || 0) +
-        " · " + cLabel + " " + App.fmt(it.carbs || 0);
-
       rows +=
         '<button type="button" class="fsearch__item" data-idx="' + i + '">' +
-        '<span class="fsearch__name">' + App.escapeHtml(it.name || "") + brand + "</span>" +
-        '<span class="fsearch__macros">' + App.escapeHtml(macros) + "</span>" +
+        '<span class="fsearch__name">' + App.escapeHtml(it.name || "") + brand + kindBadge(it) + "</span>" +
+        '<span class="fsearch__macros">' +
+        App.escapeHtml(head + " · " + macrosLine(it.proteins, it.fats, it.carbs)) + "</span>" +
         "</button>";
     }
 
     box.innerHTML =
-      '<div class="fsearch__list">' + rows + "</div>" +
-      '<p class="fsearch__hint">' +
-      App.escapeHtml(pick(
-        "Не нашли? Введите своё блюдо и нажмите «Рассчитать КБЖУ».",
-        "Not found? Type your own dish and tap “Calculate”."
-      )) +
-      "</p>" +
+      (rows ? '<div class="fsearch__list">' + rows + "</div>" : "") +
+      (browsing
+        ? '<button type="button" class="fsearch__own">' + icon("edit", { size: 18 }) +
+          '<span>' + App.escapeHtml(
+            (items.length ? pick("Нет нужного? Ввести «", "Not here? Enter “") : pick("Не нашли. Ввести «", "Nothing found. Enter “")) +
+            query + pick("» вручную", "” manually")) + "</span></button>"
+        : '<p class="fsearch__hint">' +
+          App.escapeHtml(pick(
+            "Не нашли? Введите своё блюдо и нажмите «Рассчитать КБЖУ».",
+            "Not found? Type your own dish and tap “Calculate”."
+          )) + "</p>") +
       // Данные базы — по лицензии ODbL: источник обязан быть указан.
-      '<p class="fsearch__credit">' +
-      App.escapeHtml(pick("Данные: Open Food Facts (ODbL)", "Data: Open Food Facts (ODbL)")) +
-      "</p>";
+      (fromBase
+        ? '<p class="fsearch__credit">' +
+          App.escapeHtml(pick("Данные: Open Food Facts (ODbL)", "Data: Open Food Facts (ODbL)")) +
+          "</p>"
+        : "");
 
     var list = box.querySelector(".fsearch__list");
-    list.addEventListener("click", function (ev) {
-      var btn = ev.target.closest(".fsearch__item");
-      if (!btn) return;
-      var idx = parseInt(btn.getAttribute("data-idx"), 10);
-      if (isNaN(idx) || !items[idx]) return;
-      applyFoundFood(items[idx], form, ctx);
-    });
+    if (list) {
+      list.addEventListener("click", function (ev) {
+        var btn = ev.target.closest(".fsearch__item");
+        if (!btn) return;
+        var idx = parseInt(btn.getAttribute("data-idx"), 10);
+        if (isNaN(idx) || !items[idx]) return;
+        if (items[idx].kind === "history") {
+          fillFromHistory(items[idx], form, ctx);
+        } else {
+          applyFoundFood(items[idx], form, ctx);
+        }
+      });
+    }
+    var own = box.querySelector(".fsearch__own");
+    if (own) {
+      own.addEventListener("click", function () {
+        App.haptic && App.haptic("light");
+        showManualDetails(form, ctx);
+      });
+    }
   }
 
   /**
-   * Заполняет форму выбранным продуктом. КБЖУ приходят на 100 г, поэтому
-   * ставим количество 100 г и базу пересчёта per-unit = значение/100 —
-   * дальше существующая логика сама пересчитает КБЖУ при смене количества.
-   * @param {Object} it найденный продукт
+   * Сколько граммов в одной единице: г/мл — 1, порция/штука — вес порции.
+   */
+  function gramsPerUnit(ctx, unit) {
+    if (unit === "g" || unit === "ml") return 1;
+    if ((unit === "serving" || unit === "pcs") && ctx.servingG) return ctx.servingG;
+    return null;
+  }
+
+  /**
+   * База пересчёта для единицы (или null — пересчёта нет).
+   */
+  function unitBasis(ctx, unit) {
+    return (ctx.bases && unit && ctx.bases[unit]) || null;
+  }
+
+  /**
+   * Единица сменилась: у продукта с весом порции переводим количество
+   * (1 порция → 125 г) и пересчитываем КБЖУ.
+   */
+  function onUnitChange(form, ctx) {
+    var unit = form.unit.value;
+    var prev = ctx.unit || "";
+    ctx.unit = unit;
+    var from = gramsPerUnit(ctx, prev);
+    var to = gramsPerUnit(ctx, unit);
+    var qty = Number(form.quantity.value);
+    if (ctx.bases && ctx.bases.g && from && to && isFinite(qty) && qty > 0) {
+      form.quantity.value = round1(qty * from / to);
+    }
+    ctx.perUnit = unitBasis(ctx, unit);
+    rescaleMacros(form, ctx);
+    updateUnitHint(form, ctx);
+  }
+
+  /**
+   * «1 порция = 125 г» под количеством — у рецептов и продуктов с порцией.
+   */
+  function updateUnitHint(form, ctx) {
+    var hint = form.querySelector(".manual-unit-hint");
+    if (!hint) return;
+    if (!ctx.servingG) {
+      hint.hidden = true;
+      hint.textContent = "";
+      return;
+    }
+    var unit = form.unit ? form.unit.value : "";
+    hint.hidden = false;
+    hint.textContent = "1 " + (unit === "pcs" ? pick("шт", "pc") : pick("порция", "serving")) +
+      " = " + App.fmt(ctx.servingG) + " " + pick("г", "g");
+  }
+
+  /**
+   * Ставит единицу и количество в форму и запоминает её как текущую.
+   */
+  function setQtyUnit(form, ctx, qty, unit) {
+    if (form.quantity) form.quantity.value = qty == null ? "" : qty;
+    if (form.unit) form.unit.value = (unit && UNIT_KEYS.indexOf(unit) !== -1) ? unit : "";
+    ctx.unit = form.unit ? form.unit.value : "";
+  }
+
+  /**
+   * После выбора блюда: форма раскрывается, фокус — в количество (граммы —
+   * единственное, что обычно остаётся ввести).
+   */
+  function afterPick(form, ctx) {
+    var box = document.getElementById("fsearch");
+    if (box) box.innerHTML = "";
+    updateUnitHint(form, ctx);
+    updateKeep(form, ctx);
+    if (!ctx.isEdit) setFoodMode("details");
+    if (form.quantity) {
+      try { form.quantity.focus({ preventScroll: true }); form.quantity.select(); } catch (e) {}
+    }
+  }
+
+  /**
+   * Заполняет форму продуктом с КБЖУ на 100 г: из базы, свой или рецепт.
+   * С весом порции — сразу «1 порция», иначе 100 г. Дальше КБЖУ
+   * пересчитываются при смене количества и единицы.
+   * @param {Object} it продукт (FoodSearchItem)
    * @param {HTMLFormElement} form
    * @param {Object} ctx
    */
@@ -2056,32 +2349,84 @@
     App.haptic && App.haptic("light");
 
     if (form.dish_name) form.dish_name.value = it.name || "";
-    if (form.quantity) form.quantity.value = 100;
-    if (form.unit) form.unit.value = "g";
 
     var cals = Math.round(Number(it.calories) || 0);
     var p = round1(it.proteins || 0);
     var f = round1(it.fats || 0);
     var c = round1(it.carbs || 0);
+    var perGram = { cals: cals / 100, p: p / 100, f: f / 100, c: c / 100 };
+    var serving = Number(it.serving_g) > 0 ? Number(it.serving_g) : null;
 
     // Это НЕ ручная правка пользователя, а подстановка из базы: разрешаем
     // авто-пересчёт по количеству.
     ctx.manualOverride = false;
-    ctx.perUnit = { cals: cals / 100, p: p / 100, f: f / 100, c: c / 100 };
-    setMacroFields(form, cals, p, f, c);
-    // После добавления продукт попадёт в «Мои продукты» — в следующий раз
-    // он будет первым в поиске и в списке над «Недавними».
-    ctx.product = {
+    ctx.servingG = serving;
+    ctx.bases = { g: perGram, ml: perGram };
+    if (serving) {
+      var perServing = {
+        cals: perGram.cals * serving, p: perGram.p * serving,
+        f: perGram.f * serving, c: perGram.c * serving
+      };
+      ctx.bases.serving = perServing;
+      ctx.bases.pcs = perServing;
+    }
+    var mine = it.kind === "product" || it.kind === "recipe" || !!it.mine;
+    ctx.productId = mine && it.id != null ? it.id : null;
+    ctx.productName = it.name || "";
+    // Продукт из базы после записи попадёт в «Мои продукты» — в следующий
+    // раз он будет первым в поиске и в своей вкладке.
+    ctx.product = mine ? null : {
       name: it.name || "",
       brand: it.brand || "",
       barcode: it.code || "",
       calories: cals, proteins: p, fats: f, carbs: c,
-      source: it.mine ? (it.source || "manual") : "search"
+      source: "search"
     };
 
-    // Подсказки больше не нужны — прячем, чтобы не мешали.
-    var box = document.getElementById("fsearch");
-    if (box) box.innerHTML = "";
+    if (serving) setQtyUnit(form, ctx, 1, "serving");
+    else setQtyUnit(form, ctx, 100, "g");
+    ctx.perUnit = unitBasis(ctx, ctx.unit);
+    rescaleMacros(form, ctx);
+    afterPick(form, ctx);
+  }
+
+  /**
+   * Заполняет форму блюдом из истории: прошлая порция и её КБЖУ. Поменяли
+   * количество в той же единице — КБЖУ пересчитаются пропорционально.
+   * Приём пищи остаётся выбранным сверху.
+   * @param {Object} it {dish_name|name, quantity, unit, calories, proteins, fats, carbs}
+   */
+  function fillFromHistory(it, form, ctx) {
+    if (!form) return;
+    App.haptic && App.haptic("light");
+
+    var name = it.dish_name || it.name || "";
+    if (form.dish_name) form.dish_name.value = name;
+    var cals = Math.round(Number(it.calories) || 0);
+    var p = round1(it.proteins || 0);
+    var f = round1(it.fats || 0);
+    var c = round1(it.carbs || 0);
+    var qty = Number(it.quantity);
+    var unit = (it.unit && UNIT_KEYS.indexOf(it.unit) !== -1) ? it.unit : "";
+
+    ctx.manualOverride = false;
+    ctx.product = null;
+    ctx.productId = null;
+    ctx.servingG = null;
+    ctx.bases = null;
+    if (qty > 0 && unit) {
+      var per = { cals: cals / qty, p: p / qty, f: f / qty, c: c / qty };
+      ctx.bases = {};
+      ctx.bases[unit] = per;
+      if (unit === "g" || unit === "ml") {
+        ctx.bases.g = per;
+        ctx.bases.ml = per;
+      }
+    }
+    setQtyUnit(form, ctx, it.quantity != null ? it.quantity : "", unit);
+    ctx.perUnit = unitBasis(ctx, ctx.unit);
+    setMacroFields(form, cals, p, f, c);
+    afterPick(form, ctx);
   }
 
   /**
@@ -2176,6 +2521,10 @@
 
         // Заполняем КБЖУ (это авто-расчёт — сбрасываем ручное переопределение).
         ctx.manualOverride = false;
+        // Цифры теперь от расчёта, а не от выбранного продукта.
+        ctx.product = null;
+        ctx.productId = null;
+        ctx.servingG = null;
         setMacroFields(form, cals, p, f, c);
 
         // Если сервер вернул количество/единицу — отражаем их в форме.
@@ -2188,6 +2537,7 @@
           // Проставляем только валидный канонический ключ.
           if (UNIT_KEYS.indexOf(res.unit) !== -1) form.unit.value = res.unit;
         }
+        ctx.unit = form.unit ? form.unit.value : "";
 
         // База per-unit для живого пересчёта (только при положительном qty).
         var basisQty = respQty != null ? respQty
@@ -2199,9 +2549,14 @@
             f: f / basisQty,
             c: c / basisQty
           };
+          ctx.bases = {};
+          ctx.bases[ctx.unit || "g"] = ctx.perUnit;
         } else {
           ctx.perUnit = null;
+          ctx.bases = null;
         }
+        updateUnitHint(form, ctx);
+        updateKeep(form, ctx);
 
         App.haptic && App.haptic("success");
       })
@@ -2219,397 +2574,842 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Блок «Недавние» — быстрый повтор недавно добавленных блюд в один тап.
-  // Источник — App.api.getRecentFoods (уникальные блюда за всё время). Тап по
-  // телу автозаполняет форму листа; кнопка «плюс» добавляет сразу в приём по времени
-  // суток. Если недавних нет — блок скрыт.
+  // БИБЛИОТЕКА ЕДЫ: «Недавние · Частые · Вчера · Мои · Рецепты».
+  //
+  // Как в FatSecret: то, что человек ест, — в один тап. Тап по строке
+  // подставляет блюдо в форму (поменять граммы), «+» записывает сразу в
+  // выбранный сверху приём пищи и лист не закрывает. Данные вкладки грузятся
+  // при первом открытии и живут, пока открыт лист.
   // ---------------------------------------------------------------------------
 
-  /**
-   * Загружает «Недавние» блюда и рисует их. При ошибке — тихо скрываем блок.
-   * @param {HTMLFormElement} form форма листа блюда
-   * @param {Object} ctx контекст формы
-   */
-  function loadRecent(form, ctx) {
-    var box = document.getElementById("diary-recent");
-    if (!box) return;
+  var LIB_TABS = ["recent", "frequent", "yesterday", "mine", "recipes"];
+  var LIB_TAB_KEY = "fu-food-tab";
 
+  function savedLibTab() {
+    try {
+      var t = window.localStorage.getItem(LIB_TAB_KEY);
+      if (LIB_TABS.indexOf(t) !== -1) return t;
+    } catch (e) {}
+    return "recent";
+  }
+
+  function libTabLabel(t) {
+    switch (t) {
+      case "recent": return pick("Недавние", "Recent");
+      case "frequent": return pick("Частые", "Frequent");
+      case "yesterday": return pick("Вчера", "Yesterday");
+      case "mine": return pick("Мои", "My foods");
+      case "recipes": return pick("Рецепты", "Recipes");
+      default: return t;
+    }
+  }
+
+  /**
+   * Рисует вкладки библиотеки и содержимое текущей.
+   */
+  function renderLibrary(form, ctx) {
+    var box = document.getElementById("flib");
+    if (!box) return;
+    var tabs = "";
+    for (var i = 0; i < LIB_TABS.length; i++) {
+      var t = LIB_TABS[i];
+      var active = t === ctx.lib.tab;
+      tabs +=
+        '<button type="button" class="flib__tab' + (active ? " is-active" : "") + '" ' +
+        'role="tab" aria-selected="' + (active ? "true" : "false") + '" data-tab="' + t + '">' +
+        App.escapeHtml(libTabLabel(t)) + "</button>";
+    }
     box.innerHTML =
-      '<h3 class="yday__title">' + App.escapeHtml(pick("Недавние", "Recent")) + "</h3>" +
-      '<div class="yday__list">' +
-      '<div class="skeleton skeleton-block yday__skeleton"></div>' +
-      "</div>";
+      '<div class="flib__tabs" role="tablist">' + tabs + "</div>" +
+      '<div class="flib__body"></div>';
 
-    if (!(App.api && typeof App.api.getRecentFoods === "function")) {
-      box.innerHTML = "";
+    box.querySelector(".flib__tabs").addEventListener("click", function (ev) {
+      var btn = ev.target.closest(".flib__tab");
+      if (!btn) return;
+      var t = btn.getAttribute("data-tab");
+      if (!t || t === ctx.lib.tab) return;
+      App.haptic && App.haptic("light");
+      ctx.lib.tab = t;
+      try { window.localStorage.setItem(LIB_TAB_KEY, t); } catch (e) {}
+      var all = box.querySelectorAll(".flib__tab");
+      for (var j = 0; j < all.length; j++) {
+        var on = all[j].getAttribute("data-tab") === t;
+        all[j].classList.toggle("is-active", on);
+        all[j].setAttribute("aria-selected", on ? "true" : "false");
+      }
+      showLibTab(form, ctx);
+    });
+
+    box.querySelector(".flib__body").addEventListener("click", function (ev) {
+      onLibClick(ev, form, ctx);
+    });
+
+    showLibTab(form, ctx);
+  }
+
+  /**
+   * Содержимое текущей вкладки: скелетон → данные (или ошибка с повтором).
+   */
+  function showLibTab(form, ctx) {
+    var body = document.querySelector("#flib .flib__body");
+    if (!body) return;
+    var tab = ctx.lib.tab;
+    var data = ctx.lib.data[tab];
+    if (data === undefined) {
+      body.innerHTML =
+        '<div class="yday__list">' +
+        '<div class="skeleton skeleton-block yday__skeleton"></div>' +
+        '<div class="skeleton skeleton-block yday__skeleton"></div>' +
+        '<div class="skeleton skeleton-block yday__skeleton"></div>' +
+        "</div>";
+      loadLibTab(tab, form, ctx);
       return;
     }
+    if (data === false) {
+      body.innerHTML =
+        '<p class="yday__empty">' +
+        App.escapeHtml(pick("Не удалось загрузить список.", "Couldn’t load the list.")) + "</p>" +
+        '<button type="button" class="btn btn--ghost btn-block" data-act="retry">' +
+        App.escapeHtml(pick("Повторить", "Retry")) + "</button>";
+      return;
+    }
+    body.innerHTML = libBodyHtml(tab, data, ctx);
+  }
 
-    App.api
-      .getRecentFoods()
-      .then(function (res) {
-        renderRecent((res && res.items) || [], form, ctx);
-      })
+  /**
+   * Загружает данные вкладки (история одним запросом на две вкладки).
+   */
+  function loadLibTab(tab, form, ctx) {
+    var api = App.api || {};
+    var req;
+    if (tab === "recent" || tab === "frequent") {
+      req = api.getFoodHistory(state.date).then(function (res) {
+        ctx.lib.data.recent = (res && res.recent) || [];
+        ctx.lib.data.frequent = (res && res.frequent) || [];
+      });
+    } else if (tab === "yesterday") {
+      req = api.getYesterday(state.date).then(function (res) {
+        ctx.lib.data.yesterday = (res && res.items) || [];
+      });
+    } else if (tab === "mine") {
+      req = api.getProducts().then(function (res) {
+        ctx.lib.data.mine = ((res && res.items) || []).filter(function (it) {
+          return it.kind !== "recipe";
+        });
+      });
+    } else {
+      req = api.getRecipes().then(function (res) {
+        ctx.lib.data.recipes = ((res && res.items) || []).filter(function (r) {
+          return !!r.product;
+        });
+      });
+    }
+    req
       .catch(function () {
-        if (box) box.innerHTML = "";
+        ctx.lib.data[tab] = false;
+      })
+      .then(function () {
+        if (ctx.lib.tab === tab) showLibTab(form, ctx);
       });
   }
 
   /**
-   * Загружает «Мои продукты» (КБЖУ на 100 г) над «Недавними».
-   * @param {HTMLFormElement} form
-   * @param {Object} ctx
+   * Порция по умолчанию для своего продукта или рецепта: 1 порция, если её
+   * вес известен, иначе 100 г. Возвращает готовую запись для дневника.
    */
-  function loadProducts(form, ctx) {
-    var box = document.getElementById("diary-products");
-    if (!box || !(App.api && App.api.getProducts)) return;
-    App.api
-      .getProducts()
-      .then(function (res) {
-        renderProducts(((res && res.items) || []).slice(0, 8), form, ctx);
-      })
-      .catch(function () {
-        box.innerHTML = "";
-      });
+  function defaultPortion(p) {
+    var serving = Number(p.serving_g) > 0 ? Number(p.serving_g) : null;
+    var grams = serving || 100;
+    var k = grams / 100;
+    return {
+      dish_name: p.name || "",
+      quantity: serving ? 1 : 100,
+      unit: serving ? "serving" : "g",
+      grams: grams,
+      calories: Math.round((Number(p.calories) || 0) * k),
+      proteins: round1((p.proteins || 0) * k),
+      fats: round1((p.fats || 0) * k),
+      carbs: round1((p.carbs || 0) * k)
+    };
+  }
+
+  function libDoneKey(tab, name) {
+    return (tab === "mine" || tab === "recipes" ? tab : "h") + ":" + String(name || "").toLowerCase();
   }
 
   /**
-   * Рисует «Мои продукты». Тап — подставить КБЖУ на 100 г (дальше человек
-   * вводит граммы, и всё пересчитывается); корзина — убрать из списка.
+   * Разметка вкладки: кнопка «создать» (Мои/Рецепты), пустое состояние, строки.
    */
-  function renderProducts(items, form, ctx) {
-    var box = document.getElementById("diary-products");
-    if (!box) return;
-    if (!items.length) {
-      box.innerHTML = "";
-      return;
-    }
+  function libBodyHtml(tab, items, ctx) {
     var kcal = pick("ккал", "kcal");
-    var per100 = pick("на 100 г", "per 100 g");
+    var top = "";
+    if (tab === "mine") {
+      top = '<button type="button" class="flib__new" data-act="new-product">' + icon("plus", { size: 18 }) +
+        App.escapeHtml(pick("Свой продукт", "New food")) + "</button>";
+    } else if (tab === "recipes") {
+      top = '<button type="button" class="flib__new" data-act="new-recipe">' + icon("plus", { size: 18 }) +
+        App.escapeHtml(pick("Новый рецепт", "New recipe")) + "</button>";
+    }
+
+    if (!items.length) {
+      var empty = {
+        recent: pick("Здесь будет то, что вы записываете, — с порциями, в один тап.",
+          "What you log will show up here — with portions, one tap away."),
+        frequent: pick("Что вы едите чаще всего за последние 3 месяца.",
+          "What you eat most often over the last 3 months."),
+        yesterday: pick("За вчера нет записей.", "No entries yesterday."),
+        mine: pick("Свои продукты с КБЖУ на 100 г: с упаковки, по штрихкоду или вручную. В поиске они первыми.",
+          "Your foods with nutrition per 100 g — from a label, barcode or typed in. They come first in search."),
+        recipes: pick("Соберите домашнее блюдо из продуктов — посчитаем КБЖУ на 100 г и на порцию.",
+          "Build a home-made dish from foods — we’ll work out nutrition per 100 g and per serving.")
+      }[tab];
+      return top + '<p class="yday__empty">' + App.escapeHtml(empty) + "</p>";
+    }
+
     var rows = "";
     for (var i = 0; i < items.length; i++) {
       var it = items[i] || {};
-      var macros =
-        App.fmt(it.calories || 0) + " " + kcal + " " + per100 +
-        " · " + pick("Б", "P") + " " + App.fmt(it.proteins || 0) +
-        " · " + pick("Ж", "F") + " " + App.fmt(it.fats || 0) +
-        " · " + pick("У", "C") + " " + App.fmt(it.carbs || 0);
+      var name, line, editBtn = "";
+      if (tab === "mine" || tab === "recipes") {
+        var prod = tab === "recipes" ? it.product : it;
+        var portion = defaultPortion(prod);
+        name = prod.name;
+        line = (portion.unit === "serving"
+          ? pick("1 порция", "1 serving") + " · " + App.fmt(portion.grams) + " " + pick("г", "g")
+          : "100 " + pick("г", "g")) +
+          " · " + App.fmt(portion.calories) + " " + kcal +
+          " · " + macrosLine(portion.proteins, portion.fats, portion.carbs);
+        editBtn =
+          '<button type="button" class="flib__edit" data-act="edit" data-idx="' + i + '" aria-label="' +
+          App.escapeHtml(pick("Изменить", "Edit")) + '">' + icon("edit", { size: 18 }) + "</button>";
+      } else {
+        name = it.dish_name || pick("Без названия", "Untitled");
+        var por = portionLabel(it.quantity, it.unit);
+        line = (tab === "frequent" && it.count ? "×" + it.count + " · " : "") +
+          (por ? por + " · " : "") +
+          App.fmt(it.calories || 0) + " " + kcal +
+          " · " + macrosLine(it.proteins, it.fats, it.carbs);
+      }
+      var done = !!ctx.lib.done[libDoneKey(tab, name)];
       rows +=
-        '<div class="yday__item" data-idx="' + i + '">' +
-        '<button type="button" class="yday__body" data-idx="' + i + '">' +
-        '<span class="yday__name">' + App.escapeHtml(it.name || "") + "</span>" +
-        '<span class="yday__macros">' + App.escapeHtml(macros) + "</span>" +
+        '<div class="yday__item flib__item">' +
+        '<button type="button" class="yday__body" data-act="pick" data-idx="' + i + '">' +
+        '<span class="yday__name">' + App.escapeHtml(name) + "</span>" +
+        '<span class="yday__macros">' + App.escapeHtml(line) + "</span>" +
         "</button>" +
-        '<button type="button" class="yday__add yday__remove" data-idx="' + i + '" ' +
-        'aria-label="' + App.escapeHtml(pick("Убрать из моих продуктов", "Remove from my products")) + '">' +
-        icon("trash", { size: 18 }) + "</button>" +
+        editBtn +
+        '<button type="button" class="yday__add' + (done ? " is-done" : "") + '" data-act="add" data-idx="' + i + '" ' +
+        (done ? "disabled " : "") +
+        'aria-label="' + App.escapeHtml(done ? pick("Добавлено", "Added") : pick("Добавить", "Add")) + '">' +
+        icon(done ? "check" : "plus", { size: 20 }) + "</button>" +
         "</div>";
     }
-    box.innerHTML =
-      '<h3 class="yday__title">' + App.escapeHtml(pick("Мои продукты", "My products")) + "</h3>" +
-      '<div class="yday__list">' + rows + "</div>";
+    return top + '<div class="yday__list">' + rows + "</div>";
+  }
 
-    box.querySelector(".yday__list").addEventListener("click", function (ev) {
-      var rm = ev.target.closest(".yday__remove");
-      if (rm) {
-        var ri = parseInt(rm.getAttribute("data-idx"), 10);
-        var victim = items[ri];
-        if (!victim || victim.id == null) return;
-        App.haptic && App.haptic("light");
-        App.api
-          .deleteProduct(victim.id)
-          .then(function () {
-            items.splice(ri, 1);
-            renderProducts(items, form, ctx);
-          })
-          .catch(function (err) {
-            App.toast(err && err.message ? err.message : pick("Ошибка", "Error"));
-          });
-        return;
+  /**
+   * Клики по вкладке библиотеки (делегирование).
+   */
+  function onLibClick(ev, form, ctx) {
+    var btn = ev.target.closest("[data-act]");
+    if (!btn) return;
+    var act = btn.getAttribute("data-act");
+    var tab = ctx.lib.tab;
+
+    if (act === "retry") {
+      delete ctx.lib.data[tab];
+      showLibTab(form, ctx);
+      return;
+    }
+    var refresh = function (which) {
+      delete ctx.lib.data[which];
+      if (ctx.lib.tab === which) showLibTab(form, ctx);
+    };
+    if (act === "new-product") {
+      openProductEditor(null, function () { refresh("mine"); });
+      return;
+    }
+    if (act === "new-recipe") {
+      openRecipeEditor(null, function () { refresh("recipes"); });
+      return;
+    }
+
+    var items = ctx.lib.data[tab] || [];
+    var idx = parseInt(btn.getAttribute("data-idx"), 10);
+    var it = items[idx];
+    if (!it) return;
+    var isLib = tab === "mine" || tab === "recipes";
+    var prod = tab === "recipes" ? it.product : it;
+
+    if (act === "pick") {
+      if (isLib) applyFoundFood(prod, form, ctx);
+      else fillFromHistory(it, form, ctx);
+      return;
+    }
+    if (act === "edit") {
+      if (tab === "mine") openProductEditor(it, function () { refresh("mine"); });
+      else openRecipeEditor(it, function () { refresh("recipes"); });
+      return;
+    }
+    if (act === "add") {
+      var food = isLib ? defaultPortion(prod) : it;
+      var key = libDoneKey(tab, isLib ? prod.name : it.dish_name);
+      quickAdd(food, ctx.manualMeal || mealByHour(), btn, {
+        keepOpen: true,
+        onDone: function () {
+          ctx.lib.done[key] = true;
+          btn.classList.add("is-done");
+          btn.innerHTML = icon("check", { size: 20 });
+          btn.setAttribute("aria-label", pick("Добавлено", "Added"));
+          if (isLib && prod.id != null && App.api.productUsed) {
+            App.api.productUsed(prod.id).catch(function () {});
+          }
+        }
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // СВОЙ ПРОДУКТ: КБЖУ на 100 г и, если нужно, вес порции («1 сырник = 60 г»).
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Лист создания/правки своего продукта (поверх листа блюда).
+   * @param {Object|null} product продукт из «Моих» (FoodSearchItem) или null
+   * @param {Function} onChanged вызывается после сохранения/удаления
+   */
+  function openProductEditor(product, onChanged) {
+    var isEdit = !!(product && product.id != null);
+    var p = product || {};
+    var html =
+      '<h2 class="diary-sheet__title">' +
+      App.escapeHtml(isEdit ? pick("Мой продукт", "My food") : pick("Свой продукт", "New food")) + "</h2>" +
+      '<p class="diary-sheet__text">' + App.escapeHtml(pick(
+        "КБЖУ на 100 г — как на упаковке. Продукт будет первым в поиске.",
+        "Nutrition per 100 g, as on the package. It will come first in search."
+      )) + "</p>" +
+      '<form class="diary-manual__form" id="diary-product-form" novalidate>' +
+      '<label class="field"><span class="field__label">' + App.escapeHtml(pick("Название", "Name")) + "</span>" +
+      '<input class="field__input" type="text" name="name" maxlength="120" autocomplete="off" ' +
+      'placeholder="' + App.escapeHtml(pick("Например, сырник домашний", "e.g. home-made pancake")) + '" ' +
+      'value="' + App.escapeHtml(p.name || "") + '"></label>' +
+      '<label class="field"><span class="field__label">' +
+      App.escapeHtml(pick("Калории на 100 г, ккал", "Calories per 100 g, kcal")) + "</span>" +
+      '<input class="field__input" type="number" name="calories" inputmode="numeric" min="0" step="1" ' +
+      'placeholder="0" value="' + (p.calories != null ? App.escapeHtml(String(p.calories)) : "") + '"></label>' +
+      '<div class="diary-manual__macros">' +
+      macroFieldHtml("proteins", pick("Белки, г", "Protein, g"), p.proteins != null ? p.proteins : null) +
+      macroFieldHtml("fats", pick("Жиры, г", "Fat, g"), p.fats != null ? p.fats : null) +
+      macroFieldHtml("carbs", pick("Углеводы, г", "Carbs, g"), p.carbs != null ? p.carbs : null) +
+      "</div>" +
+      '<label class="field"><span class="field__label">' +
+      App.escapeHtml(pick("Вес порции или штуки, г — необязательно", "Serving or piece weight, g — optional")) +
+      "</span>" +
+      '<input class="field__input" type="number" name="serving_g" inputmode="decimal" min="0" step="any" ' +
+      'placeholder="—" value="' + (p.serving_g ? App.escapeHtml(String(p.serving_g)) : "") + '"></label>' +
+      '<p class="field__hint">' + App.escapeHtml(pick(
+        "Например, 1 сырник = 60 г — тогда его можно записывать штуками.",
+        "e.g. 1 pancake = 60 g — then you can log it by the piece."
+      )) + "</p>" +
+      '<button class="btn btn--cta btn-block diary-manual__submit" type="submit">' +
+      App.escapeHtml(pick("Сохранить", "Save")) + "</button>" +
+      (isEdit
+        ? '<button type="button" class="btn btn--ghost btn-block fed__delete">' + icon("trash", { size: 18 }) +
+          App.escapeHtml(pick("Удалить продукт", "Delete food")) + "</button>"
+        : "") +
+      '<button type="button" class="btn btn--ghost btn-block diary-manual__cancel">' +
+      App.escapeHtml(pick("Отмена", "Cancel")) + "</button>" +
+      "</form>";
+
+    var sheet = mountSheet(SHEET_PRODUCT, html);
+    if (!sheet) return;
+    var form = sheet.querySelector("#diary-product-form");
+    bindLiveValidation(form);
+
+    // Калории по БЖУ — как в форме блюда.
+    ["proteins", "fats", "carbs"].forEach(function (n) {
+      form[n].addEventListener("input", function () {
+        var kcal = App.kcalFromMacros(form.proteins.value, form.fats.value, form.carbs.value);
+        if (kcal != null) {
+          form.calories.value = kcal;
+          clearInvalid(form.calories);
+        }
+      });
+    });
+
+    sheet.querySelector(".diary-manual__cancel").addEventListener("click", function () {
+      closeSheetById(SHEET_PRODUCT);
+    });
+
+    var del = sheet.querySelector(".fed__delete");
+    if (del) {
+      del.addEventListener("click", function () {
+        openConfirmSheet({
+          title: pick("Удалить продукт?", "Delete this food?"),
+          text: pick("Записи в дневнике с ним останутся.", "Diary entries with it will stay."),
+          onConfirm: function () {
+            App.api.deleteProduct(p.id)
+              .then(function () {
+                App.toast(pick("Продукт удалён", "Food deleted"));
+                closeSheetById(SHEET_PRODUCT);
+                onChanged && onChanged();
+              })
+              .catch(function (err) {
+                App.toast((err && err.message) || pick("Ошибка", "Error"));
+              });
+          }
+        });
+      });
+    }
+
+    form.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var name = (form.name.value || "").trim();
+      if (!name) return invalidField(form.name, pick("Назовите продукт", "Name the food"));
+      var kcal = Number(form.calories.value);
+      if (!(kcal > 0 && kcal <= 950)) {
+        return invalidField(form.calories,
+          pick("Калории на 100 г — от 1 до 950", "Calories per 100 g: 1 to 950"));
       }
-      var body = ev.target.closest(".yday__body");
-      if (!body) return;
-      var idx = parseInt(body.getAttribute("data-idx"), 10);
-      if (isNaN(idx) || !items[idx]) return;
-      applyFoundFood(items[idx], form, ctx);
-      // Граммы — единственное, что осталось ввести.
-      if (form.quantity) {
-        try { form.quantity.focus(); form.quantity.select(); } catch (e) {}
-      }
+      var serving = Number(form.serving_g.value);
+      var payload = {
+        name: name,
+        calories: Math.round(kcal),
+        proteins: Number(form.proteins.value) || 0,
+        fats: Number(form.fats.value) || 0,
+        carbs: Number(form.carbs.value) || 0,
+        serving_g: serving > 0 ? serving : null,
+        source: "manual"
+      };
+      var btn = form.querySelector(".diary-manual__submit");
+      btn.disabled = true;
+      (isEdit ? App.api.updateProduct(p.id, payload) : App.api.saveProduct(payload))
+        .then(function () {
+          App.haptic && App.haptic("success");
+          App.toast(pick("Продукт сохранён", "Food saved"));
+          closeSheetById(SHEET_PRODUCT);
+          onChanged && onChanged();
+        })
+        .catch(function (err) {
+          App.haptic && App.haptic("error");
+          App.toast((err && err.message) || pick("Не удалось сохранить", "Failed to save"));
+          btn.disabled = false;
+        });
     });
   }
 
-  /**
-   * Рисует список «Недавние». Тап по телу — автозаполнение формы; «плюс» —
-   * прямое добавление в приём пищи по времени суток.
-   * @param {Array} items список {dish_name, calories, proteins, fats, carbs}
-   * @param {HTMLFormElement} form форма листа блюда
-   * @param {Object} ctx контекст формы
-   */
-  function renderRecent(items, form, ctx) {
-    var box = document.getElementById("diary-recent");
-    if (!box) return;
-
-    // Нет недавних — просто скрываем блок (не мешаем «Вчера»).
-    if (!items.length) {
-      box.innerHTML = "";
-      return;
-    }
-
-    var kcal = pick("ккал", "kcal");
-    var pLabel = pick("Б", "P");
-    var fLabel = pick("Ж", "F");
-    var cLabel = pick("У", "C");
-
-    var rows = "";
-    for (var i = 0; i < items.length; i++) {
-      var it = items[i] || {};
-      var macros =
-        App.fmt(it.calories || 0) + " " + kcal +
-        " · " + pLabel + " " + App.fmt(it.proteins || 0) +
-        " · " + fLabel + " " + App.fmt(it.fats || 0) +
-        " · " + cLabel + " " + App.fmt(it.carbs || 0);
-
-      rows +=
-        '<div class="yday__item" data-idx="' + i + '">' +
-        '<button type="button" class="yday__body" data-idx="' + i + '">' +
-        '<span class="yday__name">' +
-        App.escapeHtml(it.dish_name || pick("Без названия", "Untitled")) + "</span>" +
-        '<span class="yday__macros">' + App.escapeHtml(macros) + "</span>" +
-        "</button>" +
-        '<button type="button" class="yday__add" data-idx="' + i + '" ' +
-        'aria-label="' + App.escapeHtml(pick("Добавить", "Add")) + '">' +
-        icon("plus", { size: 20 }) + "</button>" +
-        "</div>";
-    }
-
-    box.innerHTML =
-      '<h3 class="yday__title">' + App.escapeHtml(pick("Недавние", "Recent")) + "</h3>" +
-      '<div class="yday__list">' + rows + "</div>";
-
-    var list = box.querySelector(".yday__list");
-    if (list) {
-      list.addEventListener("click", function (ev) {
-        // «Плюс» — прямое добавление в приём по времени суток (у недавних нет meal_type).
-        var addBtn = ev.target.closest(".yday__add");
-        if (addBtn) {
-          var addIdx = parseInt(addBtn.getAttribute("data-idx"), 10);
-          if (!isNaN(addIdx) && items[addIdx]) {
-            quickAdd(items[addIdx], ctx.manualMeal || mealByHour(), addBtn);
-          }
-          return;
-        }
-        // Тап по телу — автозаполнение формы листа.
-        var body = ev.target.closest(".yday__body");
-        if (body) {
-          var idx = parseInt(body.getAttribute("data-idx"), 10);
-          if (!isNaN(idx) && items[idx]) {
-            fillManualFromRecent(items[idx], form, ctx);
-          }
-        }
-      });
-    }
-  }
-
-  /**
-   * Автозаполняет форму листа блюда значениями недавнего (без количества/
-   * единицы — их у недавних нет). Значения берутся как есть.
-   * @param {Object} it блюдо из «Недавние»
-   * @param {HTMLFormElement} form форма листа блюда
-   * @param {Object} ctx контекст формы
-   */
-  function fillManualFromRecent(it, form, ctx) {
-    if (!form) return;
-    App.haptic && App.haptic("light");
-
-    if (form.dish_name) form.dish_name.value = it.dish_name || "";
-    if (form.quantity) form.quantity.value = "";
-
-    ctx.manualOverride = true;
-    ctx.perUnit = null;
-    setMacroFields(
-      form,
-      Math.round(Number(it.calories) || 0),
-      round1(it.proteins || 0),
-      round1(it.fats || 0),
-      round1(it.carbs || 0)
-    );
-
-    scrollSheetToTop(SHEET_FOOD);
-  }
-
   // ---------------------------------------------------------------------------
-  // Блок «Вчера» (block 3.2) — быстрое добавление вчерашних блюд в один тап.
+  // СВОЙ РЕЦЕПТ: ингредиенты с граммами → КБЖУ на 100 г и на порцию.
+  //
+  // Итог на экране считается тут же (для наглядности), а сохраняет и
+  // пересчитывает его сервер — он же проверяет цифры.
   // ---------------------------------------------------------------------------
 
   /**
-   * Загружает список блюд «за вчера» и рисует их. При ошибке — тихо скрываем.
-   * @param {HTMLFormElement} form форма листа блюда (для автозаполнения по тапу)
-   * @param {Object} ctx контекст формы
+   * Итог рецепта по ингредиентам, весу готового блюда и числу порций.
    */
-  function loadYesterday(form, ctx) {
-    var box = document.getElementById("diary-yday");
-    if (!box) return;
-
-    box.innerHTML =
-      '<h3 class="yday__title">' + App.escapeHtml(pick("Вчера", "Yesterday")) + "</h3>" +
-      '<div class="yday__list">' +
-      '<div class="skeleton skeleton-block yday__skeleton"></div>' +
-      '<div class="skeleton skeleton-block yday__skeleton"></div>' +
-      "</div>";
-
-    if (!(App.api && typeof App.api.getYesterday === "function")) {
-      box.innerHTML = "";
-      return;
+  function recipeTotals(ings, cooked, servings) {
+    var raw = 0;
+    var t = { cals: 0, p: 0, f: 0, c: 0 };
+    for (var i = 0; i < ings.length; i++) {
+      var g = Number(ings[i].grams) || 0;
+      raw += g;
+      t.cals += (Number(ings[i].calories) || 0) * g / 100;
+      t.p += (Number(ings[i].proteins) || 0) * g / 100;
+      t.f += (Number(ings[i].fats) || 0) * g / 100;
+      t.c += (Number(ings[i].carbs) || 0) * g / 100;
     }
-
-    App.api
-      .getYesterday(state.date)
-      .then(function (res) {
-        var items = (res && res.items) || [];
-        renderYesterday(items, form, ctx);
-      })
-      .catch(function () {
-        // Вспомогательный блок: при ошибке просто скрываем его.
-        if (box) box.innerHTML = "";
-      });
+    var weight = cooked > 0 ? cooked : raw;
+    var n = servings >= 1 ? Math.floor(servings) : 1;
+    var scale = function (k) {
+      return { cals: t.cals * k, p: t.p * k, f: t.f * k, c: t.c * k };
+    };
+    return {
+      raw: raw,
+      weight: weight,
+      servings: n,
+      totals: t,
+      per100: weight > 0 ? scale(100 / weight) : null,
+      servingG: weight > 0 ? weight / n : 0,
+      perServing: scale(1 / n)
+    };
   }
 
   /**
-   * Рисует список блюд «за вчера». Тап по телу — автозаполнение формы листа;
-   * кнопка «плюс» — прямое добавление блюда в его собственный приём пищи.
-   * @param {Array} items список {dish_name, quantity, unit, calories, proteins, fats, carbs, meal_type}
-   * @param {HTMLFormElement} form форма листа блюда
-   * @param {Object} ctx контекст формы
+   * КБЖУ на 100 г из подсказки поиска (у истории — только если порция в граммах).
    */
-  function renderYesterday(items, form, ctx) {
-    var box = document.getElementById("diary-yday");
-    if (!box) return;
-
-    if (!items.length) {
-      box.innerHTML =
-        '<h3 class="yday__title">' + App.escapeHtml(pick("Вчера", "Yesterday")) + "</h3>" +
-        '<p class="yday__empty">' +
-        App.escapeHtml(pick("За вчера нет записей.", "No entries yesterday.")) + "</p>";
-      return;
+  function per100FromItem(it) {
+    if (it.kind === "history") {
+      var q = Number(it.quantity);
+      if (!(q > 0 && (it.unit === "g" || it.unit === "ml"))) return null;
+      var k = 100 / q;
+      return {
+        calories: round1((it.calories || 0) * k), proteins: round1((it.proteins || 0) * k),
+        fats: round1((it.fats || 0) * k), carbs: round1((it.carbs || 0) * k), grams: q
+      };
     }
-
-    var kcal = pick("ккал", "kcal");
-    var pLabel = pick("Б", "P");
-    var fLabel = pick("Ж", "F");
-    var cLabel = pick("У", "C");
-
-    var rows = "";
-    for (var i = 0; i < items.length; i++) {
-      var it = items[i] || {};
-      // Строка макросов: «320 ккал · 2 шт · Б .. Ж .. У ..».
-      var qtyPart = "";
-      if (it.quantity != null) {
-        var uLabel = unitLabel(it.unit);
-        qtyPart = " · " + App.fmt(it.quantity) + (uLabel ? " " + uLabel : "");
-      }
-      var macros =
-        App.fmt(it.calories || 0) + " " + kcal + qtyPart +
-        " · " + pLabel + " " + App.fmt(it.proteins || 0) +
-        " · " + fLabel + " " + App.fmt(it.fats || 0) +
-        " · " + cLabel + " " + App.fmt(it.carbs || 0);
-
-      rows +=
-        '<div class="yday__item" data-idx="' + i + '">' +
-        '<button type="button" class="yday__body" data-idx="' + i + '">' +
-        '<span class="yday__name">' +
-        App.escapeHtml(it.dish_name || pick("Без названия", "Untitled")) + "</span>" +
-        '<span class="yday__macros">' + App.escapeHtml(macros) + "</span>" +
-        "</button>" +
-        '<button type="button" class="yday__add" data-idx="' + i + '" ' +
-        'aria-label="' + App.escapeHtml(pick("Добавить", "Add")) + '">' +
-        icon("plus", { size: 20 }) + "</button>" +
-        "</div>";
-    }
-
-    box.innerHTML =
-      '<h3 class="yday__title">' + App.escapeHtml(pick("Вчера", "Yesterday")) + "</h3>" +
-      '<div class="yday__list">' + rows + "</div>";
-
-    var list = box.querySelector(".yday__list");
-    if (list) {
-      list.addEventListener("click", function (ev) {
-        // Кнопка «плюс» — прямое добавление в собственный приём пищи.
-        var addBtn = ev.target.closest(".yday__add");
-        if (addBtn) {
-          var addIdx = parseInt(addBtn.getAttribute("data-idx"), 10);
-          if (!isNaN(addIdx) && items[addIdx]) {
-            var it = items[addIdx];
-            quickAdd(it, it.meal_type || "breakfast", addBtn);
-          }
-          return;
-        }
-        // Тап по телу — автозаполнение формы листа.
-        var body = ev.target.closest(".yday__body");
-        if (body) {
-          var idx = parseInt(body.getAttribute("data-idx"), 10);
-          if (!isNaN(idx) && items[idx]) {
-            fillManualFromYesterday(items[idx], form, ctx);
-          }
-        }
-      });
-    }
+    return {
+      calories: Number(it.calories) || 0, proteins: Number(it.proteins) || 0,
+      fats: Number(it.fats) || 0, carbs: Number(it.carbs) || 0,
+      grams: Number(it.serving_g) > 0 ? Number(it.serving_g) : 100
+    };
   }
 
   /**
-   * Автозаполняет форму листа значениями блюда «за вчера» (взяты как есть,
-   * поэтому помечаем manualOverride=true, чтобы не пересчитывать по количеству).
-   * @param {Object} it блюдо из «Вчера»
-   * @param {HTMLFormElement} form форма листа блюда
-   * @param {Object} ctx контекст формы
+   * Лист создания/правки рецепта (поверх листа блюда).
+   * @param {Object|null} recipe RecipeOut или null
+   * @param {Function} onChanged вызывается после сохранения/удаления
    */
-  function fillManualFromYesterday(it, form, ctx) {
-    if (!form) return;
-    App.haptic && App.haptic("light");
+  function openRecipeEditor(recipe, onChanged) {
+    var isEdit = !!(recipe && recipe.id != null);
+    var r = recipe || {};
+    var ings = (r.ingredients || []).map(function (x) {
+      return {
+        name: x.name, grams: x.grams, calories: x.calories,
+        proteins: x.proteins, fats: x.fats, carbs: x.carbs
+      };
+    });
+    var g = pick("г", "g");
 
-    if (form.dish_name) form.dish_name.value = it.dish_name || "";
-    if (form.quantity) form.quantity.value = (it.quantity != null ? it.quantity : "");
-    if (form.unit) {
-      form.unit.value = (it.unit && UNIT_KEYS.indexOf(it.unit) !== -1) ? it.unit : "g";
+    var html =
+      '<h2 class="diary-sheet__title">' +
+      App.escapeHtml(isEdit ? pick("Рецепт", "Recipe") : pick("Новый рецепт", "New recipe")) + "</h2>" +
+      '<form class="diary-manual__form" id="diary-recipe-form" novalidate>' +
+      '<label class="field"><span class="field__label">' + App.escapeHtml(pick("Название", "Name")) + "</span>" +
+      '<input class="field__input" type="text" name="name" maxlength="120" autocomplete="off" ' +
+      'placeholder="' + App.escapeHtml(pick("Например, борщ домашний", "e.g. home-made soup")) + '" ' +
+      'value="' + App.escapeHtml(r.name || "") + '"></label>' +
+      '<h3 class="yday__title recipe__title">' + App.escapeHtml(pick("Ингредиенты", "Ingredients")) + "</h3>" +
+      '<div class="recipe-ing"></div>' +
+      '<label class="field"><span class="field__label">' +
+      App.escapeHtml(pick("Добавить ингредиент", "Add an ingredient")) + "</span>" +
+      '<input class="field__input" type="text" name="ing_q" autocomplete="off" ' +
+      'placeholder="' + App.escapeHtml(pick("Найти: гречка, курица, масло…", "Search: rice, chicken, oil…")) + '">' +
+      "</label>" +
+      '<div class="fsearch recipe-search"></div>' +
+      '<button type="button" class="fsearch__own recipe__own-toggle">' + icon("edit", { size: 18 }) +
+      "<span>" + App.escapeHtml(pick("Ввести КБЖУ ингредиента вручную", "Enter ingredient nutrition manually")) +
+      "</span></button>" +
+      '<div class="recipe-own" hidden>' +
+      '<label class="field"><span class="field__label">' + App.escapeHtml(pick("Ингредиент", "Ingredient")) + "</span>" +
+      '<input class="field__input" type="text" name="own_name" maxlength="120" autocomplete="off"></label>' +
+      '<div class="diary-manual__macros">' +
+      macroFieldHtml("own_grams", pick("Вес, г", "Weight, g"), null) +
+      macroFieldHtml("own_kcal", pick("Ккал/100 г", "Kcal/100 g"), null) +
+      "</div>" +
+      '<div class="diary-manual__macros">' +
+      macroFieldHtml("own_p", pick("Б/100 г", "P/100 g"), null) +
+      macroFieldHtml("own_f", pick("Ж/100 г", "F/100 g"), null) +
+      macroFieldHtml("own_c", pick("У/100 г", "C/100 g"), null) +
+      "</div>" +
+      '<button type="button" class="btn btn--ghost btn-block recipe-own__add">' + icon("plus", { size: 18 }) +
+      App.escapeHtml(pick("Добавить в рецепт", "Add to recipe")) + "</button>" +
+      "</div>" +
+      '<div class="manual-qty-row recipe__yield">' +
+      '<label class="field manual-qty-field"><span class="field__label">' +
+      App.escapeHtml(pick("Вес готового блюда, г", "Cooked weight, g")) + "</span>" +
+      '<input class="field__input" type="number" name="cooked" inputmode="decimal" min="0" step="any" ' +
+      'value="' + (r.cooked_weight_g ? App.escapeHtml(String(r.cooked_weight_g)) : "") + '"></label>' +
+      '<label class="field manual-unit-field"><span class="field__label">' +
+      App.escapeHtml(pick("Порций", "Servings")) + "</span>" +
+      '<input class="field__input" type="number" name="servings" inputmode="numeric" min="1" max="50" step="1" ' +
+      'value="' + App.escapeHtml(String(r.servings || 1)) + '"></label>' +
+      "</div>" +
+      '<p class="field__hint">' + App.escapeHtml(pick(
+        "При варке вода уходит или впитывается — взвесьте готовое блюдо. Не знаете — оставьте пустым, посчитаем по сумме продуктов.",
+        "Cooking adds or removes water — weigh the finished dish. Not sure? Leave it empty and we’ll use the sum of the ingredients."
+      )) + "</p>" +
+      '<div class="recipe-sum"></div>' +
+      '<button class="btn btn--cta btn-block diary-manual__submit" type="submit">' +
+      App.escapeHtml(pick("Сохранить рецепт", "Save recipe")) + "</button>" +
+      (isEdit
+        ? '<button type="button" class="btn btn--ghost btn-block fed__delete">' + icon("trash", { size: 18 }) +
+          App.escapeHtml(pick("Удалить рецепт", "Delete recipe")) + "</button>"
+        : "") +
+      '<button type="button" class="btn btn--ghost btn-block diary-manual__cancel">' +
+      App.escapeHtml(pick("Отмена", "Cancel")) + "</button>" +
+      "</form>";
+
+    var sheet = mountSheet(SHEET_RECIPE, html);
+    if (!sheet) return;
+    var form = sheet.querySelector("#diary-recipe-form");
+    var listEl = sheet.querySelector(".recipe-ing");
+    var sumEl = sheet.querySelector(".recipe-sum");
+    var searchEl = sheet.querySelector(".recipe-search");
+    var ownBox = sheet.querySelector(".recipe-own");
+    bindLiveValidation(form);
+
+    function ingKcal(x) {
+      return Math.round((Number(x.calories) || 0) * (Number(x.grams) || 0) / 100);
     }
 
-    // Значения взяты как есть — фиксируем ручное переопределение.
-    ctx.manualOverride = true;
-    ctx.perUnit = null;
-    setMacroFields(
-      form,
-      Math.round(Number(it.calories) || 0),
-      round1(it.proteins || 0),
-      round1(it.fats || 0),
-      round1(it.carbs || 0)
-    );
+    function renderIngs() {
+      if (!ings.length) {
+        listEl.innerHTML = '<p class="yday__empty">' + App.escapeHtml(pick(
+          "Добавьте продукты, из которых готовите, — с весом в граммах.",
+          "Add the foods you cook with — with their weight in grams."
+        )) + "</p>";
+      } else {
+        var rows = "";
+        for (var i = 0; i < ings.length; i++) {
+          rows +=
+            '<div class="recipe-ing__row">' +
+            '<div class="recipe-ing__info">' +
+            '<span class="recipe-ing__name">' + App.escapeHtml(ings[i].name) + "</span>" +
+            '<span class="recipe-ing__kcal" data-kcal="' + i + '">' + App.fmt(ingKcal(ings[i])) + " " +
+            pick("ккал", "kcal") + "</span>" +
+            "</div>" +
+            '<input class="field__input recipe-ing__grams" type="number" inputmode="decimal" min="0" step="any" ' +
+            'data-idx="' + i + '" value="' + App.escapeHtml(String(ings[i].grams || "")) + '" ' +
+            'aria-label="' + App.escapeHtml(pick("Вес, г", "Weight, g")) + '">' +
+            '<span class="recipe-ing__unit">' + g + "</span>" +
+            '<button type="button" class="recipe-ing__remove" data-idx="' + i + '" aria-label="' +
+            App.escapeHtml(pick("Убрать", "Remove")) + '">' + icon("close", { size: 18 }) + "</button>" +
+            "</div>";
+        }
+        listEl.innerHTML = rows;
+      }
+      renderSum();
+    }
 
-    // Приём пищи = приём блюда из «Вчера».
-    var meal = it.meal_type || "breakfast";
-    ctx.manualMeal = meal;
-    var sheet = document.getElementById(SHEET_FOOD);
-    var chips = sheet && sheet.querySelectorAll(".diary-manual__meal .meal-chip");
-    if (chips) {
-      for (var i = 0; i < chips.length; i++) {
-        chips[i].classList.toggle(
-          "is-active",
-          chips[i].getAttribute("data-food-meal") === meal
-        );
+    function renderSum() {
+      var cooked = Number(form.cooked.value);
+      var calc = recipeTotals(ings, cooked, Number(form.servings.value));
+      form.cooked.placeholder = calc.raw > 0 ? App.fmt(Math.round(calc.raw)) : "—";
+      if (!ings.length || !calc.per100) {
+        sumEl.innerHTML = "";
+        return;
+      }
+      var kcal = pick("ккал", "kcal");
+      var line = function (label, sub, v) {
+        return '<div class="recipe-sum__row">' +
+          '<span class="recipe-sum__label">' + App.escapeHtml(label) +
+          (sub ? "<small>" + App.escapeHtml(sub) + "</small>" : "") + "</span>" +
+          '<span class="recipe-sum__val"><b>' + App.fmt(Math.round(v.cals)) + "</b> " + kcal +
+          "<small>" + App.escapeHtml(macrosLine(round1(v.p), round1(v.f), round1(v.c))) + "</small></span>" +
+          "</div>";
+      };
+      sumEl.innerHTML =
+        line(pick("Всё блюдо", "Whole dish"), App.fmt(Math.round(calc.weight)) + " " + g, calc.totals) +
+        line(pick("100 г", "100 g"), "", calc.per100) +
+        (calc.servings > 1
+          ? line(pick("1 порция", "1 serving"), App.fmt(Math.round(calc.servingG)) + " " + g, calc.perServing)
+          : "");
+    }
+
+    function addIngredient(x) {
+      ings.push(x);
+      renderIngs();
+      var inputs = listEl.querySelectorAll(".recipe-ing__grams");
+      var last = inputs[inputs.length - 1];
+      if (last) {
+        try { last.focus({ preventScroll: false }); last.select(); } catch (e) {}
       }
     }
 
-    scrollSheetToTop(SHEET_FOOD);
+    listEl.addEventListener("input", function (ev) {
+      var inp = ev.target.closest(".recipe-ing__grams");
+      if (!inp) return;
+      var i = parseInt(inp.getAttribute("data-idx"), 10);
+      if (!ings[i]) return;
+      ings[i].grams = Number(inp.value) || 0;
+      var k = listEl.querySelector('[data-kcal="' + i + '"]');
+      if (k) k.textContent = App.fmt(ingKcal(ings[i])) + " " + pick("ккал", "kcal");
+      renderSum();
+    });
+    listEl.addEventListener("click", function (ev) {
+      var rm = ev.target.closest(".recipe-ing__remove");
+      if (!rm) return;
+      var i = parseInt(rm.getAttribute("data-idx"), 10);
+      if (!ings[i]) return;
+      App.haptic && App.haptic("light");
+      ings.splice(i, 1);
+      renderIngs();
+    });
+    form.cooked.addEventListener("input", renderSum);
+    form.servings.addEventListener("input", renderSum);
+
+    // Поиск ингредиента — тот же поиск, что у блюда: свои продукты, история, база.
+    var timer = null;
+    var seq = 0;
+    var found = [];
+    form.ing_q.addEventListener("input", function () {
+      var q = (form.ing_q.value || "").trim();
+      if (timer) clearTimeout(timer);
+      if (q.length < FSEARCH_MIN_CHARS) {
+        seq++;
+        searchEl.innerHTML = "";
+        return;
+      }
+      timer = setTimeout(function () {
+        var mySeq = ++seq;
+        searchEl.innerHTML = '<div class="skeleton skeleton-line fsearch__skeleton"></div>';
+        App.api.searchFood(q)
+          .then(function (res) {
+            if (mySeq !== seq) return;
+            found = ((res && res.items) || []).filter(function (it) { return !!per100FromItem(it); });
+            if (!found.length) {
+              searchEl.innerHTML = '<p class="fsearch__hint">' + App.escapeHtml(pick(
+                "Не нашли — введите КБЖУ вручную.", "Nothing found — enter the nutrition manually."
+              )) + "</p>";
+              return;
+            }
+            var rows = "";
+            var fromBase = false;
+            for (var i = 0; i < found.length; i++) {
+              var it = found[i];
+              var per = per100FromItem(it);
+              if (it.kind === "off" || (!it.kind && !it.mine)) fromBase = true;
+              rows +=
+                '<button type="button" class="fsearch__item" data-idx="' + i + '">' +
+                '<span class="fsearch__name">' + App.escapeHtml(it.name || "") +
+                (it.brand ? ' <span class="fsearch__brand">' + App.escapeHtml(it.brand) + "</span>" : "") +
+                kindBadge(it) + "</span>" +
+                '<span class="fsearch__macros">' + App.escapeHtml(
+                  App.fmt(Math.round(per.calories)) + " " + pick("ккал на 100 г", "kcal per 100 g") +
+                  " · " + macrosLine(per.proteins, per.fats, per.carbs)) + "</span>" +
+                "</button>";
+            }
+            searchEl.innerHTML = '<div class="fsearch__list">' + rows + "</div>" +
+              (fromBase
+                ? '<p class="fsearch__credit">' +
+                  App.escapeHtml(pick("Данные: Open Food Facts (ODbL)", "Data: Open Food Facts (ODbL)")) + "</p>"
+                : "");
+          })
+          .catch(function () {
+            if (mySeq === seq) searchEl.innerHTML = "";
+          });
+      }, FSEARCH_DEBOUNCE_MS);
+    });
+    searchEl.addEventListener("click", function (ev) {
+      var btn = ev.target.closest(".fsearch__item");
+      if (!btn) return;
+      var it = found[parseInt(btn.getAttribute("data-idx"), 10)];
+      if (!it) return;
+      var per = per100FromItem(it);
+      App.haptic && App.haptic("light");
+      form.ing_q.value = "";
+      searchEl.innerHTML = "";
+      addIngredient({
+        name: it.name || "", grams: per.grams, calories: per.calories,
+        proteins: per.proteins, fats: per.fats, carbs: per.carbs
+      });
+    });
+
+    // Свой ингредиент: название, вес и КБЖУ на 100 г.
+    sheet.querySelector(".recipe__own-toggle").addEventListener("click", function () {
+      ownBox.hidden = !ownBox.hidden;
+      if (!ownBox.hidden) {
+        if (!form.own_name.value) form.own_name.value = (form.ing_q.value || "").trim();
+        try { form.own_name.focus(); } catch (e) {}
+      }
+    });
+    function addOwn() {
+      var name = (form.own_name.value || "").trim();
+      if (!name) return invalidField(form.own_name, pick("Назовите ингредиент", "Name the ingredient"));
+      var grams = Number(form.own_grams.value);
+      if (!(grams > 0)) return invalidField(form.own_grams, pick("Укажите вес в граммах", "Enter the weight in grams"));
+      var kcal = Number(form.own_kcal.value);
+      if (!(kcal >= 0 && kcal <= 950) || form.own_kcal.value === "") {
+        return invalidField(form.own_kcal, pick("Калории на 100 г — от 0 до 950", "Calories per 100 g: 0 to 950"));
+      }
+      addIngredient({
+        name: name, grams: grams, calories: kcal,
+        proteins: Number(form.own_p.value) || 0, fats: Number(form.own_f.value) || 0,
+        carbs: Number(form.own_c.value) || 0
+      });
+      ["own_name", "own_grams", "own_kcal", "own_p", "own_f", "own_c"].forEach(function (n) {
+        form[n].value = "";
+      });
+      form.ing_q.value = "";
+      searchEl.innerHTML = "";
+      ownBox.hidden = true;
+    }
+    sheet.querySelector(".recipe-own__add").addEventListener("click", addOwn);
+
+    sheet.querySelector(".diary-manual__cancel").addEventListener("click", function () {
+      closeSheetById(SHEET_RECIPE);
+    });
+
+    var del = sheet.querySelector(".fed__delete");
+    if (del) {
+      del.addEventListener("click", function () {
+        openConfirmSheet({
+          title: pick("Удалить рецепт?", "Delete this recipe?"),
+          text: pick("Записи в дневнике с ним останутся.", "Diary entries with it will stay."),
+          onConfirm: function () {
+            App.api.deleteRecipe(r.id)
+              .then(function () {
+                App.toast(pick("Рецепт удалён", "Recipe deleted"));
+                closeSheetById(SHEET_RECIPE);
+                onChanged && onChanged();
+              })
+              .catch(function (err) {
+                App.toast((err && err.message) || pick("Ошибка", "Error"));
+              });
+          }
+        });
+      });
+    }
+
+    form.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      // Enter в поиске или в своём ингредиенте — не сохранение рецепта.
+      var active = document.activeElement;
+      if (active && active.name === "ing_q") return;
+      if (active && ownBox.contains(active)) {
+        addOwn();
+        return;
+      }
+      var name = (form.name.value || "").trim();
+      if (!name) return invalidField(form.name, pick("Назовите рецепт", "Name the recipe"));
+      var clean = ings.filter(function (x) { return Number(x.grams) > 0; });
+      if (!clean.length) {
+        App.toast(pick("Добавьте хотя бы один ингредиент с весом", "Add at least one ingredient with a weight"));
+        try { form.ing_q.focus(); } catch (e) {}
+        return;
+      }
+      var cooked = Number(form.cooked.value);
+      var servings = parseInt(form.servings.value, 10);
+      if (!(servings >= 1 && servings <= 50)) {
+        return invalidField(form.servings, pick("Порций — от 1 до 50", "Servings: 1 to 50"));
+      }
+      var payload = {
+        name: name,
+        ingredients: clean,
+        cooked_weight_g: cooked > 0 ? cooked : null,
+        servings: servings
+      };
+      var btn = form.querySelector(".diary-manual__submit");
+      btn.disabled = true;
+      App.api.saveRecipe(payload, isEdit ? r.id : null)
+        .then(function () {
+          App.haptic && App.haptic("success");
+          App.toast(pick("Рецепт сохранён", "Recipe saved"));
+          closeSheetById(SHEET_RECIPE);
+          onChanged && onChanged();
+        })
+        .catch(function (err) {
+          App.haptic && App.haptic("error");
+          App.toast((err && err.message) || pick("Не удалось сохранить", "Failed to save"));
+          btn.disabled = false;
+        });
+    });
+
+    renderIngs();
   }
 
   /**
    * Добавляет произвольное блюдо в рацион выбранного приёма пищи.
-   * Используется «Вчера», рекомендациями и AI-планом меню.
+   * Используется библиотекой листа блюда, рекомендациями и AI-планом меню.
    * Прокидывает количество/единицу (если есть) в запись дневника.
    * @param {Object} food {dish_name, calories, proteins, fats, carbs, quantity?, unit?}
    * @param {string} mealType
    * @param {HTMLElement} [trigger] кнопка-инициатор (для блокировки)
+   * @param {Object} [opts] {keepOpen: лист блюда не закрывать, onDone: колбэк успеха}
    */
-  function quickAdd(food, mealType, trigger) {
+  function quickAdd(food, mealType, trigger, opts) {
+    opts = opts || {};
     var quantity = (food.quantity != null && isFinite(Number(food.quantity)))
       ? Number(food.quantity)
       : null;
@@ -2637,13 +3437,14 @@
         App.haptic && App.haptic("success");
         App.toast(pick("Добавлено: ", "Added: ") + App.mealLabel(mealType));
         state.panel = null;
-        // Быстрое добавление могло идти из листа блюда («Недавние»/«Вчера») —
-        // закрываем его, иначе лист остаётся висеть поверх обновлённого дня.
-        closeSheetById(SHEET_FOOD);
+        // Из библиотеки листа блюда — лист остаётся: можно отметить ещё.
+        // Иначе (рекомендации, план) закрываем, чтобы лист не висел поверх дня.
+        if (!opts.keepOpen) closeSheetById(SHEET_FOOD);
         if (App.state && App.state.diaryByDate) {
           delete App.state.diaryByDate[state.date];
         }
         loadAndRender();
+        if (typeof opts.onDone === "function") opts.onDone();
       })
       .catch(function (err) {
         App.haptic && App.haptic("error");

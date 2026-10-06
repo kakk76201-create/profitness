@@ -541,8 +541,35 @@ class FoodProduct(Base):
     c_100 = Column(Float)
     # Откуда цифры: label (этикетка) | off (Open Food Facts) | manual | search.
     source = Column(String, nullable=True)
+    # Вес одной порции/штуки, г (необязательно): «1 шт = 60 г», у рецепта —
+    # вес готового блюда на порцию. Есть — продукт можно записать порциями.
+    serving_g = Column(Float, nullable=True)
     uses = Column(Integer, default=0)
     last_used_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Recipe(Base):
+    """Свой рецепт: ингредиенты с граммами (см. backend/recipes.py).
+
+    Посчитанное блюдо живёт в food_products (source="recipe", product_id) —
+    так оно ищется, записывается и пересчитывается как любой «мой продукт».
+    Здесь — то, из чего оно посчитано, чтобы рецепт можно было поправить.
+    """
+
+    __tablename__ = "recipes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(BigInteger, index=True)
+    name = Column(String)
+    # [{name, grams, calories, proteins, fats, carbs}] — КБЖУ на 100 г
+    # ингредиента на момент добавления (снимок, базу потом не перечитываем).
+    ingredients_json = Column(Text)
+    # Вес готового блюда, г. NULL — считаем по сумме ингредиентов.
+    cooked_weight_g = Column(Float, nullable=True)
+    servings = Column(Integer, default=1)
+    product_id = Column(Integer, index=True, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 

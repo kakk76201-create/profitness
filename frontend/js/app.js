@@ -457,6 +457,39 @@
       return request("/products/" + encodeURIComponent(id), { method: "DELETE" });
     },
 
+    // Правка своего продукта: {name, brand?, calories, proteins, fats, carbs, serving_g?}.
+    updateProduct: function (id, product) {
+      return request("/products/" + encodeURIComponent(id), { method: "PUT", body: product });
+    },
+
+    // Свой продукт/рецепт снова записан — выше в списке и в поиске.
+    productUsed: function (id) {
+      return request("/products/" + encodeURIComponent(id) + "/used", { method: "POST" });
+    },
+
+    // История съеденного с порциями: {recent:[...], frequent:[...]}
+    // (dish_name, quantity, unit, calories, proteins, fats, carbs, meal_type, count).
+    getFoodHistory: function (dateIso) {
+      return request("/food/history" + (dateIso ? "?date=" + encodeURIComponent(dateIso) : ""));
+    },
+
+    // Свои рецепты: {items:[{id, name, ingredients, cooked_weight_g, servings, product}]}.
+    getRecipes: function () {
+      return request("/recipes");
+    },
+
+    // Создать (id = null) или поправить рецепт:
+    // {name, ingredients:[{name, grams, calories, proteins, fats, carbs}], cooked_weight_g, servings}.
+    saveRecipe: function (recipe, id) {
+      return id != null
+        ? request("/recipes/" + encodeURIComponent(id), { method: "PUT", body: recipe })
+        : request("/recipes", { method: "POST", body: recipe });
+    },
+
+    deleteRecipe: function (id) {
+      return request("/recipes/" + encodeURIComponent(id), { method: "DELETE" });
+    },
+
     // Расчёт КБЖУ блюда по названию/количеству/единице (НЕ премиум — базовый дневник).
     // Тело: {name, quantity:float|null, unit:str|null}.
     // Ответ: {dish_name, quantity, unit, calories, proteins, fats, carbs}.

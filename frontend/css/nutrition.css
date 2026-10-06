@@ -1141,3 +1141,381 @@
 .diary-suggest + .diary-suggest--plan {
   margin-top: var(--s3);
 }
+
+/* ============================================================
+   ЛИСТ «ДОБАВИТЬ ЕДУ»: библиотека, свой продукт, рецепт
+   ============================================================ */
+
+/* Заголовок с крестиком: в режиме списков у листа нет кнопки «Отмена»,
+   а после нескольких «+» подряд закрыть его нужно одним тапом. */
+.fsheet__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  margin-bottom: var(--s3);
+}
+
+.fsheet__head .diary-sheet__title {
+  margin: 0;
+}
+
+.fsheet__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  margin-right: calc(-1 * var(--s2));
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0;
+}
+
+.fsheet__close:active {
+  background: var(--surface-2);
+}
+
+/* Приём пищи — одной строкой из четырёх чипов: он сверху, и две строки
+   по два чипа съедали бы место списков. */
+.fsheet__meal {
+  margin-bottom: var(--s3);
+}
+
+.fsheet__meal .meal-chips {
+  flex-wrap: nowrap;
+  gap: var(--s1);
+}
+
+.diary-sheet .fsheet__meal .meal-chip {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 var(--s1);
+  font-size: var(--fs-xs);
+}
+
+.fsheet__back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  min-height: var(--tap-min);
+  margin: calc(-1 * var(--s2)) 0 var(--s1);
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent-text);
+  font-family: var(--font-display);
+  font-size: var(--fs-btn);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-btn);
+  text-transform: uppercase;
+}
+
+.fsheet__back svg {
+  transform: rotate(180deg);
+}
+
+.manual-unit-hint {
+  margin: calc(-1 * var(--s2)) 2px var(--s3);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+/* «Запомнить в Мои продукты». */
+.fsheet__keep {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  margin: 0 0 var(--s3);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.fsheet__keep[hidden] {
+  display: none;
+}
+
+.fsheet__keep input {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin: 1px 0 0;
+  accent-color: var(--accent);
+}
+
+.fsheet__keep small {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-regular);
+  color: var(--muted);
+}
+
+/* «Ввести своё блюдо», «Свой продукт», «Новый рецепт» — пунктирная строка:
+   действие «создать», а не ещё одна запись списка. */
+.fsearch__own,
+.flib__new {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  min-height: var(--tap-min);
+  margin-top: var(--s2);
+  padding: var(--s2) var(--s3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--accent-text);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  text-align: left;
+}
+
+.fsearch__own svg,
+.flib__new svg {
+  flex-shrink: 0;
+}
+
+.fsearch__own:active,
+.flib__new:active {
+  background: var(--accent-soft);
+}
+
+.flib__new {
+  margin: 0 0 var(--s2);
+}
+
+.flib {
+  margin-top: var(--s1);
+}
+
+.flib[hidden] {
+  display: none;
+}
+
+/* Вкладки — прокручиваемая строка: пять подписей на узком экране не
+   помещаются, а переносить их на вторую строку — терять место списка. */
+.flib__tabs {
+  display: flex;
+  gap: var(--s1);
+  margin: 0 calc(-1 * var(--gutter));
+  padding: 0 var(--gutter) 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.flib__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.flib__tab {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 0 var(--s3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-btn);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.flib__tab.is-active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.flib__body {
+  margin-top: var(--s3);
+}
+
+.flib__item {
+  gap: var(--s2);
+}
+
+.flib__edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: var(--tap-min);
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0;
+}
+
+.flib__edit:active {
+  background: var(--surface);
+}
+
+/* Уже добавлено (лист открыт дальше) — зелёная галочка вместо «+». */
+.yday__add.is-done,
+.yday__add.is-done:active {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+/* Подсказки-пояснения в листах продукта и рецепта. */
+.diary-sheet p.field__hint {
+  margin: calc(-1 * var(--s2)) 2px var(--s3);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-normal);
+}
+
+/* ---------- Рецепт ---------- */
+
+.recipe__title {
+  margin-top: var(--s3);
+}
+
+.recipe-ing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin-bottom: var(--s3);
+}
+
+.recipe-ing__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s1) var(--s1) var(--s1) var(--s3);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.recipe-ing__info {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.recipe-ing__name {
+  overflow: hidden;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.recipe-ing__kcal {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.diary-sheet .recipe-ing__grams {
+  flex: 0 0 72px;
+  width: 72px;
+  min-height: 40px;
+  padding: 0 var(--s2);
+  text-align: right;
+}
+
+.recipe-ing__unit {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.recipe-ing__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 40px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0;
+}
+
+.recipe-ing__remove:active {
+  background: var(--surface);
+}
+
+.recipe__own-toggle {
+  margin: 0 0 var(--s3);
+}
+
+.recipe-own {
+  margin: 0 0 var(--s3);
+  padding: var(--s3);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.recipe__yield {
+  margin-top: var(--s2);
+}
+
+/* Итог рецепта: всё блюдо, 100 г и порция — крупные цифры, как на «Сегодня». */
+.recipe-sum {
+  margin: 0 0 var(--s4);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.recipe-sum:empty {
+  display: none;
+}
+
+.recipe-sum__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border-top: 1px solid var(--border);
+}
+
+.recipe-sum__row:first-child {
+  border-top: none;
+}
+
+.recipe-sum__label {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+
+.recipe-sum__label small,
+.recipe-sum__val small {
+  display: block;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-regular);
+  color: var(--muted);
+}
+
+.recipe-sum__val {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  text-align: right;
+}
+
+.recipe-sum__val b {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+  color: var(--text);
+}
