@@ -3021,17 +3021,26 @@
     }
     var weight = cooked > 0 ? cooked : raw;
     var n = servings >= 1 ? Math.floor(servings) : 1;
-    var scale = function (k) {
-      return { cals: t.cals * k, p: t.p * k, f: t.f * k, c: t.c * k };
-    };
+    // Округляем так же, как сервер (ккал на 100 г — целые, БЖУ — до десятых,
+    // порция — от округлённых 100 г): цифры в списке совпадут с этими.
+    var per100 = weight > 0 ? {
+      cals: Math.round(t.cals * 100 / weight),
+      p: round1(t.p * 100 / weight),
+      f: round1(t.f * 100 / weight),
+      c: round1(t.c * 100 / weight)
+    } : null;
+    var servingG = weight > 0 ? round1(weight / n) : 0;
+    var k = servingG / 100;
     return {
       raw: raw,
       weight: weight,
       servings: n,
       totals: t,
-      per100: weight > 0 ? scale(100 / weight) : null,
-      servingG: weight > 0 ? weight / n : 0,
-      perServing: scale(1 / n)
+      per100: per100,
+      servingG: servingG,
+      perServing: per100
+        ? { cals: per100.cals * k, p: per100.p * k, f: per100.f * k, c: per100.c * k }
+        : null
     };
   }
 
@@ -3276,8 +3285,14 @@
                   App.escapeHtml(pick("Данные: Open Food Facts (ODbL)", "Data: Open Food Facts (ODbL)")) + "</p>"
                 : "");
           })
-          .catch(function () {
-            if (mySeq === seq) searchEl.innerHTML = "";
+          .catch(function (err) {
+            // Частый поиск упирается в лимит — скажем об этом, а не просто
+            // уберём подсказки: ингредиент можно ввести вручную.
+            if (mySeq !== seq) return;
+            searchEl.innerHTML = '<p class="fsearch__hint">' + App.escapeHtml(
+              ((err && err.message) || pick("Поиск недоступен.", "Search is unavailable.")) + " " +
+              pick("Можно ввести КБЖУ вручную.", "You can enter the nutrition manually.")
+            ) + "</p>";
           });
       }, FSEARCH_DEBOUNCE_MS);
     });
